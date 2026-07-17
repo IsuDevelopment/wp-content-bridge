@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<ruleset name="WP Content Bridge">
+    <description>Project coding standards.</description>
+    <file>src</file>
+    <file>tests</file>
+    <file>wp-content-bridge.php</file>
+    <exclude-pattern>vendor/*</exclude-pattern>
+    <arg name="extensions" value="php" />
+    <arg value="sp" />
+    <rule ref="WordPress">
+        <exclude name="WordPress.Files.FileName.NotHyphenatedLowercase" />
+        <exclude name="WordPress.Files.FileName.InvalidClassFileName" />
+    </rule>
+    <rule ref="WordPress-Extra" />
+    <rule ref="WordPress-Docs" />
+    <rule ref="PSR12.Properties.ConstantVisibility" />
+    <rule ref="WordPress.WP.Capabilities">
+        <properties>
+            <property name="custom_capabilities" type="array">
+                <element value="wpcb_manage_settings" />
+                <element value="wpcb_read_content" />
+            </property>
+        </properties>
+    </rule>
+</ruleset>

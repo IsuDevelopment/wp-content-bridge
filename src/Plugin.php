@@ -1,0 +1,105 @@
+<?php
+/**
+ * Plugin composition root.
+ *
+ * @package IsuDev\WPContentBridge
+ */
+
+declare(strict_types=1);
+
+namespace IsuDev\WPContentBridge;
+
+use IsuDev\WPContentBridge\Adapter\Admin\ContentAccessSettingsPage;
+use IsuDev\WPContentBridge\Adapter\Abilities\ContentAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\SeoAbilities;
+use IsuDev\WPContentBridge\Application\Content\GetContent;
+use IsuDev\WPContentBridge\Application\Content\SearchContent;
+use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessManager;
+use IsuDev\WPContentBridge\Application\Editorial\GetEditorialContext;
+use IsuDev\WPContentBridge\Application\Seo\NullSeoProvider;
+use IsuDev\WPContentBridge\Application\Seo\GetSeo;
+use IsuDev\WPContentBridge\Application\Seo\SameSiteSeoTargetFactory;
+use IsuDev\WPContentBridge\Application\Seo\SeoProvider;
+use IsuDev\WPContentBridge\Application\Seo\SeoProviderRegistry;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\Installer;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentAccessSettingsRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentTypeCatalog;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressEditorialContextRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressTaxonomyCatalog;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoTargetAccess;
+use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastSeoProvider;
+
+/**
+ * Composes the plugin's infrastructure adapters.
+ *
+ * Keep domain behavior out of this class. It is a bootstrap/composition root only.
+ */
+final class Plugin {
+
+	/**
+	 * Whether the composition root has already run.
+	 *
+	 * @var bool
+	 */
+	private static bool $booted = false;
+
+	/**
+	 * Boots the plugin once.
+	 *
+	 * @return void
+	 */
+	public static function boot(): void {
+		if ( self::$booted ) {
+			return;
+		}
+
+		self::$booted = true;
+		Installer::maybe_upgrade();
+
+		$manager = new ContentAccessManager(
+			new WordPressContentAccessSettingsRepository(),
+			new WordPressContentTypeCatalog()
+		);
+
+		if ( is_admin() ) {
+
+			( new ContentAccessSettingsPage( $manager ) )->register_hooks();
+		}
+
+		$content_repository = new WordPressContentRepository();
+		$taxonomy_catalog   = new WordPressTaxonomyCatalog();
+		$search             = new SearchContent( $manager, $content_repository, $taxonomy_catalog );
+		/**
+		 * Filters optional provider-neutral SEO adapters in explicit priority order.
+		 *
+		 * Invalid values are ignored; adapters must implement SeoProvider.
+		 *
+		 * @param array $providers SEO provider adapters.
+		 * @phpstan-param list<SeoProvider> $providers
+		 */
+		$providers     = apply_filters( 'wp_content_bridge_seo_providers', array( new YoastSeoProvider() ) );
+		$providers     = is_array( $providers )
+			? array_values( array_filter( $providers, static fn ( mixed $provider ): bool => $provider instanceof SeoProvider ) )
+			: array();
+		$seo_providers = new SeoProviderRegistry( $providers, new NullSeoProvider() );
+		( new ContentAbilities(
+			$search,
+			new GetContent( $manager, $content_repository ),
+			new GetEditorialContext( $manager, $search, new WordPressEditorialContextRepository(), $seo_providers ),
+			$manager,
+			$seo_providers
+		) )->register_hooks();
+		( new SeoAbilities(
+			new GetSeo( $seo_providers, new WordPressSeoTargetAccess( $manager, $content_repository ) ),
+			new SameSiteSeoTargetFactory( home_url( '/' ) )
+		) )->register_hooks();
+
+		/**
+		 * Fires after WP Content Bridge has loaded its composition root.
+		 *
+		 * Read-only content abilities have registered their WordPress hooks.
+		 */
+		do_action( 'wp_content_bridge_loaded' );
+	}
+}

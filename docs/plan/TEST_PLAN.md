@@ -1,0 +1,185 @@
+# Test plan
+
+## Automated layers
+
+### Unit
+
+- Content-type operation defaults, dependency normalization, and untrusted checkbox values.
+- DTO validation and serialization.
+- Query normalization and bounds.
+- Plain-text conversion.
+- SEO normalization and provenance.
+- Same-site URL validation.
+- Concurrency-token comparison.
+- Error mapping and audit redaction.
+- Editorial-context selection/default normalization, section bounds, exact
+  requested type/taxonomy behavior, and provider degradation.
+
+### WordPress integration
+
+- Eligible/excluded post-type discovery and access-option sanitization.
+- Settings menu registration, nonce/Settings API path, and `wpcb_manage_settings` enforcement.
+- Plugin bootstrap and hooks.
+- Ability category/registration lifecycle.
+- Input/output schema validation.
+- Permission callbacks and object visibility.
+- WP_Query behavior, revisions, taxonomies, media, CPTs.
+- Yoast adapter integration where fixtures are available.
+- Editorial taxonomy/term vocabulary, observed-author projection, configured
+  READ+SEARCH denial, and published/readable recent inventory.
+
+### Contract
+
+- Snapshot/fixture tests for every ability definition.
+- Stable machine error codes.
+- Schema version behavior.
+- MCP discovery and execution envelopes through the official adapter.
+
+### End-to-end
+
+- Install release ZIP on a clean WordPress instance.
+- Activate with/without MCP Adapter and Yoast.
+- Connect a client, discover abilities, search, read, retrieve SEO.
+- Later create/update a draft and verify revision/audit behavior.
+
+## Environment matrix
+
+| Dimension | Initial values |
+|---|---|
+| WordPress | 7.0 latest patch; latest supported 7.x |
+| PHP | 8.2, 8.3, 8.4 |
+| Site | single site; multisite unsupported until ADR |
+| SEO | none; Yoast Free; Free+Premium; Free+Local; Free+Premium+Local |
+| MCP | absent; official adapter current pinned release |
+| Client | Codex; Gemini CLI; ChatGPT remote when testable |
+
+## Authorization matrix
+
+For each ability test:
+
+- unauthenticated user;
+- subscriber;
+- author owning/not owning object;
+- editor;
+- administrator;
+- dedicated integration user with selected WPCB and native capabilities;
+- revoked Application Password/session.
+
+For Milestone 1B, exercise every principal against:
+
+| Object | Expected distinction |
+|---|---|
+| Published post/page | Plugin capability plus `read_post` and enabled policy |
+| Owning author's draft | Ownership and native draft readability |
+| Another author's draft | No access unless native role capability permits it |
+| Private post/page | `read_private_posts`/object capability required |
+| Opted-in public CPT | Same three authorization gates as built-in types |
+| Policy-disabled CPT | Denied even to administrator |
+| Missing object | Same public error shape as unreadable object |
+
+Search assertions include both returned IDs and pagination totals so an
+unreadable object cannot be inferred from counts.
+
+## Milestone 1B contract fixtures
+
+- ability IDs, category, labels, descriptions, annotations, and REST exposure;
+- strict input/output schemas and application-side default normalization;
+- stable `wpcb_invalid_input`, `wpcb_content_unavailable`, `wpcb_forbidden`, and
+  `wpcb_internal_error` mappings where the adapter owns the failure, plus
+  `wpcb_content_too_large` for the explicit detail boundary;
+- raw Gutenberg source remains byte-for-byte authoritative;
+- rendered content follows the WordPress content filter pipeline;
+- plain text is normalized without exposing arbitrary post meta;
+- taxonomy filters are bounded and reject unregistered/unrelated taxonomies;
+- raw/rendered/plain-text payload byte counts are recorded for representative
+  long and block-heavy fixtures.
+
+The repeatable local commands are:
+
+```bash
+wp eval 'require "/absolute/path/to/wp-content-bridge/tests/Integration/authorization-matrix.php";'
+wp eval 'require "/absolute/path/to/wp-content-bridge/tests/Integration/abilities-runtime-verification.php";'
+```
+
+The 2026-07-17 WordPress 7.0.1 run measured a 500-block fixture at 47,000 raw,
+39,000 rendered, and 13,500 plain-text bytes (99,500 combined; 103,898 bytes for
+the complete encoded response). A raw representation over 2 MiB returned
+`wpcb_content_too_large`.
+
+## SEO fixtures
+
+Include examples for:
+
+- explicit and inherited title/description;
+- custom canonical and robots;
+- social overrides and images;
+- focus keyphrase and missing analysis;
+- Premium primary/additional keyphrase roles, bounded scores, malformed JSON,
+  duplicate removal, and arbitrary-member leakage;
+- indexable missing/stale;
+- Schema Article/WebPage/Organization;
+- LocalBusiness, location page, address references, multiple-location branch
+  relationships, hours, geo, and nested arbitrary-member leakage.
+
+Repeatable Yoast Free/Premium 28.0 + Local 15.8 verification commands on Kormas:
+
+```bash
+wp eval 'require "/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/Integration/yoast-configured-runtime-verification.php";'
+
+WPCB_SITE_URL=https://kormas-isu.local \
+WPCB_WP_ROOT="/Users/lukaszbiedron/Local Sites/kormas-isu/app/public" \
+"/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/Integration/http-url-runtime-verification.sh"
+```
+
+The HTTP verifier creates a disposable subscriber, grants only
+`wpcb_read_content`, creates an Application Password, verifies the public REST
+projection, and deletes the user on exit. The configured-value verifier creates
+and deletes one exact post fixture in a `finally` block.
+
+Verified on 2026-07-17: single-location runtime output reports both licensed
+modules and safe versions, Premium additional keyphrases, a non-empty public
+Local profile, public-head parity, and no arbitrary test marker leakage. The
+pure multi-location projector contract passes, but the environment matrix still
+requires a real multiple-location fixture before release claims include it.
+
+## Editorial-context fixtures
+
+- all six sections and individual section selection;
+- maximum 20 post types/taxonomies, 50 recent summaries, and 100 terms per
+  taxonomy;
+- explicit rejection of unavailable requested post types and taxonomies;
+- configured READ or SEARCH disabled independently;
+- recent results restricted to published objects readable by the principal;
+- authors limited to IDs observed in readable recent results and keys limited to
+  `id`/`display_name`;
+- public/REST-visible taxonomy filtering and term truncation flags;
+- normalized Local public profile present, unavailable, and provider-failure
+  states;
+- no arbitrary post meta, user email/login, Local options, license keys, or
+  injected marker leakage;
+- Ability annotations, deterministic twin calls, REST discovery/execution, and
+  real-HTTPS least-privilege execution.
+
+Verified on 2026-07-17 against WordPress 7.0.1 with Yoast Free 28.0, Premium
+28.0, and Local 15.8 in the single-location fixture. Evidence is recorded in
+`docs/verification/EDITORIAL_CONTEXT.md`.
+
+## Security tests
+
+- Cross-site URL attempts and encoded host confusion.
+- Prompt-injection strings preserved as data and never interpreted by the plugin.
+- Private content enumeration.
+- Arbitrary meta/option requests rejected.
+- Oversized query/schema/content requests bounded.
+- Concurrent stale writes rejected.
+- Capability revocation effective immediately.
+- Logs contain no secrets or full private content.
+
+## Manual release checklist
+
+- Install packaged ZIP without development dependencies.
+- No PHP warnings/notices with debug enabled.
+- Site Health/diagnostics contain no secrets.
+- Deactivation is non-destructive.
+- Uninstall behavior matches documented retention setting.
+- Client setup examples use a dedicated least-privilege user.
