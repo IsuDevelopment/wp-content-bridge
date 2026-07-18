@@ -161,8 +161,8 @@ Implementation order inside this milestone:
 
 ## Milestone 3 — Yoast Premium, Local SEO, and editorial context
 
-Status: **in progress**. Milestones 3A and 3B and the tested portion of 3C are
-complete. Real multi-location Local runtime verification remains.
+Status: **complete**. Milestones 3A, 3B, and 3C are complete, including the
+licensed Local multiple-location runtime matrix (ADR 0009).
 
 ### 3A — module detection and neutral contracts
 
@@ -188,14 +188,16 @@ Status: complete and verified on WordPress 7.0.1.
 
 ### 3C — licensed adapters
 
-Status: partially complete and verified on Kormas for Yoast Free 28.0 + Premium
-28.0 + Local 15.8 in single-location mode.
+Status: complete and verified on Kormas for Yoast Free 28.0 + Premium 28.0 +
+Local 15.8, in both single-location and multiple-location modes.
 
 - Premium additional keyphrases: complete for the tested 28.x JSON envelope;
 - Local public profile: complete from emitted Schema for the tested 15.x
   single-location fixture;
-- pure multi-location/branch Schema projection: covered by unit contract;
-- Premium synonyms and real multi-location runtime matrix: pending.
+- multiple-location/branch projection: verified at runtime through rendered
+  front-end schema capture (ADR 0009); the resolved meta surface alone omits
+  Yoast's `parentOrganization` branch schema;
+- Premium synonyms: still pending (no stable contract proven).
 
 Deliverables:
 
@@ -221,8 +223,9 @@ Exit gate:
 - no direct indexables-table dependency;
 - Schema limits and completeness reporting are verified.
 
-The milestone is not yet closed because the licensed multi-location runtime
-matrix remains.
+The milestone is closed. The licensed single- and multiple-location runtime
+matrices pass; multiple-location branch data is captured through the bounded
+same-origin rendered-schema reader (ADR 0009).
 
 ## Milestone 4 — MCP client interoperability
 

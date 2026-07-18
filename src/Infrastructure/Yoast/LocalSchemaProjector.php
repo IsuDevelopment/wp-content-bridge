@@ -78,7 +78,7 @@ final class LocalSchemaProjector {
 		$entity['address']                   = $this->project_nested( $node['address'] ?? null, self::ADDRESS_KEYS, $by_id );
 		$entity['geo']                       = $this->project_nested( $node['geo'] ?? null, self::GEO_KEYS, $by_id );
 		$entity['openingHoursSpecification'] = $this->project_nested_list( $node['openingHoursSpecification'] ?? null, self::HOURS_KEYS, $by_id );
-		foreach ( array( 'image', 'logo', 'branchOf', 'mainEntityOfPage' ) as $key ) {
+		foreach ( array( 'image', 'logo', 'branchOf', 'parentOrganization', 'mainEntityOfPage' ) as $key ) {
 			$entity[ $key ] = $this->project_nested( $node[ $key ] ?? null, self::REF_KEYS, $by_id );
 		}
 

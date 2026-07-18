@@ -157,3 +157,30 @@ unit test together** (test-first). No projector change is made speculatively.
 - Indexable timing could yield `unavailable` on first read; setup forces
   indexable generation and the assertions tolerate an explicit degraded state
   only where genuinely expected (home/non-location), not for the primary/branch.
+
+## Addendum (2026-07-17) — Phase 0 outcome and scope change
+
+Phase 0 probing changed the plan. Findings on the live local Yoast Local 15.8:
+
+- Yoast uses `parentOrganization`, not `branchOf`, for the branch→parent link.
+- The branch schema (`#local-branch-organization` + `parentOrganization` +
+  branch address/geo/hours) is emitted **only on a real front-end singular
+  render**. The resolved Meta surface (`for_url`/`for_post`) returns only the
+  merged `#organization` node with the primary address for every location URL,
+  and the REST `yoast_head_json` for the locations CPT returns an empty graph.
+
+So the original assertions (branch identity through the ability) could not pass
+via the resolved surface. Two capture mechanisms were spiked and both proven
+feasible; the chosen mechanism is a **bounded same-origin loopback fetch of the
+target's rendered public JSON-LD**, fed through the existing allowlist projector.
+This is recorded in **ADR 0009**.
+
+Revised scope:
+
+- Add `parentOrganization` to `LocalSchemaProjector` (keep `branchOf`); fix its
+  unit test to the real Yoast shape.
+- Add a `RenderedSchemaReader` port and a bounded, same-origin, cached WordPress
+  adapter; wire it into `YoastSeoProvider` for `local_businesses` only, with a
+  Meta-surface fallback and explicit degraded warning.
+- The runtime fixture then asserts real primary/branch identity, address, geo,
+  hours, bounds, degraded states, and secret/leakage rejection.

@@ -26,6 +26,7 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentAccessSettin
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentTypeCatalog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressEditorialContextRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressRenderedSchemaReader;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressTaxonomyCatalog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoTargetAccess;
 use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastSeoProvider;
@@ -78,7 +79,7 @@ final class Plugin {
 		 * @param array $providers SEO provider adapters.
 		 * @phpstan-param list<SeoProvider> $providers
 		 */
-		$providers     = apply_filters( 'wp_content_bridge_seo_providers', array( new YoastSeoProvider() ) );
+		$providers     = apply_filters( 'wp_content_bridge_seo_providers', array( new YoastSeoProvider( new WordPressRenderedSchemaReader( home_url( '/' ) ) ) ) );
 		$providers     = is_array( $providers )
 			? array_values( array_filter( $providers, static fn ( mixed $provider ): bool => $provider instanceof SeoProvider ) )
 			: array();

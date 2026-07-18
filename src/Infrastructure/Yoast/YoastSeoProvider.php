@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace IsuDev\WPContentBridge\Infrastructure\Yoast;
 
+use IsuDev\WPContentBridge\Application\Seo\RenderedSchemaReader;
 use IsuDev\WPContentBridge\Application\Seo\SeoProvider;
 use IsuDev\WPContentBridge\Domain\Seo\SeoCompleteness;
 use IsuDev\WPContentBridge\Domain\Seo\SeoDocument;
@@ -37,6 +38,18 @@ final readonly class YoastSeoProvider implements SeoProvider {
 		'description' => '_yoast_wpseo_metadesc',
 		'canonical'   => '_yoast_wpseo_canonical',
 	);
+
+	/**
+	 * Creates the provider.
+	 *
+	 * @param RenderedSchemaReader|null $rendered_schema Optional rendered-schema reader used to
+	 *                                                   capture Local multiple-location branch data
+	 *                                                   that the resolved meta surface omits.
+	 */
+	public function __construct(
+		private ?RenderedSchemaReader $rendered_schema = null,
+	) {
+	}
 
 	/**
 	 * Whether Yoast's documented surface is available.
@@ -121,11 +134,23 @@ final readonly class YoastSeoProvider implements SeoProvider {
 		$resolved = $this->resolved_fields( $meta );
 		$schema   = $this->schema_graph( $meta );
 		if ( in_array( 'local_profile', $status->capabilities, true ) ) {
-			$local_profiles               = ( new LocalSchemaProjector() )->project( $schema );
+			$local_graph  = $schema;
+			$local_source = 'yoast.schema.local';
+			$rendered_url = $this->rendered_target_url( $target );
+			if ( null !== $this->rendered_schema && null !== $rendered_url ) {
+				$rendered_graph = $this->rendered_schema->graph_for_url( $rendered_url );
+				if ( array() !== $rendered_graph ) {
+					$local_graph  = $rendered_graph;
+					$local_source = 'yoast.schema.local.rendered';
+				} else {
+					$warnings[] = 'Rendered Local schema was unavailable; local businesses use the resolved surface, which omits multiple-location branch relationships.';
+				}
+			}
+			$local_profiles               = ( new LocalSchemaProjector() )->project( $local_graph );
 			$resolved['local_businesses'] = new SeoField(
 				array() === $local_profiles ? null : $local_profiles,
 				array() === $local_profiles ? SeoValueState::UNAVAILABLE : SeoValueState::GENERATED,
-				'yoast.schema.local',
+				$local_source,
 				array() === $local_profiles ? 'Local SEO is active, but this target emits no public Place or LocalBusiness entity.' : null
 			);
 		}
@@ -139,6 +164,24 @@ final readonly class YoastSeoProvider implements SeoProvider {
 			SeoCompleteness::PARTIAL,
 			$warnings
 		);
+	}
+
+	/**
+	 * Resolves the public URL whose rendered schema should be captured.
+	 *
+	 * @param SeoTarget $target Authorized SEO target.
+	 * @return string|null
+	 */
+	private function rendered_target_url( SeoTarget $target ): ?string {
+		if ( null !== $target->url && '' !== $target->url ) {
+			return $target->url;
+		}
+		if ( null === $target->post_id || ! function_exists( 'get_permalink' ) ) {
+			return null;
+		}
+		$permalink = get_permalink( $target->post_id );
+
+		return is_string( $permalink ) && '' !== $permalink ? $permalink : null;
 	}
 
 	/**

@@ -103,7 +103,16 @@ Rules for this flow:
   unknown members and emits provider-neutral roles/scores.
 - `src/Infrastructure/Yoast/LocalSchemaProjector.php` — recursive allowlist
   projection of public Place/LocalBusiness data from provider-emitted Schema,
-  including bounded public references to address, geo, hours, and branch data.
+  including bounded public references to address, geo, hours, and branch data
+  (`parentOrganization` and schema.org `branchOf`).
+- `src/Application/Seo/RenderedSchemaReader.php` — port for a same-origin
+  public JSON-LD graph. Used for Local multiple-location branch data that the
+  resolved meta surface omits.
+- `src/Infrastructure/WordPress/WordPressRenderedSchemaReader.php` — bounded,
+  same-origin, cached loopback adapter that fetches a page and returns its
+  `application/ld+json` graph; TLS-verified by default with a
+  `wpcb_seo_rendered_schema_sslverify` filter (ADR 0009). `YoastSeoProvider`
+  uses it for `local_businesses` only, with a Meta-surface fallback.
 - `src/Adapter/Abilities/SeoAbilities.php` — thin read-only
   `wp-content-bridge/get-url-seo` projection and stable error mapping.
 - `stubs/yoast.stub.php` — static-analysis-only declarations for Yoast's global
@@ -111,7 +120,16 @@ Rules for this flow:
 - `tests/Unit/Domain/Seo/` and `tests/Unit/Application/Seo/` — bounds, selector,
   registry, null-provider, and authorization-ordering contracts.
 - `tests/Unit/Infrastructure/Yoast/` — Premium parser, Local public projection,
-  nested secret rejection, and pure multi-location branch fixtures.
+  nested secret rejection, and `parentOrganization`/`branchOf` fixtures.
+- `tests/Unit/Infrastructure/WordPress/WordPressRenderedSchemaReaderTest.php` —
+  same-origin guard, JSON-LD parsing, malformed-block skipping, and node bounds.
+- `tests/Integration/local-multilocation-fixture.php` — licensed multiple-location
+  setup/teardown (snapshot + exact restore of `wpseo_local`, `wpseo_titles`, and
+  content-access policy; primary + branch location posts with injected private-option
+  sentinels).
+- `tests/Integration/local-multilocation-runtime-verification.sh` — real-HTTPS
+  branch-identity, bounds, and leakage verification of `get-url-seo` and
+  `get-editorial-context` in multiple-location mode.
 
 ## Editorial context feature
 
@@ -159,18 +177,18 @@ get-editorial-context Ability
 - Comparative implementation research: `docs/research/`.
 - Private credential decision: `docs/adr/0007-private-credentials-are-principal-bound.md`.
 - Content/SEO composition decision: `docs/adr/0008-compose-seo-instead-of-embedding.md`.
+- Rendered-schema capture decision: `docs/adr/0009-capture-rendered-schema-for-local-multilocation.md`.
 - Agent procedures: `.agents/instructions/`.
 - Milestone 1B evidence: `docs/verification/ABILITIES_VERIFICATION.md`.
 
 ## Expected next feature path
 
-Milestones 1–2 and Milestone 3B are complete. The next path is:
+Milestones 1–3 are complete, including the licensed Local multiple-location
+runtime matrix (ADR 0009). The next path is:
 
-1. Add a real licensed Local multiple-location fixture covering primary and
-   branch entities through SEO and editorial-context abilities.
-2. Close Milestone 3 only after that runtime matrix passes.
-3. Begin Milestone 4 with official MCP Adapter/client smoke tests and an
-   ADR-backed private authentication control-plane decision.
+1. Begin Milestone 4 with official MCP Adapter/client smoke tests (at least
+   Codex and Gemini running the same read scenario).
+2. Make an ADR-backed decision on private principal-bound token/OAuth handling.
 
 Do not start write abilities until the Milestones 1–3 security gates are
 closed. Existing and new content reads continue to consume

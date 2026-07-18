@@ -77,21 +77,24 @@ final class LocalSchemaProjectorTest extends TestCase {
 	}
 
 	/**
-	 * Multi-location branch data is projected through the same bounded contract.
+	 * A Yoast Local branch node links to its parent through parentOrganization.
+	 *
+	 * This mirrors the real Yoast Local 15.8 front-end graph, which uses
+	 * `parentOrganization` (not schema.org `branchOf`) on the branch node.
 	 */
-	public function test_projects_multi_location_branch_references(): void {
+	public function test_projects_yoast_branch_parent_organization(): void {
 		$result = ( new LocalSchemaProjector() )->project(
 			array(
 				array(
-					'@type'                     => 'LocalBusiness',
-					'@id'                       => 'https://example.com/location/krakow/#business',
-					'name'                      => 'Example Krakow',
-					'branchOf'                  => array( '@id' => 'https://example.com/#organization' ),
-					'address'                   => array( '@id' => 'https://example.com/location/krakow/#address' ),
+					'@type'                     => array( 'Organization', 'Place', 'Dentist' ),
+					'@id'                       => 'https://example.com/locations/warsaw/#local-branch-organization',
+					'name'                      => 'Example Warsaw',
+					'parentOrganization'        => array( '@id' => 'https://example.com/#organization' ),
+					'address'                   => array( '@id' => 'https://example.com/locations/warsaw/#local-branch-place-address' ),
 					'geo'                       => array(
 						'@type'     => 'GeoCoordinates',
-						'latitude'  => 50.06143,
-						'longitude' => 19.93658,
+						'latitude'  => 52.22977,
+						'longitude' => 21.01178,
 						'internal'  => 'must-not-leak',
 					),
 					'openingHoursSpecification' => array(
@@ -105,9 +108,40 @@ final class LocalSchemaProjectorTest extends TestCase {
 				),
 				array(
 					'@type'         => 'PostalAddress',
-					'@id'           => 'https://example.com/location/krakow/#address',
-					'streetAddress' => 'Rynek 1',
-					'postalCode'    => '31-042',
+					'@id'           => 'https://example.com/locations/warsaw/#local-branch-place-address',
+					'streetAddress' => 'Marszałkowska 10',
+					'postalCode'    => '00-590',
+				),
+				array(
+					'@type' => array( 'Organization', 'Place' ),
+					'@id'   => 'https://example.com/#organization',
+					'name'  => 'Example Group',
+				),
+			)
+		);
+
+		// Both the branch node and the parent organization are Place-typed.
+		self::assertCount( 2, $result );
+		$branch = $result[0];
+		self::assertSame( 'Example Warsaw', $branch['name'] );
+		self::assertSame( 'Marszałkowska 10', $branch['address']['streetAddress'] );
+		self::assertSame( 52.22977, $branch['geo']['latitude'] );
+		self::assertSame( 'Example Group', $branch['parentOrganization']['name'] );
+		self::assertSame( array( 'Monday', 'Tuesday' ), $branch['openingHoursSpecification'][0]['dayOfWeek'] );
+		self::assertArrayNotHasKey( 'internal', $branch['geo'] );
+	}
+
+	/**
+	 * The schema.org branchOf reference is still supported for provider neutrality.
+	 */
+	public function test_projects_branch_of_reference(): void {
+		$result = ( new LocalSchemaProjector() )->project(
+			array(
+				array(
+					'@type'    => array( 'LocalBusiness', 'Place' ),
+					'@id'      => 'https://example.com/location/krakow/#business',
+					'name'     => 'Example Krakow',
+					'branchOf' => array( '@id' => 'https://example.com/#organization' ),
 				),
 				array(
 					'@type' => 'Organization',
@@ -117,11 +151,7 @@ final class LocalSchemaProjectorTest extends TestCase {
 			)
 		);
 
-		self::assertCount( 1, $result );
-		self::assertSame( 'Rynek 1', $result[0]['address']['streetAddress'] );
-		self::assertSame( 50.06143, $result[0]['geo']['latitude'] );
+		self::assertNotEmpty( $result );
 		self::assertSame( 'Example Group', $result[0]['branchOf']['name'] );
-		self::assertSame( array( 'Monday', 'Tuesday' ), $result[0]['openingHoursSpecification'][0]['dayOfWeek'] );
-		self::assertArrayNotHasKey( 'internal', $result[0]['geo'] );
 	}
 }

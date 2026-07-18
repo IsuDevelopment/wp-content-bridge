@@ -117,11 +117,16 @@ A normalized public organization/location profile may be derived from this graph
 
 The current Local 15.x projector detects `Place`/`LocalBusiness` semantics and
 recursively allowlists public scalar fields plus address, coordinates, opening
-hours, images, `branchOf`, and public `@id` references. It is capped at 50 local
-entities and 100 scalar list values. Kormas verifies Local 15.8 in
-single-location mode. A pure multi-location branch fixture passes, but a real
-multi-location WordPress environment is still required for that compatibility
-claim.
+hours, images, `parentOrganization`, `branchOf`, and public `@id` references. It
+is capped at 50 local entities and 100 scalar list values.
+
+Kormas verifies Local 15.8 in both single-location and multiple-location modes.
+Yoast Local emits the branch node (`parentOrganization`, branch address, geo,
+hours) only during a front-end render; the resolved meta surface omits it. For
+`local_businesses` the provider therefore captures the graph from the target's
+public page through a bounded, same-origin, cached loopback fetch
+(`RenderedSchemaReader`), falling back to the resolved surface with a warning on
+failure. See ADR 0009.
 
 ## Write strategy
 

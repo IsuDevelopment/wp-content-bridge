@@ -2,9 +2,10 @@
 
 ## Current phase
 
-Milestone 3 — Premium/Local reads and bounded editorial context are complete
-for the tested single-location fixture. Real Local multiple-location runtime
-verification remains before closing the milestone.
+Milestone 3 — **complete**. Premium/Local reads, bounded editorial context, and
+the licensed Local multiple-location runtime matrix (primary + branch) are all
+verified. Next is Milestone 4 (MCP client interoperability and private
+authentication design).
 
 ## Completed
 
@@ -107,8 +108,22 @@ verification remains before closing the milestone.
   policy denial, role/object authorization, deterministic twin execution,
   real HTTPS execution, Local public-profile projection, and sensitive-data
   leakage guards.
-- Current quality baseline: PHPCS 68/68 files, PHPStan 0 errors, PHPUnit 62
-  tests with 152 assertions; all WordPress and HTTP runtime verifiers pass.
+- Rendered-schema capture for Local multiple-location profiles: a bounded,
+  same-origin `RenderedSchemaReader` port and WordPress adapter feed the
+  `LocalSchemaProjector` from the target's public front-end JSON-LD, because the
+  Yoast resolved meta surface omits branch (`parentOrganization`) schema. Wired
+  into `YoastSeoProvider` for `local_businesses` only, with a Meta-surface
+  fallback and explicit degraded warning (ADR 0009).
+- Licensed Local multiple-location runtime matrix verified on Kormas local
+  (Yoast Free/Premium/Local 28.0/28.0/15.8): primary organization profile and a
+  non-primary branch with `parentOrganization`, branch address, geo, and hours,
+  through both `get-url-seo` and `get-editorial-context` over real HTTPS, with
+  bounds and private-option (`local_api_key`/`googlemaps_api_key`) leakage
+  rejection. The fixture snapshots and restores the exact prior Local
+  configuration.
+- Current quality baseline: PHPCS 72/72 files, PHPStan 0 errors, PHPUnit 68
+  tests with 165 assertions; all WordPress and HTTP runtime verifiers pass,
+  including the new multiple-location verifier.
 
 ## Not implemented
 
@@ -116,19 +131,16 @@ verification remains before closing the milestone.
 - Per-target Yoast analysis scores. Yoast's documented score Abilities return
   recent-post lists without stable post IDs, so they cannot safely be joined to
   a requested object.
-- Runtime verification of Local SEO multiple-location and primary/branch
-  configurations.
 - MCP client verification.
 - Audit persistence, role-management UI, and all write operations.
 - Agents API integration.
 
 ## Next action
 
-Add a licensed real Local SEO multiple-location fixture and verify primary and
-branch profiles through both `get-url-seo` and `get-editorial-context`. This is
-the remaining Milestone 3 exit item; do not claim multiple-location runtime
-compatibility from the pure projector test alone. After that, begin Milestone 4
-MCP client interoperability and private authentication design.
+Begin Milestone 4: MCP client interoperability (Codex and Gemini read scenarios
+against the official MCP Adapter) and an ADR-backed private principal-bound
+token/OAuth decision. Writes remain blocked until Milestones 1–3 gates hold,
+which they now do.
 
 For cross-agent/session continuation, read `.continue-here.md` before making
 changes. It contains verified commands, environment caveats, decisions, and the

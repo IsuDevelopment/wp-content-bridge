@@ -129,18 +129,27 @@ wp eval 'require "/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/In
 WPCB_SITE_URL=https://kormas-isu.local \
 WPCB_WP_ROOT="/Users/lukaszbiedron/Local Sites/kormas-isu/app/public" \
 "/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/Integration/http-url-runtime-verification.sh"
+
+WPCB_SITE_URL=https://kormas-isu.local \
+WPCB_WP_ROOT="/Users/lukaszbiedron/Local Sites/kormas-isu/app/public" \
+"/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/Integration/local-multilocation-runtime-verification.sh"
 ```
 
 The HTTP verifier creates a disposable subscriber, grants only
 `wpcb_read_content`, creates an Application Password, verifies the public REST
 projection, and deletes the user on exit. The configured-value verifier creates
-and deletes one exact post fixture in a `finally` block.
+and deletes one exact post fixture in a `finally` block. The multiple-location
+verifier provisions a licensed primary+branch fixture, disables `sslverify` for
+the local self-signed loopback via a temporary mu-plugin, and restores the exact
+prior Local configuration on exit.
 
 Verified on 2026-07-17: single-location runtime output reports both licensed
 modules and safe versions, Premium additional keyphrases, a non-empty public
 Local profile, public-head parity, and no arbitrary test marker leakage. The
-pure multi-location projector contract passes, but the environment matrix still
-requires a real multiple-location fixture before release claims include it.
+multiple-location matrix (primary + branch) also passes: branch identity via
+`parentOrganization`, branch address/geo/hours through rendered-schema capture
+(ADR 0009), bounds, and private-option (`local_api_key`/`googlemaps_api_key`)
+leakage rejection.
 
 ## Editorial-context fixtures
 
