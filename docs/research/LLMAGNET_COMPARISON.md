@@ -60,3 +60,67 @@ review, not part of the read-content core.
    revoke/expiry/last-used/rate limits, bind them to a WordPress user, and
    require both scope and current capabilities.
 
+## Deeper review for a ChatGPT + Codex-first rollout (2026-07-18)
+
+Re-examined LLMagnet 3.4.3 specifically for the Milestone 4 client priority
+(Codex + ChatGPT first, Claude/Gemini later).
+
+### Transport and protocol (reusable reference)
+
+- One WordPress REST route `POST /wp-json/llmagnet/mcp/v1`, stateless Streamable
+  HTTP JSON-RPC (no SSE). `permission_callback => __return_true`; all auth is
+  done inside the handler so it can return custom `401`/`429`/`WWW-Authenticate`.
+- Advertises protocol versions `2024-11-05`, `2025-03-26`, `2025-06-18`;
+  negotiates via the `MCP-Protocol-Version` header then `initialize` params.
+- Handles `initialize`, `notifications/initialized`, `ping`, `tools/list`,
+  `tools/call`, `resources/list|read`. Tool results carry both a text `content`
+  block and `structuredContent` when an `outputSchema` is declared.
+- A single tool registry is the source of truth, re-projected to MCP, WordPress
+  Abilities, `.well-known/mcp.json`, and an MCP-Apps UI — the same "abilities as
+  one projection" direction we adopted.
+
+### The decisive ChatGPT constraint
+
+ChatGPT custom connectors **cannot send custom HTTP headers**, so Bearer/managed
+tokens are unusable from ChatGPT. LLMagnet therefore ships a full OAuth 2.1
+authorization server as the ChatGPT path:
+
+- Dynamic Client Registration (RFC 7591, public clients,
+  `token_endpoint_auth_methods: none`), authorization-code + **mandatory PKCE
+  S256**, single-use codes (hashed, 600 s TTL), access tokens 3600 s, refresh
+  tokens 30 days with rotation.
+- Discovery via `WWW-Authenticate: Bearer resource_metadata=…` plus
+  `/.well-known/oauth-protected-resource` (RFC 9728) and
+  `/.well-known/oauth-authorization-server` (RFC 8414).
+- Tunnel/proxy-aware issuer URL rewriting (configurable `oauth_base_url`,
+  forwarded-header aware, char-allowlisted) — needed for local dev exposure.
+- Consent screen requires a logged-in admin and special-cases the ChatGPT/OpenAI
+  client name for branding.
+
+Implication for our plan: a ChatGPT-first target forces the Milestone 4
+authentication decision immediately, because the header/token path that Codex
+(local/STDIO or HTTP-with-headers), Claude Desktop, and Gemini can use does not
+work for ChatGPT. The `official MCP Adapter/gateway vs plugin-owned OAuth`
+decision must resolve whether the OAuth + discovery surface is provided by an
+external adapter/gateway or owned in-plugin. Owning an OAuth AS is a large
+security surface (kept as its own milestone and threat review per above).
+
+### Confirmed anti-patterns to keep avoiding
+
+- Managed/legacy/unmapped OAuth tokens run with `user_id = 0` (ambient authority,
+  no WP user). A legacy CLI token is stored and compared in plaintext with full
+  write scope. We keep every credential principal-bound (ADR 0007).
+- Coarse `manage_options` gating for all WP-user auth and all write tools, and
+  OAuth consent that only admins can grant (every connection becomes admin-level).
+  We use dedicated plugin capabilities plus native object capabilities.
+- JSON-RPC errors returned on HTTP 200, no positive per-token rate limiting, and
+  `resources/templates/list` returning empty while templates exist.
+
+### Directly reusable as reference (not as a dependency)
+
+- The stateless single-route JSON-RPC handler shape with in-handler multi-mode
+  auth and standards-compliant discovery (`WWW-Authenticate` + RFC 9728/8414).
+- PKCE-S256-mandatory, exact-match https-or-loopback redirect allowlist,
+  show-once SHA-256 secrets, `hash_equals`, per-IP brute-force gate, refresh
+  rotation, and a loopback self-test through the real handler.
+
