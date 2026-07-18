@@ -23,17 +23,33 @@ const WPCB_BRIDGE_EMAIL = 'wpcb-bridge-reader@example.invalid';
 /**
  * Locks a user down to exactly the `read` and `wpcb_read_content` capabilities.
  *
- * Clears any role (and the caps that come with it) before granting only the
- * two allowed capabilities, so repeated setup runs stay idempotent even if
- * the account previously drifted.
+ * `set_role( '' )` only clears the role assignment; capabilities added
+ * directly to the user (e.g. via `wp user add-cap` during debugging) are
+ * stored independently and would survive it. So every existing capability
+ * is explicitly removed before the two allowed ones are (re-)granted, making
+ * repeated setup runs idempotent and self-healing even if the account
+ * previously drifted.
  *
  * @param \WP_User $user Target user.
  * @return void
  */
 function wpcb_bridge_lock_capabilities( \WP_User $user ): void {
 	$user->set_role( '' );
-	$user->add_cap( 'read', true );
-	$user->add_cap( 'wpcb_read_content', true );
+
+	$allowed_caps = array(
+		'read'              => true,
+		'wpcb_read_content' => true,
+	);
+
+	foreach ( array_keys( $user->caps ) as $existing_cap ) {
+		if ( ! isset( $allowed_caps[ $existing_cap ] ) ) {
+			$user->remove_cap( $existing_cap );
+		}
+	}
+
+	foreach ( $allowed_caps as $cap => $grant ) {
+		$user->add_cap( $cap, $grant );
+	}
 }
 
 /**
