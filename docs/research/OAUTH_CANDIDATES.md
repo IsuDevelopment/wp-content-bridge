@@ -50,11 +50,18 @@ product being installed, not the bundled-catalog "AI Agent" plugin.
 
 ## Decisive rule (restated from ADR 0010)
 
-Any **FAIL on criteria 1–3** rejects a candidate outright; the response is to
-fall back to a dedicated gateway (**C**) or defer the plugin-owned
-authorization server (**B**) as its own milestone. Criteria 4–6 inform the
-choice between otherwise-eligible candidates but are not independently
-disqualifying under this rule.
+Adoption under ADR 0010 requires passing **all six** criteria — a FAIL on any
+of them disqualifies a candidate from adoption. What the "1–3 rejection" rule
+adds on top of that is severity, not scope: a FAIL on criteria **1–3**
+specifically (principal-binding) is decisive and hard-rejects the candidate,
+triggering the named fallback — a dedicated gateway (**C**) or deferring the
+plugin-owned authorization server (**B**) as its own milestone — because it
+means ChatGPT's authority could exceed the bound WordPress user's. A FAIL on
+criteria 4–6 still disqualifies a candidate from adoption; it just does not
+by itself invoke the gateway/defer fallback, since the failure is contained
+to that layer's implementation (e.g. missing discovery metadata, poor secret
+handling, or an undocumented write surface) rather than a break in the
+principal-binding chain.
 
 Applying the rule: neither candidate has a confirmed FAIL on 1–3 for the
 authentication path ChatGPT will actually use (OAuth, not API keys/headers).
