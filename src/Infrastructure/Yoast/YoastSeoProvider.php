@@ -240,9 +240,9 @@ final readonly class YoastSeoProvider implements SeoProvider {
 
 		$twitter = $this->property_map( $meta, array( 'card', 'title', 'description', 'image', 'creator', 'site' ), 'twitter_' );
 		if ( is_array( $twitter['image'] ?? null ) ) {
-			$twitter['image'] = array_is_list( $twitter['image'] )
-				? $this->sanitize_open_graph_images( $twitter['image'] )
-				: $this->sanitize_open_graph_image( $twitter['image'] );
+			$twitter['image'] = $this->is_single_open_graph_image( $twitter['image'] )
+				? $this->sanitize_open_graph_image( $twitter['image'] )
+				: $this->sanitize_open_graph_images( $twitter['image'] );
 		}
 
 		$resolved = array(
@@ -269,27 +269,30 @@ final readonly class YoastSeoProvider implements SeoProvider {
 	}
 
 	/**
-	 * Sanitizes a list of Open Graph image entries to the public allowlist.
+	 * Sanitizes Open Graph image data to the public allowlist.
 	 *
-	 * Yoast's `open_graph_images` entries include a `path` filesystem key alongside the
-	 * public `url`/`width`/`height`/`type`/`alt` keys; only the public keys may leave this
-	 * provider.
+	 * Yoast's documented `open_graph_images` is normally a URL-keyed map of image arrays
+	 * (each carrying a filesystem `path` key alongside the public `url`/`width`/`height`
+	 * keys), but this also defensively accepts a plain list of image arrays or a single
+	 * image array. Only the public allowlisted keys may leave this provider.
 	 *
-	 * @param mixed $images Raw Open Graph images value (list of arrays, a single array, or absent).
+	 * @param mixed $images Raw Open Graph images value (URL-keyed map, list, single array, or absent).
 	 * @return list<array<string, mixed>>
 	 */
 	private function sanitize_open_graph_images( mixed $images ): array {
 		if ( ! is_array( $images ) ) {
 			return array();
 		}
-		if ( ! array_is_list( $images ) ) {
+		if ( $this->is_single_open_graph_image( $images ) ) {
 			return array( $this->sanitize_open_graph_image( $images ) );
 		}
 
+		// A list of images, or Yoast's real URL-keyed map of images: sanitize each value,
+		// falling back to the map key as the url when a mapped value omits its own url.
 		$sanitized = array();
-		foreach ( $images as $image ) {
+		foreach ( $images as $key => $image ) {
 			if ( is_array( $image ) ) {
-				$sanitized[] = $this->sanitize_open_graph_image( $image );
+				$sanitized[] = $this->sanitize_open_graph_image( $image, is_string( $key ) ? $key : null );
 			}
 		}
 
@@ -297,19 +300,42 @@ final readonly class YoastSeoProvider implements SeoProvider {
 	}
 
 	/**
+	 * Determines whether an array represents one Open Graph image (has an allowlisted key
+	 * directly on it) rather than a list/map of several images.
+	 *
+	 * @param array $value Candidate array.
+	 * @return bool
+	 * @phpstan-param array<array-key, mixed> $value
+	 */
+	private function is_single_open_graph_image( array $value ): bool {
+		foreach ( self::OPEN_GRAPH_IMAGE_ALLOWED_KEYS as $key ) {
+			if ( array_key_exists( $key, $value ) && ( is_scalar( $value[ $key ] ) || null === $value[ $key ] ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
 	 * Sanitizes one Open Graph image entry to the public allowlist, dropping `path` and
 	 * any other non-allowlisted key.
 	 *
-	 * @param array $image Raw Open Graph image entry.
+	 * @param array       $image        Raw Open Graph image entry.
+	 * @param string|null $fallback_url URL to use when the entry itself omits one (e.g. the
+	 *                                  entry's map key in a URL-keyed map).
 	 * @return array<string, mixed>
 	 * @phpstan-param array<array-key, mixed> $image
 	 */
-	private function sanitize_open_graph_image( array $image ): array {
+	private function sanitize_open_graph_image( array $image, ?string $fallback_url = null ): array {
 		$sanitized = array();
 		foreach ( self::OPEN_GRAPH_IMAGE_ALLOWED_KEYS as $key ) {
 			if ( array_key_exists( $key, $image ) ) {
 				$sanitized[ $key ] = $image[ $key ];
 			}
+		}
+		if ( ! array_key_exists( 'url', $sanitized ) && null !== $fallback_url ) {
+			$sanitized['url'] = $fallback_url;
 		}
 
 		return $sanitized;
