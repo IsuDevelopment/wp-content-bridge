@@ -244,11 +244,27 @@ final readonly class ContentAbilities {
 			'plugin_version'                   => defined( 'WPCB_VERSION' ) ? WPCB_VERSION : 'unknown',
 			'wordpress_version'                => get_bloginfo( 'version' ),
 			'abilities_api'                    => function_exists( 'wp_register_ability' ),
-			'mcp_adapter'                      => defined( 'WP_MCP_ADAPTER_VERSION' ) || function_exists( 'wp_register_mcp_server' ),
+			'mcp_adapter'                      => self::mcp_adapter_active(),
 			'max_content_representation_bytes' => GetContent::MAX_REPRESENTATION_BYTES,
 			'seo_provider'                     => $this->seo_providers->active()->status()->to_array(),
 			'readable_post_types'              => $readable,
 		);
+	}
+
+	/**
+	 * Detects the official WordPress/mcp-adapter plugin across supported versions.
+	 *
+	 * The pre-stable adapter defined `WP_MCP_ADAPTER_VERSION`/`wp_register_mcp_server()`.
+	 * The stable v0.5.0 release defines neither; it registers `WP\MCP\Core\McpAdapter` and
+	 * fires the `mcp_adapter_init` action instead, so both are checked as well.
+	 *
+	 * @return bool
+	 */
+	private static function mcp_adapter_active(): bool {
+		return defined( 'WP_MCP_ADAPTER_VERSION' )
+			|| function_exists( 'wp_register_mcp_server' )
+			|| class_exists( '\WP\MCP\Core\McpAdapter' )
+			|| has_action( 'mcp_adapter_init' );
 	}
 
 	/**
