@@ -2,10 +2,20 @@
 
 ## Current phase
 
-Milestone 3 — **complete**. Premium/Local reads, bounded editorial context, and
+Milestone 4 Phase 1 — **complete** (ChatGPT-primary, read-only, Approach A per
+ADR 0010). ChatGPT completed the five-ability read scenario live through the
+official MCP Adapter (App-Password endpoint, `/wp-json/wpcb-mcp/mcp`) fronted
+by an external OAuth 2.1 layer (miniOrange Secure MCP Connector,
+`/wp-json/mosmcp/v1/mcp`), DCR + PKCE, token principal-bound to a WordPress
+user. Two real defects the live audit found are fixed on this branch (SEO
+image path leak; diagnostics false-negative). Codex/Gemini remain
+secondary/deferred, covered only by the client-agnostic smoke suite. Next is
+staging stabilization with a real TLS certificate (the local run used a
+cloudflared quick tunnel), then Milestone 5 (safe draft mutations/writes).
+
+Milestone 3 — complete. Premium/Local reads, bounded editorial context, and
 the licensed Local multiple-location runtime matrix (primary + branch) are all
-verified. Next is Milestone 4 (MCP client interoperability and private
-authentication design).
+verified.
 
 ## Completed
 
@@ -124,6 +134,33 @@ authentication design).
 - Current quality baseline: PHPCS 72/72 files, PHPStan 0 errors, PHPUnit 68
   tests with 165 assertions; all WordPress and HTTP runtime verifiers pass,
   including the new multiple-location verifier.
+- ADR 0010: MCP transport and OAuth are external, principal-bound layers
+  (Approach A), with a six-criterion evaluation gate for any OAuth candidate.
+- OAuth candidate evaluation against the ADR 0010 gate
+  (`docs/research/OAUTH_CANDIDATES.md`).
+- Least-privilege bridge-reader fixture (`wpcb-bridge-reader`, capabilities
+  `read` + `wpcb_read_content` only).
+- Official MCP Adapter (`WordPress/mcp-adapter` v0.5.0) installed as site
+  infrastructure, projecting exactly the five read abilities at
+  `/wp-json/wpcb-mcp/mcp` (`docs/setup/MCP_ADAPTER.md`).
+- Client-agnostic MCP smoke suite (`tests/Integration/mcp-smoke-verification.sh`)
+  passes: discovery, schema retrieval, and execution of all five abilities via
+  a disposable Application Password.
+- ChatGPT connected live via miniOrange Secure MCP Connector
+  (`miniorange-secure-mcp-server` v1.3.0) at `/wp-json/mosmcp/v1/mcp`: RFC
+  8414/9728 discovery, RFC 7591 DCR, PKCE S256; token confirmed
+  principal-bound to a WordPress user. Setup, self-test, and troubleshooting
+  are in `docs/setup/CHATGPT_CONNECTOR.md`.
+- Two live-audit defects fixed on this branch: `get-url-seo` no longer leaks
+  the server filesystem path via Open Graph images
+  (`src/Infrastructure/Yoast/YoastSeoProvider.php`); `get-diagnostics` no
+  longer false-negatives on `mcp_adapter` detection
+  (`src/Adapter/Abilities/ContentAbilities.php`).
+- Write exposure closed: no `mosmcp/*` write grants remain on the site; writes
+  stay globally blocked pending Milestones 5–7.
+- Current quality baseline after M4 Phase 1: PHPCS 0 errors, PHPStan 0
+  errors, PHPUnit 74 tests with 195 assertions (see `composer check` output
+  referenced in the Task 7 report).
 
 ## Not implemented
 
@@ -131,16 +168,32 @@ authentication design).
 - Per-target Yoast analysis scores. Yoast's documented score Abilities return
   recent-post lists without stable post IDs, so they cannot safely be joined to
   a requested object.
-- MCP client verification.
+- Codex/Gemini manual walkthrough (secondary/deferred for Phase 1; covered
+  only by the client-agnostic smoke suite).
+- Strict least-privilege re-consent as `wpcb-bridge-reader` (Task 6's live
+  ChatGPT consent was done as admin `dev` for exploration; re-run on staging
+  with a real certificate).
 - Audit persistence, role-management UI, and all write operations.
 - Agents API integration.
 
 ## Next action
 
-Begin Milestone 4: MCP client interoperability (Codex and Gemini read scenarios
-against the official MCP Adapter) and an ADR-backed private principal-bound
-token/OAuth decision. Writes remain blocked until Milestones 1–3 gates hold,
-which they now do.
+Stabilize Milestone 4 Phase 1 on staging with a real TLS certificate
+(replacing the local cloudflared quick tunnel), including a strict
+least-privilege re-consent as `wpcb-bridge-reader`. Then begin Milestone 5
+(safe draft mutations). Writes remain blocked until Milestone 5's own threat
+model is in place.
+
+Re-run commands:
+
+```bash
+WPCB_SITE_URL=https://kormas-isu.local \
+WPCB_WP_ROOT="/Users/lukaszbiedron/Local Sites/kormas-isu/app/public" \
+WPCB_MCP_PATH="/wp-json/wpcb-mcp/mcp" \
+"/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/Integration/mcp-smoke-verification.sh"
+```
+
+ChatGPT connector self-test: see `docs/setup/CHATGPT_CONNECTOR.md`.
 
 For cross-agent/session continuation, read `.continue-here.md` before making
 changes. It contains verified commands, environment caveats, decisions, and the

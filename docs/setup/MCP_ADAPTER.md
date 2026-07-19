@@ -2,7 +2,14 @@
 
 This recipe stands up an MCP (Model Context Protocol) HTTP endpoint that projects
 **exactly five** read-only WP Content Bridge abilities as MCP tools. It is the
-endpoint that Task 5 (the ChatGPT / Codex MCP client) targets.
+App-Password endpoint the client-agnostic smoke suite (Task 5) targets.
+
+> **ChatGPT itself connects through a different, OAuth-fronted endpoint.**
+> ChatGPT's connector requires OAuth 2.1, which this adapter does not provide
+> on a self-hosted site (ADR 0010). The endpoint ChatGPT actually uses is
+> `/wp-json/mosmcp/v1/mcp` via miniOrange Secure MCP Connector — see
+> `docs/setup/CHATGPT_CONNECTOR.md`. Both endpoints project the same five
+> abilities; keep them distinct.
 
 > **Site infrastructure — not part of the plugin package.**
 > The official `WordPress/mcp-adapter` plugin **and** the `wpcb-mcp-server.php`
@@ -242,3 +249,4 @@ After the smoke test the disposable App Password was deleted; a follow-up
 | Site (WP root) | `content/plugins/mcp-adapter/` (official plugin, v0.5.0) | No — site infra |
 | Site (WP root) | `content/mu-plugins/wpcb-mcp-server.php` (glue) | No — site infra |
 | Repo | `docs/setup/MCP_ADAPTER.md` (this file) | Yes |
+| Repo | `docs/setup/CHATGPT_CONNECTOR.md` (the distinct OAuth-fronted endpoint ChatGPT uses) | Yes |

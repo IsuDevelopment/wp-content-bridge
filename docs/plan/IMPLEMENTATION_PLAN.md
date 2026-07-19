@@ -229,26 +229,48 @@ same-origin rendered-schema reader (ADR 0009).
 
 ## Milestone 4 — MCP client interoperability
 
+**Phase 1 target is ChatGPT** (primary), read-only. Codex and Gemini CLI are
+secondary/deferred — they are not blocking for this phase, since their
+existing App-Password/local-STDIO paths are lower-risk and already covered by
+the client-agnostic smoke suite. Writes (create/update/publish) remain out of
+scope for Milestone 4 entirely; they are Milestones 5–7, each behind its own
+threat model.
+
+Approach: **Approach A** (ADR 0010) — MCP transport and OAuth are external,
+configured layers this plugin never bundles or initializes. The official
+`WordPress/mcp-adapter` projects the plugin's five read Abilities as MCP
+tools; an external OAuth 2.1 layer fronts ChatGPT's connector requirements.
+Only a layer that passes ADR 0010's six-criterion evaluation gate
+(principal-bound, executes as that user, scope only reduces, ChatGPT-correct
+OAuth, secret hygiene, read-only) is adopted.
+
 Deliverables:
 
-- official MCP Adapter installation/setup guide;
-- local STDIO recipes for Codex and Gemini CLI;
-- remote HTTPS/auth threat review and ChatGPT-compatible setup path;
-- client contract smoke suite for discovery, schema retrieval, and execution;
-- troubleshooting diagnostics.
-- connection control-plane design informed by the local LLMagnet comparison;
-- ADR-backed decision between official adapter/gateway authentication and a
-  plugin-owned, principal-bound managed-key/OAuth implementation;
-- if managed credentials are approved: one-time secret display, hashing,
-  expiry/revocation, scope reduction, WordPress-user binding, rate limits, and
-  activity event persistence.
+- ADR 0010 (MCP transport and OAuth are external, principal-bound layers);
+- OAuth candidate evaluation against the ADR 0010 gate
+  (`docs/research/OAUTH_CANDIDATES.md`);
+- least-privilege bridge-reader fixture (`wpcb-bridge-reader`, capabilities
+  `read` + `wpcb_read_content` only — `tests/Integration/bridge-reader-fixture.php`);
+- official MCP Adapter installation/setup recipe (`docs/setup/MCP_ADAPTER.md`)
+  projecting exactly the five read abilities;
+- client-agnostic contract smoke suite for discovery, schema retrieval, and
+  execution (`tests/Integration/mcp-smoke-verification.sh`);
+- ChatGPT connector guide, self-test, and troubleshooting
+  (`docs/setup/CHATGPT_CONNECTOR.md`);
+- troubleshooting diagnostics for the live tunnel/OAuth setup (proxy-base
+  shim, tunnel restarts, cached OAuth, `502`/`rest_no_route`).
 
 Exit gate:
 
-- at least Codex and Gemini complete the same read scenario;
-- ChatGPT limitations/requirements are documented from an actual supported setup before claiming support;
-- no credentials are committed or shown in logs.
-- no credential can grant more authority than its bound WordPress user.
+- ChatGPT completes the five-ability read scenario (discovery, schema
+  retrieval, execution of `search-content`, `get-content`, `get-url-seo`,
+  `get-editorial-context`, `get-diagnostics`) from a verified setup;
+- every credential/grant is principal-bound — no ambient authority;
+- no credential can grant more authority than its bound WordPress user;
+- no credentials or secrets are committed or shown in logs;
+- Codex/Gemini remain secondary/deferred for Phase 1 — their read scenario is
+  exercised only via the client-agnostic smoke suite, not a manual walkthrough;
+- writes stay globally blocked.
 
 ## Milestone 5 — safe draft mutations
 
