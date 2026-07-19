@@ -127,4 +127,103 @@ final class YoastSeoProviderTest extends TestCase {
 			}
 		}
 	}
+
+	/**
+	 * A single Open Graph image given directly as an assoc array (scalar url/width/height on
+	 * the array itself, not wrapped in a list or map) still has its filesystem path stripped.
+	 */
+	public function test_resolved_open_graph_images_single_image_array_strips_path(): void {
+		self::$main = new FakeYoastMain(
+			new FakeYoastMetaSurface(
+				new FakeYoastMetaValue(
+					array(
+						'open_graph_images' => array(
+							'url'    => 'https://example.com/wp-content/uploads/2026/07/single.jpg',
+							'width'  => 1200,
+							'height' => 630,
+							'path'   => '/Users/lukaszbiedron/Local Sites/kormas-isu/app/public/content/uploads/2026/07/single.jpg',
+						),
+					)
+				)
+			)
+		);
+
+		$provider = new YoastSeoProvider();
+		$document = $provider->get( SeoTarget::for_url( 'https://example.com/example-page/' ) );
+
+		$images = $document->resolved['open_graph']->value['images'];
+
+		self::assertCount( 1, $images );
+		self::assertSame( 'https://example.com/wp-content/uploads/2026/07/single.jpg', $images[0]['url'] );
+		self::assertSame( 1200, $images[0]['width'] );
+		self::assertSame( 630, $images[0]['height'] );
+		self::assertArrayNotHasKey( 'path', $images[0] );
+
+		foreach ( $images[0] as $value ) {
+			if ( is_string( $value ) ) {
+				self::assertStringNotContainsString( '/Users/', $value );
+			}
+		}
+	}
+
+	/**
+	 * A Twitter card image given as an array (mirroring the Open Graph shape) has its
+	 * filesystem path stripped while url/width/height survive.
+	 */
+	public function test_resolved_twitter_image_array_strips_filesystem_path(): void {
+		self::$main = new FakeYoastMain(
+			new FakeYoastMetaSurface(
+				new FakeYoastMetaValue(
+					array(
+						'twitter_image' => array(
+							'url'    => 'https://example.com/wp-content/uploads/2026/07/twitter.jpg',
+							'width'  => 1024,
+							'height' => 512,
+							'path'   => '/Users/lukaszbiedron/Local Sites/kormas-isu/app/public/content/uploads/2026/07/twitter.jpg',
+						),
+					)
+				)
+			)
+		);
+
+		$provider = new YoastSeoProvider();
+		$document = $provider->get( SeoTarget::for_url( 'https://example.com/example-page/' ) );
+
+		$image = $document->resolved['twitter']->value['image'];
+
+		self::assertSame( 'https://example.com/wp-content/uploads/2026/07/twitter.jpg', $image['url'] );
+		self::assertSame( 1024, $image['width'] );
+		self::assertSame( 512, $image['height'] );
+		self::assertArrayNotHasKey( 'path', $image );
+
+		foreach ( $image as $value ) {
+			if ( is_string( $value ) ) {
+				self::assertStringNotContainsString( '/Users/', $value );
+			}
+		}
+	}
+
+	/**
+	 * A Twitter card image given as a plain URL string (the common Yoast shape) passes
+	 * through unchanged.
+	 */
+	public function test_resolved_twitter_image_string_passes_through_unchanged(): void {
+		self::$main = new FakeYoastMain(
+			new FakeYoastMetaSurface(
+				new FakeYoastMetaValue(
+					array(
+						'twitter_image' => 'https://example.com/wp-content/uploads/2026/07/twitter-string.jpg',
+					)
+				)
+			)
+		);
+
+		$provider = new YoastSeoProvider();
+		$document = $provider->get( SeoTarget::for_url( 'https://example.com/example-page/' ) );
+
+		self::assertSame(
+			'https://example.com/wp-content/uploads/2026/07/twitter-string.jpg',
+			$document->resolved['twitter']->value['image']
+		);
+	}
 }
