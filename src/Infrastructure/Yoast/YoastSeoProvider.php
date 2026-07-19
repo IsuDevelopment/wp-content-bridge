@@ -40,6 +40,13 @@ final readonly class YoastSeoProvider implements SeoProvider {
 	);
 
 	/**
+	 * Public Open Graph image keys; anything else (notably the filesystem `path`) is dropped.
+	 *
+	 * @var list<string>
+	 */
+	private const OPEN_GRAPH_IMAGE_ALLOWED_KEYS = array( 'url', 'width', 'height', 'type', 'alt' );
+
+	/**
 	 * Creates the provider.
 	 *
 	 * @param RenderedSchemaReader|null $rendered_schema Optional rendered-schema reader used to
@@ -222,25 +229,29 @@ final readonly class YoastSeoProvider implements SeoProvider {
 	 * @return array<string, SeoField>
 	 */
 	private function resolved_fields( object $meta ): array {
+		$open_graph = $this->property_map(
+			$meta,
+			array( 'type', 'title', 'description', 'url', 'site_name', 'locale', 'images', 'article_publisher', 'article_author', 'article_published_time', 'article_modified_time' ),
+			'open_graph_'
+		);
+		if ( array_key_exists( 'images', $open_graph ) ) {
+			$open_graph['images'] = $this->sanitize_open_graph_images( $open_graph['images'] );
+		}
+
+		$twitter = $this->property_map( $meta, array( 'card', 'title', 'description', 'image', 'creator', 'site' ), 'twitter_' );
+		if ( is_array( $twitter['image'] ?? null ) ) {
+			$twitter['image'] = array_is_list( $twitter['image'] )
+				? $this->sanitize_open_graph_images( $twitter['image'] )
+				: $this->sanitize_open_graph_image( $twitter['image'] );
+		}
+
 		$resolved = array(
 			'title'       => $this->resolved_field( $meta, 'title' ),
 			'description' => $this->resolved_field( $meta, 'description' ),
 			'canonical'   => $this->resolved_field( $meta, 'canonical' ),
 			'robots'      => $this->resolved_field( $meta, 'robots' ),
-			'open_graph'  => new SeoField(
-				$this->property_map(
-					$meta,
-					array( 'type', 'title', 'description', 'url', 'site_name', 'locale', 'images', 'article_publisher', 'article_author', 'article_published_time', 'article_modified_time' ),
-					'open_graph_'
-				),
-				SeoValueState::GENERATED,
-				'yoast.surfaces'
-			),
-			'twitter'     => new SeoField(
-				$this->property_map( $meta, array( 'card', 'title', 'description', 'image', 'creator', 'site' ), 'twitter_' ),
-				SeoValueState::GENERATED,
-				'yoast.surfaces'
-			),
+			'open_graph'  => new SeoField( $open_graph, SeoValueState::GENERATED, 'yoast.surfaces' ),
+			'twitter'     => new SeoField( $twitter, SeoValueState::GENERATED, 'yoast.surfaces' ),
 		);
 
 		return $resolved;
@@ -255,6 +266,53 @@ final readonly class YoastSeoProvider implements SeoProvider {
 	 */
 	private function resolved_field( object $meta, string $property ): SeoField {
 		return new SeoField( $this->surface_value( $meta, $property ), SeoValueState::GENERATED, 'yoast.surfaces' );
+	}
+
+	/**
+	 * Sanitizes a list of Open Graph image entries to the public allowlist.
+	 *
+	 * Yoast's `open_graph_images` entries include a `path` filesystem key alongside the
+	 * public `url`/`width`/`height`/`type`/`alt` keys; only the public keys may leave this
+	 * provider.
+	 *
+	 * @param mixed $images Raw Open Graph images value (list of arrays, a single array, or absent).
+	 * @return list<array<string, mixed>>
+	 */
+	private function sanitize_open_graph_images( mixed $images ): array {
+		if ( ! is_array( $images ) ) {
+			return array();
+		}
+		if ( ! array_is_list( $images ) ) {
+			return array( $this->sanitize_open_graph_image( $images ) );
+		}
+
+		$sanitized = array();
+		foreach ( $images as $image ) {
+			if ( is_array( $image ) ) {
+				$sanitized[] = $this->sanitize_open_graph_image( $image );
+			}
+		}
+
+		return $sanitized;
+	}
+
+	/**
+	 * Sanitizes one Open Graph image entry to the public allowlist, dropping `path` and
+	 * any other non-allowlisted key.
+	 *
+	 * @param array $image Raw Open Graph image entry.
+	 * @return array<string, mixed>
+	 * @phpstan-param array<array-key, mixed> $image
+	 */
+	private function sanitize_open_graph_image( array $image ): array {
+		$sanitized = array();
+		foreach ( self::OPEN_GRAPH_IMAGE_ALLOWED_KEYS as $key ) {
+			if ( array_key_exists( $key, $image ) ) {
+				$sanitized[ $key ] = $image[ $key ];
+			}
+		}
+
+		return $sanitized;
 	}
 
 	/**
