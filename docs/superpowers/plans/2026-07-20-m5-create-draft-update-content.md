@@ -8,6 +8,16 @@
 
 **Tech Stack:** PHP 8.2+, PSR-4 `IsuDev\WPContentBridge\`, WordPress 7.0+ (Abilities API), PHPUnit 11 (Domain/Application units, WP not loaded), `wp eval` runtime verifiers (Infrastructure/Adapter), PHPCS (WordPress Coding Standards) + PHPStan max.
 
+> **EXECUTION STATUS (2026-07-20, paused):** Running via subagent-driven development on
+> branch `feat/m5-create-draft-update-content` (unmerged, unpushed). **Tasks 1–8 complete
+> and review-clean** (latest commit `33e5d6d`; suite 117 tests / 302 assertions, PHPCS 0,
+> PHPStan 0, `wp eval` smokes pass). **Resume at Task 9**, then 10 → 11 → 12 → 13 → final
+> whole-branch review → `finishing-a-development-branch`. Next session continues with Sonnet.
+> The live ledger `.superpowers/sdd/progress.md` and `.continue-here.md` (SDD runbook +
+> per-task head commits) are authoritative. Two open findings to settle at final review:
+> (1) exactly-once-audit double-record risk if `AuditLog::record()` throws after a success
+> insert — applies to `CreateDraft` + `UpdateContent`; (2) rolled-up cosmetics. See the ledger.
+
 ## Global Constraints
 
 Every task's requirements implicitly include this section. Copy exact values verbatim.
