@@ -46,6 +46,38 @@ if ( $table !== $exists ) {
 	$failures[] = "audit table {$table} was not created";
 }
 
+$audit_log = new \IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressAuditLog();
+$audit_log->record(
+	new \IsuDev\WPContentBridge\Application\Mutation\AuditEvent(
+		1,
+		'wp-content-bridge/create-draft',
+		null,
+		'post',
+		array( 'title', 'content' ),
+		null,
+		'abcdef0123456789:2026-07-20 12:30:00',
+		'success',
+		null
+	)
+);
+
+// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is internal; one-off read-back in a CLI verifier.
+$row = $wpdb->get_row( "SELECT * FROM {$table} ORDER BY id DESC LIMIT 1", ARRAY_A );
+if ( null === $row ) {
+	$failures[] = 'audit row was not written';
+} else {
+	if ( 'wp-content-bridge/create-draft' !== $row['ability'] ) {
+		$failures[] = 'audit ability not persisted';
+	}
+	if ( array( 'title', 'content' ) !== json_decode( (string) $row['changed_fields'], true ) ) {
+		$failures[] = 'audit changed_fields not persisted as name list';
+	}
+	// Redaction guard: no content/secret columns exist at all.
+	if ( array_key_exists( 'content', $row ) || array_key_exists( 'secret', $row ) ) {
+		$failures[] = 'audit table exposes a content/secret column';
+	}
+}
+
 if ( array() === $failures ) {
 	echo "PASS: writes foundation (caps, flags default-off, audit table)\n";
 	exit( 0 );
