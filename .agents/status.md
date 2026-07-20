@@ -2,16 +2,27 @@
 
 ## Current phase
 
+Milestone 5 (writes) — **in progress.** Executed as four sequential plans;
+**Plan 1 (writes foundation) is complete and merged** to `main` (merge commit
+`ab4805f`, pushed to origin). Plan 1 delivered write-phase primitives only —
+`VersionToken` concurrency, typed mutation failures, mutation ports, Installer
+grant of the three write capabilities + two off-by-default master flags + the
+capped `wpcb_audit` table, and the redacting `WordPressAuditLog` adapter. **No
+write ability is registered or reachable yet.** Reviewed clean (0
+Critical/Important); `composer check` green (85 tests / 211 assertions);
+runtime `writes-foundation-verification.php` passes. Next is **Plan 2**
+(`create-draft` + `update-content`); its first step is extending the
+`phpcs.xml.dist` `custom_capabilities` list with the three write caps.
+
 Milestone 4 Phase 1 — **complete** (ChatGPT-primary, read-only, Approach A per
 ADR 0010). ChatGPT completed the five-ability read scenario live through the
 official MCP Adapter (App-Password endpoint, `/wp-json/wpcb-mcp/mcp`) fronted
 by an external OAuth 2.1 layer (miniOrange Secure MCP Connector,
 `/wp-json/mosmcp/v1/mcp`), DCR + PKCE, token principal-bound to a WordPress
-user. Two real defects the live audit found are fixed on this branch (SEO
-image path leak; diagnostics false-negative). Codex/Gemini remain
-secondary/deferred, covered only by the client-agnostic smoke suite. Next is
+user. Codex/Gemini remain secondary/deferred, covered only by the
+client-agnostic smoke suite. A still-open M4 thread (independent of writes):
 staging stabilization with a real TLS certificate (the local run used a
-cloudflared quick tunnel), then Milestone 5 (safe draft mutations/writes).
+cloudflared quick tunnel) plus a strict least-privilege re-consent.
 
 Milestone 3 — complete. Premium/Local reads, bounded editorial context, and
 the licensed Local multiple-location runtime matrix (primary + branch) are all
@@ -161,6 +172,17 @@ verified.
 - Current quality baseline after M4 Phase 1: PHPCS 0 errors, PHPStan 0
   errors, PHPUnit 74 tests with 195 assertions (see `composer check` output
   referenced in the Task 7 report).
+- Milestone 5 Plan 1 (writes foundation), merged `ab4805f`: `VersionToken`
+  optimistic-concurrency primitive (Domain); typed Application failures
+  `MutationConflict`/`InvalidBlockMarkup`/`SeoFieldUnsupported`; mutation ports
+  `AuditEvent`/`AuditLog`/`BlockMarkupValidator`; `Installer` (schema v4) grants
+  `wpcb_edit_content`/`wpcb_manage_seo`/`wpcb_publish_content`, registers master
+  flags `wpcb_writes_enabled`/`wpcb_publish_enabled` (both false, non-autoloaded),
+  and creates the capped `{prefix}wpcb_audit` table via `dbDelta`; redacting
+  `WordPressAuditLog` (field names only + `do_action('wpcb_mutation')`). No write
+  ability is registered — abilities appear only when their master flag is on.
+- Quality baseline after M5 Plan 1: PHPCS 0 errors, PHPStan 0 errors, PHPUnit
+  85 tests with 211 assertions; `writes-foundation-verification.php` PASS.
 
 ## Not implemented
 
@@ -173,18 +195,27 @@ verified.
 - Strict least-privilege re-consent as `wpcb-bridge-reader` (Task 6's live
   ChatGPT consent was done as admin `dev` for exploration; re-run on staging
   with a real certificate).
-- Audit persistence, role-management UI, and all write operations.
+- Live write operations (create-draft, update-content, update-seo,
+  publish-content) and their abilities — the M5 Plan 1 foundation exists but no
+  ability is registered. `list-block-patterns` and the Settings-page flag
+  toggles are not built. (Audit persistence IS now implemented, Plan 1.)
+- Role-management UI beyond the capability grant.
 - Agents API integration.
 
 ## Next action
 
-Stabilize Milestone 4 Phase 1 on staging with a real TLS certificate
-(replacing the local cloudflared quick tunnel), including a strict
-least-privilege re-consent as `wpcb-bridge-reader`. Then begin Milestone 5
-(safe draft mutations). Writes remain blocked until Milestone 5's own threat
-model is in place.
+Milestone 5 **Plan 2** — `create-draft` + `update-content`. First extend
+`phpcs.xml.dist` `WordPress.WP.Capabilities` `custom_capabilities` with
+`wpcb_edit_content`/`wpcb_manage_seo`/`wpcb_publish_content` (deferred from Plan
+1 review), then write Plan 2 just-in-time (superpowers `writing-plans`) and
+execute via subagent-driven development, mirroring Plan 1. Design spec:
+`docs/superpowers/specs/2026-07-20-milestone-5-writes-design.md`; four-plan
+split: `docs/plan/IMPLEMENTATION_PLAN.md` (Milestone 5). Writes stay behind the
+off-by-default master flags until each plan's exit gate passes.
 
-Re-run commands:
+Independent open thread (M4): stabilize on staging with a real TLS certificate
+(replacing the local cloudflared quick tunnel) and re-run the strict
+least-privilege `wpcb-bridge-reader` consent. Re-run commands:
 
 ```bash
 WPCB_SITE_URL=https://kormas-isu.local \
@@ -196,8 +227,7 @@ WPCB_MCP_PATH="/wp-json/wpcb-mcp/mcp" \
 ChatGPT connector self-test: see `docs/setup/CHATGPT_CONNECTOR.md`.
 
 For cross-agent/session continuation, read `.continue-here.md` before making
-changes. It contains verified commands, environment caveats, decisions, and the
-recommended Milestone 3 split.
+changes. It contains verified commands, environment caveats, and decisions.
 
 ## Guardrail
 

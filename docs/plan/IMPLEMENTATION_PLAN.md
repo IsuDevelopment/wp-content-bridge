@@ -272,18 +272,69 @@ Exit gate:
   exercised only via the client-agnostic smoke suite, not a manual walkthrough;
 - writes stay globally blocked.
 
-## Milestone 5 — safe draft mutations
+## Milestone 5 — writes (draft mutations, SEO writes, controlled publication)
 
-Deliverables:
+Status: **in progress.** During brainstorming (2026-07-20) the write scope
+originally spread across Milestones 5–7 was folded into a single Milestone 5,
+executed as four sequential, independently shippable plans. Publication stays
+gated behind its own separate feature flag and capability (the M7 guardrails,
+pulled forward). Architecture is **Approach A**: a new `src/*/Mutation/`
+vertical slice mirroring the read layers; the read surface is untouched except
+for one additive `version_token` field on `get-content`.
 
-- plugin capabilities and role-management UI/CLI strategy;
-- mutation DTOs/services;
-- `create-draft` and `update-content` abilities;
-- idempotency strategy for draft creation;
-- optimistic concurrency, revisions, and audit events;
-- writes disabled globally until configured.
+Design spec: `docs/superpowers/specs/2026-07-20-milestone-5-writes-design.md`.
 
-Tests:
+### Plan 1 — writes foundation — **complete (merged `ab4805f`, 2026-07-20)**
+
+Foundation only; no live write operation is wired yet. Delivered:
+
+- `VersionToken` (Domain) optimistic-concurrency primitive
+  (`modified_gmt` + short content hash; mismatch → `wpcb_conflict`);
+- typed Application failures `MutationConflict` / `InvalidBlockMarkup` /
+  `SeoFieldUnsupported` with stable codes;
+- mutation ports `AuditEvent`, `AuditLog`, `BlockMarkupValidator`;
+- `Installer` grants the three write capabilities to `administrator`,
+  registers the two master feature flags `wpcb_writes_enabled` /
+  `wpcb_publish_enabled` (both default **false**, non-autoloaded), and creates
+  the capped `{prefix}wpcb_audit` table via `dbDelta`;
+- `WordPressAuditLog` (Infrastructure): redacted row insert (field names only),
+  prune to a bounded row count, and `do_action( 'wpcb_mutation', $event )`.
+
+Reviewed clean (0 Critical/Important); `composer check` green
+(85 tests / 211 assertions); the `wp eval` runtime verifier
+(`tests/Integration/writes-foundation-verification.php`) passes.
+
+### Plan 2 — `create-draft` + `update-content` (next)
+
+- **First step (carried from Plan 1 review):** extend `phpcs.xml.dist`
+  `WordPress.WP.Capabilities` `custom_capabilities` with `wpcb_edit_content`,
+  `wpcb_manage_seo`, `wpcb_publish_content` before the permission callbacks land.
+- `DraftInput` / `ContentUpdate` DTOs; `ContentMutationRepository` port +
+  `WordPressContentMutationRepository` (`wp_insert_post` / `wp_update_post`,
+  revisions);
+- `PhpBlockMarkupValidator` (parse round-trip + registered-type check);
+- idempotency store for draft creation;
+- add the read-only `version_token` field to `get-content` output;
+- `CreateDraft` / `UpdateContent` use cases; `MutationAbilities` registered only
+  when `wpcb_writes_enabled` is on; write authorization-matrix verifier.
+
+### Plan 3 — `update-seo`
+
+- `SeoUpdate` DTO; `SeoWriter` port + `YoastFreeSeoWriter` (Yoast Free core
+  allowlist only, via Yoast's documented write path, re-read after write);
+- `UpdateSeo` use case, ability, schema, and SEO write/re-read verifier.
+
+### Plan 4 — `publish-content` + `list-block-patterns`
+
+- `PublishContent` use case (draft→publish only, approval-compatible contract,
+  its own `wpcb_publish_enabled` flag + `wpcb_publish_content` capability);
+- read-only `BlockPatternCatalog` port + `WordPressBlockPatternCatalog` +
+  `PatternAbilities`;
+- Settings-page checkboxes for both master flags;
+- final exit-gate integration matrix (publish-blocked-when-flag-off;
+  abilities invisible over MCP when the master flag is off).
+
+Cross-cutting tests (across the four plans):
 
 - per-object authorization;
 - stale version conflicts;
@@ -295,9 +346,15 @@ Tests:
 
 Exit gate:
 
-- no path can publish;
+- no create/update path can publish; publication is reachable only through the
+  separately-flagged, separately-capability-gated `publish-content`;
 - conflicts never overwrite newer edits;
+- writes are invisible over MCP unless their master flag is enabled;
 - security review signs off before beta.
+
+> Milestones 6 and 7 below are retained for historical traceability of the
+> original gate criteria; their deliverables are executed inside Milestone 5
+> Plans 3 and 4 respectively.
 
 ## Milestone 6 — SEO writes
 
