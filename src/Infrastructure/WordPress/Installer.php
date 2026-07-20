@@ -14,8 +14,13 @@ namespace IsuDev\WPContentBridge\Infrastructure\WordPress;
  */
 final class Installer {
 
-	private const SCHEMA_VERSION = 3;
+	private const SCHEMA_VERSION = 4;
 	private const VERSION_OPTION = 'wpcb_schema_version';
+
+	public const WRITES_ENABLED_OPTION  = 'wpcb_writes_enabled';
+	public const PUBLISH_ENABLED_OPTION = 'wpcb_publish_enabled';
+
+	private const AUDIT_TABLE = 'wpcb_audit';
 
 	/**
 	 * Runs on plugin activation.
@@ -25,6 +30,9 @@ final class Installer {
 	public static function activate(): void {
 		self::grant_administrator_capability();
 		add_option( WordPressContentAccessSettingsRepository::OPTION_NAME, array(), '', false );
+		add_option( self::WRITES_ENABLED_OPTION, false, '', false );
+		add_option( self::PUBLISH_ENABLED_OPTION, false, '', false );
+		self::create_audit_table();
 		update_option( self::VERSION_OPTION, self::SCHEMA_VERSION, false );
 	}
 
@@ -45,16 +53,78 @@ final class Installer {
 	}
 
 	/**
-	 * Grants the settings capability to administrators.
+	 * Returns the fully-qualified audit table name.
+	 *
+	 * @return string
+	 */
+	public static function audit_table_name(): string {
+		global $wpdb;
+		/**
+		 * WordPress database abstraction object.
+		 *
+		 * @var \wpdb $wpdb
+		 */
+
+		return $wpdb->prefix . self::AUDIT_TABLE;
+	}
+
+	/**
+	 * Grants management and write capabilities to administrators.
 	 *
 	 * @return void
 	 */
 	private static function grant_administrator_capability(): void {
 		$administrator = get_role( 'administrator' );
 
-		if ( null !== $administrator ) {
-			$administrator->add_cap( 'wpcb_manage_settings' );
-			$administrator->add_cap( 'wpcb_read_content' );
+		if ( null === $administrator ) {
+			return;
 		}
+
+		foreach ( array(
+			'wpcb_manage_settings',
+			'wpcb_read_content',
+			'wpcb_edit_content',
+			'wpcb_manage_seo',
+			'wpcb_publish_content',
+		) as $capability ) {
+			$administrator->add_cap( $capability );
+		}
+	}
+
+	/**
+	 * Creates the append-only mutation audit table.
+	 *
+	 * @return void
+	 */
+	private static function create_audit_table(): void {
+		global $wpdb;
+		/**
+		 * WordPress database abstraction object.
+		 *
+		 * @var \wpdb $wpdb
+		 */
+
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+		$table           = self::audit_table_name();
+		$charset_collate = $wpdb->get_charset_collate();
+
+		$sql = "CREATE TABLE {$table} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			created_gmt DATETIME NOT NULL,
+			user_id BIGINT UNSIGNED NOT NULL,
+			ability VARCHAR(191) NOT NULL,
+			object_id BIGINT UNSIGNED NULL,
+			object_type VARCHAR(64) NULL,
+			changed_fields TEXT NOT NULL,
+			expected_version VARCHAR(191) NULL,
+			resulting_version VARCHAR(191) NULL,
+			outcome VARCHAR(32) NOT NULL,
+			error_code VARCHAR(64) NULL,
+			PRIMARY KEY  (id),
+			KEY created_gmt (created_gmt)
+		) {$charset_collate};";
+
+		dbDelta( $sql );
 	}
 }
