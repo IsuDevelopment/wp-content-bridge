@@ -11,6 +11,7 @@ namespace IsuDev\WPContentBridge\Adapter\Admin;
 
 use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessManager;
 use IsuDev\WPContentBridge\Domain\ContentAccess\ContentOperation;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\Installer;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentAccessSettingsRepository;
 
 /**
@@ -70,6 +71,17 @@ final readonly class ContentAccessSettingsPage {
 				'show_in_rest'      => false,
 			)
 		);
+
+		register_setting(
+			self::OPTION_GROUP,
+			Installer::WRITES_ENABLED_OPTION,
+			array(
+				'type'              => 'boolean',
+				'default'           => false,
+				'sanitize_callback' => static fn ( mixed $value ): bool => (bool) $value,
+				'show_in_rest'      => false,
+			)
+		);
 	}
 
 	/**
@@ -106,7 +118,7 @@ final readonly class ContentAccessSettingsPage {
 		<div class="wrap">
 			<h1><?php echo esc_html__( 'WP Content Bridge: Content Access', 'wp-content-bridge' ); ?></h1>
 			<p><?php echo esc_html__( 'Choose which operations agent integrations may request for each content type. WordPress capabilities are always checked in addition to this configuration.', 'wp-content-bridge' ); ?></p>
-			<p><?php echo esc_html__( 'Write switches reserve policy for future abilities. Enabling them does not make write operations available until those abilities are implemented.', 'wp-content-bridge' ); ?></p>
+			<p><?php echo esc_html__( 'Write switches configure per-type policy. The global switch below must also be enabled for create-draft and update-content to become available.', 'wp-content-bridge' ); ?></p>
 
 			<form method="post" action="options.php">
 				<?php settings_fields( self::OPTION_GROUP ); ?>
@@ -142,6 +154,24 @@ final readonly class ContentAccessSettingsPage {
 					</tbody>
 				</table>
 				<p id="wpcb-content-access-help" class="description"><?php echo esc_html__( 'Search and every write operation require Read. Invalid combinations are disabled when settings are saved.', 'wp-content-bridge' ); ?></p>
+
+				<h2><?php echo esc_html__( 'Content writes', 'wp-content-bridge' ); ?></h2>
+				<table class="widefat striped" aria-describedby="wpcb-writes-enabled-help">
+					<tbody>
+						<tr>
+							<th scope="row"><?php echo esc_html__( 'Content writes', 'wp-content-bridge' ); ?></th>
+							<td>
+								<input type="hidden" name="<?php echo esc_attr( Installer::WRITES_ENABLED_OPTION ); ?>" value="0">
+								<label>
+									<input type="checkbox" name="<?php echo esc_attr( Installer::WRITES_ENABLED_OPTION ); ?>" value="1" <?php checked( (bool) get_option( Installer::WRITES_ENABLED_OPTION ) ); ?>>
+									<?php echo esc_html__( 'Enable create-draft and update-content abilities (master switch, off by default).', 'wp-content-bridge' ); ?>
+								</label>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+				<p id="wpcb-writes-enabled-help" class="description"><?php echo esc_html__( 'This master switch must be enabled, in addition to per-type Create/Update policy above, for write abilities to be registered.', 'wp-content-bridge' ); ?></p>
+
 				<?php submit_button(); ?>
 			</form>
 		</div>
