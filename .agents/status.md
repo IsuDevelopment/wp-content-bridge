@@ -24,8 +24,8 @@ verified.
 - Minimal activatable WordPress plugin bootstrap.
 - Canonical AI-agent instructions.
 - Initial SDD, ADRs, implementation plan, security model, and test strategy.
-- Composer dependencies installed; PHPCS 68/68 files and maximum-level PHPStan
-  pass; PHPUnit currently passes 62 tests with 152 assertions.
+- Composer dependencies installed; PHPCS 80/80 files and maximum-level PHPStan
+  pass; PHPUnit currently passes 74 tests with 195 assertions.
 - Local Kormas integration is active through the ignored runtime symlink `public/content/plugins/wp-content-bridge`.
 - The plugin is activated locally and its PSR-4 bootstrap has been verified.
 - Domain-level per-post-type operation policy and dependencies.
