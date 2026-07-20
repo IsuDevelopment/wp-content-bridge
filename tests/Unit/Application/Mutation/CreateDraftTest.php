@@ -20,6 +20,7 @@ use IsuDev\WPContentBridge\Application\Mutation\CreateDraft;
 use IsuDev\WPContentBridge\Application\Mutation\IdempotencyStore;
 use IsuDev\WPContentBridge\Application\Mutation\InvalidBlockMarkup;
 use IsuDev\WPContentBridge\Application\Mutation\MutationForbidden;
+use IsuDev\WPContentBridge\Application\Mutation\MutationWriteFailed;
 use IsuDev\WPContentBridge\Domain\ContentAccess\ContentTypeDefinition;
 use IsuDev\WPContentBridge\Domain\Mutation\ContentUpdate;
 use IsuDev\WPContentBridge\Domain\Mutation\DraftInput;
@@ -89,6 +90,7 @@ final class CreateDraftTest extends TestCase {
 
 		self::assertCount( 1, $audit->events );
 		self::assertSame( 'denied', $audit->events[0]->outcome );
+		self::assertSame( 'wpcb_forbidden', $audit->events[0]->error_code );
 	}
 
 	/**
@@ -174,6 +176,37 @@ final class CreateDraftTest extends TestCase {
 		self::assertSame( 99, $result->post_id );
 		self::assertCount( 1, $audit->events );
 		self::assertSame( 'success', $audit->events[0]->outcome );
+	}
+
+	/**
+	 * A repository write failure throws MutationWriteFailed and records exactly
+	 * one failure row with the stable write-failed error code.
+	 */
+	public function test_write_failure_records_failure(): void {
+		$audit    = $this->audit_spy();
+		$use_case = new CreateDraft(
+			$this->manager_allowing_create( true ),
+			$this->passing_validator(),
+			$this->failing_repository(),
+			$this->empty_store(),
+			$audit
+		);
+
+		$this->expectException( MutationWriteFailed::class );
+
+		try {
+			$use_case->execute(
+				array(
+					'post_type' => 'post',
+					'title'     => 'Hi',
+				),
+				5
+			);
+		} finally {
+			self::assertCount( 1, $audit->events );
+			self::assertSame( 'failure', $audit->events[0]->outcome );
+			self::assertSame( 'wpcb_write_failed', $audit->events[0]->error_code );
+		}
 	}
 
 	// --- fakes -----------------------------------------------------------
@@ -352,6 +385,68 @@ final class CreateDraftTest extends TestCase {
 					array( 'title' ),
 					true
 				);
+			}
+
+			/**
+			 * Not used by these tests.
+			 *
+			 * @param int           $post_id Post ID to update.
+			 * @param ContentUpdate $update  Validated update input.
+			 * @throws \LogicException Always; this fake is not exercised by these tests.
+			 */
+			public function update( int $post_id, ContentUpdate $update ): MutationResult {
+				throw new \LogicException( 'not used' );
+			}
+
+			/**
+			 * Always reports no existing replay.
+			 *
+			 * @param int $post_id Post ID.
+			 * @return MutationResult|null
+			 */
+			public function result_for( int $post_id ): ?MutationResult {
+				return null;
+			}
+		};
+	}
+
+	/**
+	 * Creates a mutation repository whose create() always throws
+	 * MutationWriteFailed.
+	 *
+	 * @return ContentMutationRepository
+	 */
+	private function failing_repository(): ContentMutationRepository {
+		return new class() implements ContentMutationRepository {
+
+			/**
+			 * Always reports "post".
+			 *
+			 * @param int $post_id Post ID.
+			 * @return string|null
+			 */
+			public function post_type( int $post_id ): ?string {
+				return 'post';
+			}
+
+			/**
+			 * Always returns a fixed version token.
+			 *
+			 * @param int $post_id Post ID.
+			 * @return VersionToken|null
+			 */
+			public function current_version( int $post_id ): ?VersionToken {
+				return new VersionToken( 'abcdef0123456789', '2026-07-20 00:00:00' );
+			}
+
+			/**
+			 * Always throws MutationWriteFailed.
+			 *
+			 * @param DraftInput $input Validated draft input.
+			 * @throws MutationWriteFailed Always; simulates a rejected write.
+			 */
+			public function create( DraftInput $input ): MutationResult {
+				throw new MutationWriteFailed( 'boom' );
 			}
 
 			/**
