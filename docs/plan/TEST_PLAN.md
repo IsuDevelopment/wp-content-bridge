@@ -34,6 +34,25 @@
 - Stable machine error codes.
 - Schema version behavior.
 - MCP discovery and execution envelopes through the official adapter.
+- Client-agnostic MCP smoke check: session-based `initialize` →
+  `notifications/initialized` → `tools/list` (asserts exactly the five
+  hyphenated tool names) → `tools/call` for each of the five read abilities
+  with a minimal valid input, executed as the least-privilege bridge-reader
+  user via a disposable Application Password that is deleted on exit (even on
+  failure, via a shell trap). Repeatable command:
+
+```bash
+WPCB_SITE_URL=https://kormas-isu.local \
+WPCB_WP_ROOT="/Users/lukaszbiedron/Local Sites/kormas-isu/app/public" \
+WPCB_MCP_PATH="/wp-json/wpcb-mcp/mcp" \
+"/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/Integration/mcp-smoke-verification.sh"
+```
+
+  This targets the official `WordPress/mcp-adapter` App-Password endpoint
+  (`docs/setup/MCP_ADAPTER.md`), not the miniOrange OAuth endpoint ChatGPT
+  uses (`/wp-json/mosmcp/v1/mcp`, `docs/setup/CHATGPT_CONNECTOR.md`) — the two
+  endpoints project the same five abilities but are deliberately kept
+  distinct in setup and verification.
 
 ### End-to-end
 
@@ -50,8 +69,8 @@
 | PHP | 8.2, 8.3, 8.4 |
 | Site | single site; multisite unsupported until ADR |
 | SEO | none; Yoast Free; Free+Premium; Free+Local; Free+Premium+Local |
-| MCP | absent; official adapter current pinned release |
-| Client | Codex; Gemini CLI; ChatGPT remote when testable |
+| MCP | absent; official adapter current pinned release; miniOrange Secure MCP Connector (OAuth-fronted) for ChatGPT |
+| Client | **ChatGPT — verified Phase 1 client** (miniOrange OAuth 2.1, DCR+PKCE, `docs/setup/CHATGPT_CONNECTOR.md`); Codex/Gemini CLI — secondary/deferred, covered only by the client-agnostic smoke suite |
 
 ## Authorization matrix
 
@@ -64,6 +83,14 @@ For each ability test:
 - administrator;
 - dedicated integration user with selected WPCB and native capabilities;
 - revoked Application Password/session.
+
+The MCP contract layer's dedicated integration user is the least-privilege
+**bridge-reader fixture** (`tests/Integration/bridge-reader-fixture.php`):
+user `wpcb-bridge-reader` locked to exactly the `read` and
+`wpcb_read_content` capabilities (idempotent setup/teardown via
+`WPCB_BRIDGE_MODE=setup|teardown`), used both by the smoke suite's disposable
+Application Password and as the intended shipped identity a ChatGPT OAuth
+grant should be bound to.
 
 For Milestone 1B, exercise every principal against:
 
