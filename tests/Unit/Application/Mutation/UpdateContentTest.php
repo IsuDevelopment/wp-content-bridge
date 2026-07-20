@@ -17,14 +17,17 @@ use IsuDev\WPContentBridge\Application\Mutation\AuditEvent;
 use IsuDev\WPContentBridge\Application\Mutation\AuditLog;
 use IsuDev\WPContentBridge\Application\Mutation\BlockMarkupValidator;
 use IsuDev\WPContentBridge\Application\Mutation\ContentMutationRepository;
+use IsuDev\WPContentBridge\Application\Mutation\InvalidBlockMarkup;
 use IsuDev\WPContentBridge\Application\Mutation\MutationConflict;
 use IsuDev\WPContentBridge\Application\Mutation\MutationForbidden;
+use IsuDev\WPContentBridge\Application\Mutation\MutationWriteFailed;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateContent;
 use IsuDev\WPContentBridge\Domain\ContentAccess\ContentTypeDefinition;
 use IsuDev\WPContentBridge\Domain\Mutation\ContentUpdate;
 use IsuDev\WPContentBridge\Domain\Mutation\DraftInput;
 use IsuDev\WPContentBridge\Domain\Mutation\MutationResult;
 use IsuDev\WPContentBridge\Domain\Mutation\VersionToken;
+use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -154,6 +157,96 @@ final class UpdateContentTest extends TestCase {
 		}
 	}
 
+	/**
+	 * Malformed input throws before policy checks and records one invalid row.
+	 */
+	public function test_invalid_input_records_invalid(): void {
+		$audit    = $this->audit_spy();
+		$use_case = new UpdateContent(
+			$this->manager_allowing_update( true ),
+			$this->passing_validator(),
+			$this->repository( self::CURRENT ),
+			$audit
+		);
+
+		$this->expectException( InvalidArgumentException::class );
+
+		try {
+			$use_case->execute(
+				array(
+					'post_id' => 42,
+					'title'   => 'New',
+				),
+				5
+			);
+		} finally {
+			self::assertCount( 1, $audit->events );
+			self::assertSame( 'invalid', $audit->events[0]->outcome );
+			self::assertSame( 'wpcb_invalid_input', $audit->events[0]->error_code );
+		}
+	}
+
+	/**
+	 * Invalid block markup throws InvalidBlockMarkup and records one invalid row.
+	 */
+	public function test_invalid_blocks_records_invalid(): void {
+		$audit    = $this->audit_spy();
+		$use_case = new UpdateContent(
+			$this->manager_allowing_update( true ),
+			$this->failing_validator( array( 'block 0: unregistered' ) ),
+			$this->repository( self::CURRENT ),
+			$audit
+		);
+
+		$this->expectException( InvalidBlockMarkup::class );
+
+		try {
+			$use_case->execute(
+				array(
+					'post_id'       => 42,
+					'version_token' => self::CURRENT,
+					'block_markup'  => '<!-- wp:acme/nope /-->',
+				),
+				5
+			);
+		} finally {
+			self::assertCount( 1, $audit->events );
+			self::assertSame( 'invalid', $audit->events[0]->outcome );
+			self::assertSame( 'wpcb_invalid_blocks', $audit->events[0]->error_code );
+		}
+	}
+
+	/**
+	 * A repository write failure throws MutationWriteFailed and records exactly
+	 * one failure row with the stable write-failed error code.
+	 */
+	public function test_write_failure_records_failure(): void {
+		$audit    = $this->audit_spy();
+		$use_case = new UpdateContent(
+			$this->manager_allowing_update( true ),
+			$this->passing_validator(),
+			$this->failing_repository( self::CURRENT ),
+			$audit
+		);
+
+		$this->expectException( MutationWriteFailed::class );
+
+		try {
+			$use_case->execute(
+				array(
+					'post_id'       => 42,
+					'version_token' => self::CURRENT,
+					'title'         => 'New',
+				),
+				5
+			);
+		} finally {
+			self::assertCount( 1, $audit->events );
+			self::assertSame( 'failure', $audit->events[0]->outcome );
+			self::assertSame( 'wpcb_write_failed', $audit->events[0]->error_code );
+		}
+	}
+
 	// --- fakes -----------------------------------------------------------
 
 	/**
@@ -252,6 +345,35 @@ final class UpdateContentTest extends TestCase {
 	}
 
 	/**
+	 * Creates a block markup validator that always fails with given reasons.
+	 *
+	 * @param array<int, string> $reasons Failure reasons to return.
+	 * @return BlockMarkupValidator
+	 */
+	private function failing_validator( array $reasons ): BlockMarkupValidator {
+		return new class( $reasons ) implements BlockMarkupValidator {
+
+			/**
+			 * Creates a validator that always fails.
+			 *
+			 * @param array<int, string> $reasons Failure reasons to return.
+			 */
+			public function __construct( private array $reasons ) {
+			}
+
+			/**
+			 * Always reports the configured failure reasons.
+			 *
+			 * @param string $markup Raw Gutenberg block markup.
+			 * @return list<string>
+			 */
+			public function validate( string $markup ): array {
+				return $this->reasons;
+			}
+		};
+	}
+
+	/**
 	 * Creates a mutation repository whose current version matches the given token
 	 * (or reports the post as absent when null), tracking whether update() ran.
 	 *
@@ -323,6 +445,77 @@ final class UpdateContentTest extends TestCase {
 					$update->changed_fields(),
 					false
 				);
+			}
+
+			/**
+			 * Always reports no existing replay.
+			 *
+			 * @param int $post_id Post ID.
+			 * @return MutationResult|null
+			 */
+			public function result_for( int $post_id ): ?MutationResult {
+				return null;
+			}
+		};
+	}
+
+	/**
+	 * Creates a mutation repository whose current version matches the given token
+	 * but whose update() always throws MutationWriteFailed.
+	 *
+	 * @param string $current_token Serialized current token that satisfies concurrency control.
+	 * @return ContentMutationRepository
+	 */
+	private function failing_repository( string $current_token ): ContentMutationRepository {
+		return new class( $current_token ) implements ContentMutationRepository {
+
+			/**
+			 * Creates the fake repository.
+			 *
+			 * @param string $current_token Serialized current token that satisfies concurrency control.
+			 */
+			public function __construct( private string $current_token ) {
+			}
+
+			/**
+			 * Always reports "post".
+			 *
+			 * @param int $post_id Post ID.
+			 * @return string|null
+			 */
+			public function post_type( int $post_id ): ?string {
+				return 'post';
+			}
+
+			/**
+			 * Reports the configured current token.
+			 *
+			 * @param int $post_id Post ID.
+			 * @return VersionToken|null
+			 */
+			public function current_version( int $post_id ): ?VersionToken {
+				return VersionToken::from_string( $this->current_token );
+			}
+
+			/**
+			 * Not used by these tests.
+			 *
+			 * @param DraftInput $input Validated draft input.
+			 * @throws \LogicException Always; this fake is not exercised by these tests.
+			 */
+			public function create( DraftInput $input ): MutationResult {
+				throw new \LogicException( 'not used' );
+			}
+
+			/**
+			 * Always throws MutationWriteFailed.
+			 *
+			 * @param int           $post_id Post ID to update.
+			 * @param ContentUpdate $update  Validated update input.
+			 * @throws MutationWriteFailed Always; simulates a rejected write.
+			 */
+			public function update( int $post_id, ContentUpdate $update ): MutationResult {
+				throw new MutationWriteFailed( 'boom' );
 			}
 
 			/**
