@@ -11,6 +11,7 @@ namespace IsuDev\WPContentBridge\Tests\Unit\Domain\Content;
 
 use IsuDev\WPContentBridge\Domain\Content\ContentDetail;
 use IsuDev\WPContentBridge\Domain\Content\ContentSummary;
+use IsuDev\WPContentBridge\Domain\Mutation\VersionToken;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -41,5 +42,32 @@ final class ContentDetailTest extends TestCase {
 		);
 		self::assertSame( 7, $detail->total_representation_bytes() );
 		self::assertSame( 7, $detail->to_array()['payload']['total_representation_bytes'] );
+	}
+
+	/**
+	 * The optional version token serializes to its wire form when present.
+	 */
+	public function test_to_array_includes_version_token_when_present(): void {
+		$summary = new ContentSummary(
+			42,
+			'post',
+			'draft',
+			'Title',
+			'title',
+			null,
+			'Excerpt',
+			1,
+			null,
+			'2026-07-20 00:00:00'
+		);
+		$detail  = new ContentDetail(
+			$summary,
+			array(),
+			array(),
+			null,
+			new VersionToken( 'abcdef0123456789', '2026-07-20 00:00:00' )
+		);
+
+		self::assertSame( 'abcdef0123456789:2026-07-20 00:00:00', $detail->to_array()['version_token'] );
 	}
 }

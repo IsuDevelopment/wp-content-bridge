@@ -213,6 +213,10 @@ final class AbilitySchemas {
 					'additionalProperties' => true,
 				),
 				'concurrency_token' => array( 'type' => array( 'string', 'null' ) ),
+				'version_token'     => array(
+					'description' => 'Opaque optimistic-concurrency token to pass to update-content.',
+					'type'        => array( 'string', 'null' ),
+				),
 				'payload'           => array(
 					'type'                 => 'object',
 					'required'             => array( 'representation_bytes', 'total_representation_bytes' ),

@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace IsuDev\WPContentBridge\Domain\Content;
 
+use IsuDev\WPContentBridge\Domain\Mutation\VersionToken;
+
 /**
  * A selected, bounded representation of one WordPress content object.
  */
@@ -17,10 +19,11 @@ final readonly class ContentDetail {
 	/**
 	 * Creates a detailed content result.
 	 *
-	 * @param ContentSummary $summary           Compact content data.
-	 * @param array          $representations   Selected content forms.
-	 * @param array          $relationships     Selected relationships.
-	 * @param string|null    $concurrency_token Version token.
+	 * @param ContentSummary    $summary           Compact content data.
+	 * @param array             $representations   Selected content forms.
+	 * @param array             $relationships     Selected relationships.
+	 * @param string|null       $concurrency_token Version token.
+	 * @param VersionToken|null $version_token     Optimistic-concurrency token for update-content.
 	 * @phpstan-param array<string, string> $representations
 	 * @phpstan-param array<string, mixed> $relationships
 	 */
@@ -29,6 +32,7 @@ final readonly class ContentDetail {
 		public array $representations,
 		public array $relationships,
 		public ?string $concurrency_token,
+		public ?VersionToken $version_token = null,
 	) {
 	}
 
@@ -44,6 +48,7 @@ final readonly class ContentDetail {
 			'representations'   => $this->representations,
 			'relationships'     => $this->relationships,
 			'concurrency_token' => $this->concurrency_token,
+			'version_token'     => $this->version_token?->to_string(),
 			'payload'           => array(
 				'representation_bytes'       => $this->representation_bytes(),
 				'total_representation_bytes' => $this->total_representation_bytes(),
