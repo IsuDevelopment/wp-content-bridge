@@ -32,11 +32,13 @@ final class WordPressTransientIdempotencyStore implements IdempotencyStore {
 	 */
 	public function find( int $user_id, string $key ): ?int {
 		$value = get_transient( $this->name( $user_id, $key ) );
-		if ( ! is_int( $value ) ) {
+		if ( ! is_numeric( $value ) ) {
 			return null;
 		}
 
-		return 0 < $value ? $value : null;
+		$post_id = (int) $value;
+
+		return 0 < $post_id ? $post_id : null;
 	}
 
 	/**
