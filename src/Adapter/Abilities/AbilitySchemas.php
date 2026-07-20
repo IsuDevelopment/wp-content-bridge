@@ -468,6 +468,110 @@ final class AbilitySchemas {
 	}
 
 	/**
+	 * Returns the create-draft input schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function create_draft_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'post_type', 'title' ),
+			'properties'           => array(
+				'post_type'       => array(
+					'description' => 'Target post type slug.',
+					'type'        => 'string',
+					'pattern'     => '^[a-z0-9_-]{1,20}$',
+				),
+				'title'           => array(
+					'description' => 'Post title.',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 500,
+				),
+				'block_markup'    => array(
+					'description' => 'Gutenberg block markup for the post body.',
+					'type'        => 'string',
+					'maxLength'   => 500000,
+					'default'     => '',
+				),
+				'excerpt'         => array(
+					'description' => 'Optional excerpt.',
+					'type'        => array( 'string', 'null' ),
+					'maxLength'   => 2000,
+				),
+				'taxonomies'      => self::taxonomy_assignment_schema(),
+				'idempotency_key' => array(
+					'description' => 'Optional client key to make creation idempotent for 24h.',
+					'type'        => array( 'string', 'null' ),
+					'pattern'     => '^[A-Za-z0-9_.\\-]{1,128}$',
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the update-content input schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_content_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'post_id', 'version_token' ),
+			'properties'           => array(
+				'post_id'       => array(
+					'description' => 'Target post ID.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+				),
+				'version_token' => array(
+					'description' => 'Optimistic-concurrency token from get-content.',
+					'type'        => 'string',
+					'minLength'   => 18,
+					'maxLength'   => 191,
+				),
+				'title'         => array(
+					'description' => 'Replacement title.',
+					'type'        => array( 'string', 'null' ),
+					'minLength'   => 1,
+					'maxLength'   => 500,
+				),
+				'block_markup'  => array(
+					'description' => 'Replacement block markup.',
+					'type'        => array( 'string', 'null' ),
+					'maxLength'   => 500000,
+				),
+				'excerpt'       => array(
+					'description' => 'Replacement excerpt.',
+					'type'        => array( 'string', 'null' ),
+					'maxLength'   => 2000,
+				),
+				'taxonomies'    => self::taxonomy_assignment_schema(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the create-draft output schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function create_draft_output(): array {
+		return self::mutation_output();
+	}
+
+	/**
+	 * Returns the update-content output schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_content_output(): array {
+		return self::mutation_output();
+	}
+
+	/**
 	 * Returns the compact content schema.
 	 *
 	 * @return array<string, mixed>
@@ -667,6 +771,65 @@ final class AbilitySchemas {
 				'untrusted' => array( 'type' => 'boolean' ),
 			),
 			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the shared create-draft/update-content output schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function mutation_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'schema_version', 'post_id', 'post_type', 'status', 'version_token', 'changed_fields', 'created', 'provenance' ),
+			'properties'           => array(
+				'schema_version' => array( 'type' => 'string' ),
+				'post_id'        => array( 'type' => 'integer' ),
+				'post_type'      => array( 'type' => 'string' ),
+				'status'         => array( 'type' => 'string' ),
+				'version_token'  => array( 'type' => 'string' ),
+				'changed_fields' => array(
+					'type'  => 'array',
+					'items' => array( 'type' => 'string' ),
+				),
+				'created'        => array( 'type' => 'boolean' ),
+				'provenance'     => self::provenance(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the shared bounded taxonomy-assignment schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function taxonomy_assignment_schema(): array {
+		return array(
+			'description' => 'Optional taxonomy assignments (replace mode).',
+			'type'        => array( 'array', 'null' ),
+			'maxItems'    => 50,
+			'items'       => array(
+				'type'                 => 'object',
+				'required'             => array( 'taxonomy', 'term_ids' ),
+				'properties'           => array(
+					'taxonomy' => array(
+						'type'    => 'string',
+						'pattern' => '^[a-z0-9_-]{1,32}$',
+					),
+					'term_ids' => array(
+						'type'     => 'array',
+						'minItems' => 1,
+						'maxItems' => 100,
+						'items'    => array(
+							'type'    => 'integer',
+							'minimum' => 1,
+						),
+					),
+				),
+				'additionalProperties' => false,
+			),
 		);
 	}
 
