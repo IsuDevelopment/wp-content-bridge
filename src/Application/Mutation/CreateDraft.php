@@ -65,37 +65,38 @@ final readonly class CreateDraft {
 				throw new MutationForbidden( 'Content creation is not permitted for this type.' );
 			}
 
+			$replayed = null;
 			if ( null !== $draft->idempotency_key ) {
 				$existing_id = $this->idempotency->find( $user_id, $draft->idempotency_key );
 				if ( null !== $existing_id ) {
 					$replayed = $this->repository->result_for( $existing_id );
-					if ( null !== $replayed ) {
-						$this->record_success( $user_id, $replayed );
-						return $replayed;
+				}
+			}
+
+			if ( null !== $replayed ) {
+				$result = $replayed;
+			} else {
+				if ( '' !== $draft->block_markup ) {
+					$reasons = $this->validator->validate( $draft->block_markup );
+					if ( array() !== $reasons ) {
+						throw new InvalidBlockMarkup( $reasons );
 					}
 				}
-			}
 
-			if ( '' !== $draft->block_markup ) {
-				$reasons = $this->validator->validate( $draft->block_markup );
-				if ( array() !== $reasons ) {
-					throw new InvalidBlockMarkup( $reasons );
+				$result = $this->repository->create( $draft );
+
+				if ( null !== $draft->idempotency_key ) {
+					$this->idempotency->remember( $user_id, $draft->idempotency_key, $result->post_id );
 				}
 			}
-
-			$result = $this->repository->create( $draft );
-
-			if ( null !== $draft->idempotency_key ) {
-				$this->idempotency->remember( $user_id, $draft->idempotency_key, $result->post_id );
-			}
-
-			$this->record_success( $user_id, $result );
-
-			return $result;
 		} catch ( Throwable $error ) {
 			$this->record_failure( $user_id, $post_type, $error );
 			throw $error;
 		}
+
+		$this->record_success( $user_id, $result );
+
+		return $result;
 	}
 
 	/**

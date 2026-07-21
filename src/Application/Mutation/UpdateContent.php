@@ -88,22 +88,6 @@ final readonly class UpdateContent {
 			}
 
 			$result = $this->repository->update( $update->post_id, $update );
-
-			$this->audit->record(
-				new AuditEvent(
-					$user_id,
-					self::ABILITY,
-					$result->post_id,
-					$result->post_type,
-					$result->changed_fields,
-					$expected_version,
-					$result->version->to_string(),
-					'success',
-					null
-				)
-			);
-
-			return $result;
 		} catch ( Throwable $error ) {
 			[ $outcome, $code ] = $this->classify( $error );
 
@@ -123,6 +107,22 @@ final readonly class UpdateContent {
 
 			throw $error;
 		}
+
+		$this->audit->record(
+			new AuditEvent(
+				$user_id,
+				self::ABILITY,
+				$result->post_id,
+				$result->post_type,
+				$result->changed_fields,
+				$expected_version,
+				$result->version->to_string(),
+				'success',
+				null
+			)
+		);
+
+		return $result;
 	}
 
 	/**

@@ -247,6 +247,37 @@ final class UpdateContentTest extends TestCase {
 		}
 	}
 
+	/**
+	 * If the audit sink itself throws while recording a success row, that throw
+	 * must propagate directly to the caller and must NOT be caught and
+	 * misrecorded as a second (failure) audit row for the same attempt.
+	 */
+	public function test_audit_sink_throw_on_success_propagates_without_double_recording(): void {
+		$audit    = $this->throwing_audit_spy();
+		$use_case = new UpdateContent(
+			$this->manager_allowing_update( true ),
+			$this->passing_validator(),
+			$this->repository( self::CURRENT ),
+			$audit
+		);
+
+		$this->expectException( \RuntimeException::class );
+		$this->expectExceptionMessage( 'audit sink unavailable' );
+
+		try {
+			$use_case->execute(
+				array(
+					'post_id'       => 42,
+					'version_token' => self::CURRENT,
+					'title'         => 'New',
+				),
+				5
+			);
+		} finally {
+			self::assertSame( 1, $audit->calls, 'The audit sink must be called exactly once per attempt.' );
+		}
+	}
+
 	// --- fakes -----------------------------------------------------------
 
 	/**
@@ -271,6 +302,37 @@ final class UpdateContentTest extends TestCase {
 			 */
 			public function record( AuditEvent $event ): void {
 				$this->events[] = $event;
+			}
+		};
+	}
+
+	/**
+	 * Creates an audit log whose record() always throws, simulating a broken
+	 * audit sink (e.g. a `wpcb_mutation` action listener that throws). Used to
+	 * prove that such a throw propagates directly to the caller and is recorded
+	 * exactly once, never caught and misrecorded as a second failure row.
+	 *
+	 * @return AuditLog&object{calls: int}
+	 */
+	private function throwing_audit_spy(): AuditLog {
+		return new class() implements AuditLog {
+			/**
+			 * Number of times record() has been invoked.
+			 *
+			 * @var int
+			 */
+			public int $calls = 0;
+
+			/**
+			 * Counts the call and always throws.
+			 *
+			 * @param AuditEvent $event Pre-redacted event.
+			 * @throws \RuntimeException Always; simulates a broken audit sink.
+			 */
+			public function record( AuditEvent $event ): void {
+				++$this->calls;
+
+				throw new \RuntimeException( 'audit sink unavailable' );
 			}
 		};
 	}
