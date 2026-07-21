@@ -221,14 +221,20 @@ final class WPCB_Mutation_Verification {
 	}
 
 	/**
-	 * Check 1: proves the writes-enabled flag gates write-ability registration.
+	 * Check 1: proves MutationAbilities::register_abilities() correctly
+	 * registers/unregisters the write abilities when driven directly.
 	 *
-	 * A fresh request is required to observe Plugin::boot()'s own flag read
-	 * (guarded by a static "booted" flag), so this drives the exact same
-	 * MutationAbilities::register_abilities() production code directly: first
-	 * proving absence with the abilities unregistered (the off state), then
-	 * proving presence by invoking that same registration method with a fresh
-	 * instance bound to the flag-on branch's real dependencies (the on state).
+	 * SCOPE: this proves the registration *mechanism* only. It does NOT
+	 * re-exercise Plugin::boot()'s own `if ( get_option( Installer::WRITES_ENABLED_OPTION ) )`
+	 * gate in src/Plugin.php. A fresh request is required to observe that
+	 * boot-time conditional (Plugin::boot() is guarded by a static "booted"
+	 * flag and cannot be re-run mid-process), so this instead drives the
+	 * exact same MutationAbilities::register_abilities() production code
+	 * directly: first proving absence with the abilities unregistered (the
+	 * off state), then proving presence by invoking that same registration
+	 * method with a fresh instance bound to the flag-on branch's real
+	 * dependencies (the on state). A regression in Plugin.php's own
+	 * flag-gating `if` statement would NOT be caught by this check.
 	 *
 	 * Registration is invoked directly (not via do_action('wp_abilities_api_init'))
 	 * because that hook has already fired once during this request's real boot;
