@@ -3,7 +3,7 @@
  * Plugin Name: WP Content Bridge
  * Plugin URI:  https://github.com/isudevelopment/wp-content-bridge
  * Description: Provider-neutral WordPress content and SEO abilities for MCP and other agent clients.
- * Version:     0.1.0-dev
+ * Version:     0.1.1
  * Requires at least: 7.0
  * Requires PHP: 8.2
  * Author:      ISU Development
