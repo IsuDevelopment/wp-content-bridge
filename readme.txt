@@ -12,15 +12,22 @@ Provider-neutral WordPress content and SEO abilities for MCP and other agent cli
 
 == Description ==
 
-The read-only content core exposes access-aware search, content detail, and safe diagnostics through the WordPress Abilities API. Responses use strict schemas, native WordPress object permissions, per-post-type policy, bounded search, and an explicit content payload limit.
+The read-only content core exposes access-aware search, content detail, provider-neutral SEO, and safe diagnostics through the WordPress Abilities API. Responses use strict schemas, native WordPress object permissions, per-post-type policy, bounded search, and an explicit content payload limit. A Yoast SEO adapter covers Yoast Free / Premium / Local 28.x.
 
-SEO providers and MCP transport are planned separately and are not included in the current development build.
+Safe write abilities (create draft, update content, update SEO) are also available, gated behind an off-by-default feature flag, per-post-type write policy, dedicated capabilities, and optimistic concurrency. Publishing is not yet supported.
+
+MCP transport is provided separately by the official WordPress MCP Adapter and is not bundled with this plugin.
 
 == Installation ==
 
 Install a packaged release or run Composer before activating a source checkout.
 
 == Changelog ==
+
+= Unreleased =
+* Added the `wp-content-bridge/create-draft` and `wp-content-bridge/update-content` write abilities, gated behind the `wpcb_writes_enabled` flag, dedicated capabilities, and per-post-type policy.
+* Added the `wp-content-bridge/update-seo` write ability: writes a fixed Yoast Free core-field SEO allowlist on an existing post and returns the re-read effective SEO.
+* Added optimistic-concurrency version tokens, WordPress revisions on update, idempotent draft creation, and a redacted write audit log.
 
 = 0.1.0 =
 * Added the standalone plugin scaffold and architecture documentation.

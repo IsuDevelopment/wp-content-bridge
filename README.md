@@ -63,21 +63,35 @@ Yoast indexables-table rows are ever returned.
 - ChatGPT has completed the five-ability read scenario live.
 - Setup guides: `docs/setup/MCP_ADAPTER.md`, `docs/setup/CHATGPT_CONNECTOR.md`.
 
-### Write foundation (Milestone 5 Plan 1, complete — no live writes yet)
+### Write abilities (Milestone 5 Plans 2–3, complete — off by default)
 
-The scaffolding for safe writes is in place but **no write operation is wired or
-reachable yet**. Present:
+Three write abilities are implemented and reachable once an administrator
+turns on `wpcb_writes_enabled` (still off by default) and the relevant
+per-post-type policy:
+
+| Ability | What it does |
+|---|---|
+| `wp-content-bridge/create-draft` | Creates a new post/page/CPT, always as `draft` — no status input, so it can never publish as a side effect. Supports an idempotency key for safe replay. |
+| `wp-content-bridge/update-content` | Updates title/content/excerpt/taxonomies on an existing post via optimistic concurrency (`version_token`); creates a WordPress revision on every write; never touches `post_status`. |
+| `wp-content-bridge/update-seo` | Writes a fixed Yoast Free core-field SEO allowlist (title, meta description, focus keyphrase, canonical, robots index/follow, Open Graph, Twitter) on an existing post, then re-reads and returns the resolved `effective_seo`. A field outside the allowlist rejects the whole request (`wpcb_seo_field_unsupported`). |
+
+Shared invariants across all three:
 
 - `VersionToken` optimistic-concurrency primitive (mismatch → `wpcb_conflict`);
-- capabilities `wpcb_edit_content`, `wpcb_manage_seo`, `wpcb_publish_content`
-  granted to `administrator`;
-- two master feature flags — `wpcb_writes_enabled` and `wpcb_publish_enabled` —
-  both **off by default**; abilities are not registered while their flag is off,
-  so they are invisible over MCP;
+- capabilities `wpcb_edit_content` (create-draft/update-content) and
+  `wpcb_manage_seo` (update-seo), plus native WordPress object capabilities and
+  per-post-type policy (`ContentAccessManager`) — independently enforced gates;
+- the `wpcb_writes_enabled` master flag and (separately) `wpcb_publish_enabled`
+  for publishing — both **off by default**; abilities are not registered while
+  their flag is off, so they are invisible over MCP;
 - a capped `{prefix}wpcb_audit` table + `do_action( 'wpcb_mutation', … )` hook
-  recording field **names** only (never content or secrets).
+  recording field **names** only (never content, SEO values, or secrets).
 
-See the roadmap below for what unlocks the actual write abilities.
+**Not yet visible to any MCP client:** the site-infrastructure MCP glue still
+hardcodes an explicit five-read-ability allowlist that has not been updated to
+include any of the three write abilities — see `docs/setup/MCP_ADAPTER.md`.
+
+`publish-content` (Plan 4) remains planned; see the roadmap below.
 
 ---
 
@@ -143,10 +157,12 @@ cd "/Users/lukaszbiedron/Local Sites/kormas-isu/app/public"
 wp eval 'require "<repo>/tests/Integration/abilities-runtime-verification.php";'
 wp eval 'require "<repo>/tests/Integration/authorization-matrix.php";'
 wp eval 'require "<repo>/tests/Integration/writes-foundation-verification.php";'
+wp eval 'require "<repo>/tests/Integration/writes-mutation-verification.php";'
+wp eval 'require "<repo>/tests/Integration/writes-seo-verification.php";'
 ```
 
-**Current baseline:** PHPCS clean · PHPStan 0 errors · PHPUnit 85 tests /
-211 assertions · all runtime verifiers pass on WordPress 7.0.1.
+**Current baseline:** PHPCS clean · PHPStan 0 errors · PHPUnit 136 tests /
+341 assertions · all runtime verifiers pass on WordPress 7.0.1.
 
 Read [AGENTS.md](AGENTS.md) before making changes, and `.continue-here.md` for
 the current continuation point.
@@ -159,10 +175,11 @@ the current continuation point.
 |---|---|
 | M0 scaffold · M1 read core · M2 Yoast Free SEO · M3 Premium/Local + editorial | ✅ complete |
 | M4 Phase 1 — ChatGPT MCP read interoperability | ✅ complete (staging TLS re-consent pending) |
-| **M5 writes** — executed as 4 plans | 🚧 Plan 1 (foundation) done |
-| ↳ Plan 2 — `create-draft` + `update-content` | ⏭ next |
-| ↳ Plan 3 — `update-seo` (Yoast Free allowlist) | planned |
-| ↳ Plan 4 — `publish-content` (gated) + `list-block-patterns` | planned |
+| **M5 writes** — executed as 4 plans | 🚧 Plans 1–3 done |
+| ↳ Plan 1 — writes foundation | ✅ complete |
+| ↳ Plan 2 — `create-draft` + `update-content` | ✅ complete |
+| ↳ Plan 3 — `update-seo` (Yoast Free allowlist) | ✅ complete |
+| ↳ Plan 4 — `publish-content` (gated) + `list-block-patterns` | ⏭ next |
 | M8 — optional Agents API integration | deferred (needs ADR reassessment) |
 
 Details: [docs/plan/IMPLEMENTATION_PLAN.md](docs/plan/IMPLEMENTATION_PLAN.md).
