@@ -11,24 +11,31 @@ namespace IsuDev\WPContentBridge;
 
 use IsuDev\WPContentBridge\Adapter\Admin\ContentAccessSettingsPage;
 use IsuDev\WPContentBridge\Adapter\Abilities\ContentAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\MutationAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\SeoAbilities;
 use IsuDev\WPContentBridge\Application\Content\GetContent;
 use IsuDev\WPContentBridge\Application\Content\SearchContent;
 use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessManager;
 use IsuDev\WPContentBridge\Application\Editorial\GetEditorialContext;
+use IsuDev\WPContentBridge\Application\Mutation\CreateDraft;
+use IsuDev\WPContentBridge\Application\Mutation\UpdateContent;
 use IsuDev\WPContentBridge\Application\Seo\NullSeoProvider;
 use IsuDev\WPContentBridge\Application\Seo\GetSeo;
 use IsuDev\WPContentBridge\Application\Seo\SameSiteSeoTargetFactory;
 use IsuDev\WPContentBridge\Application\Seo\SeoProvider;
 use IsuDev\WPContentBridge\Application\Seo\SeoProviderRegistry;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\Installer;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\PhpBlockMarkupValidator;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressAuditLog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentAccessSettingsRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentMutationRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentTypeCatalog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressEditorialContextRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressRenderedSchemaReader;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressTaxonomyCatalog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoTargetAccess;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressTransientIdempotencyStore;
 use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastSeoProvider;
 
 /**
@@ -96,10 +103,22 @@ final class Plugin {
 			new SameSiteSeoTargetFactory( home_url( '/' ) )
 		) )->register_hooks();
 
+		if ( get_option( Installer::WRITES_ENABLED_OPTION ) ) {
+			$mutation_repository = new WordPressContentMutationRepository();
+			$block_validator     = new PhpBlockMarkupValidator();
+			$idempotency         = new WordPressTransientIdempotencyStore();
+			$audit_log           = new WordPressAuditLog();
+
+			( new MutationAbilities(
+				new CreateDraft( $manager, $block_validator, $mutation_repository, $idempotency, $audit_log ),
+				new UpdateContent( $manager, $block_validator, $mutation_repository, $audit_log )
+			) )->register_hooks();
+		}
+
 		/**
 		 * Fires after WP Content Bridge has loaded its composition root.
 		 *
-		 * Read-only content abilities have registered their WordPress hooks.
+		 * Read-only content abilities, and write abilities if enabled, have registered their WordPress hooks.
 		 */
 		do_action( 'wp_content_bridge_loaded' );
 	}

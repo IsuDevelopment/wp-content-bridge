@@ -304,11 +304,23 @@ Reviewed clean (0 Critical/Important); `composer check` green
 (85 tests / 211 assertions); the `wp eval` runtime verifier
 (`tests/Integration/writes-foundation-verification.php`) passes.
 
-### Plan 2 — `create-draft` + `update-content` (next)
+### Plan 2 — `create-draft` + `update-content` (in progress — Tasks 1–8 of 13 done)
+
+In progress on branch `feat/m5-create-draft-update-content` (unmerged) via
+subagent-driven development. Plan:
+`docs/superpowers/plans/2026-07-20-m5-create-draft-update-content.md`. Tasks 1–8
+(the write-cap allowlist, all four Domain DTOs, both use cases + ports/failures,
+the block-markup validator, and the WordPress mutation repository) are complete
+and review-clean (latest commit `33e5d6d`; suite 117/302, static clean, `wp eval`
+smokes pass). Remaining: Task 9 idempotency store, Task 10 additive `version_token`
+on `get-content`, Task 11 `MutationAbilities` + schemas, Task 12 `Plugin.php`
+flag-gated wiring + settings checkbox, Task 13 runtime verifier, then final review.
+See `.continue-here.md` for the resume point and SDD runbook.
 
 - **First step (carried from Plan 1 review):** extend `phpcs.xml.dist`
   `WordPress.WP.Capabilities` `custom_capabilities` with `wpcb_edit_content`,
   `wpcb_manage_seo`, `wpcb_publish_content` before the permission callbacks land.
+  *(Done — Task 1.)*
 - `DraftInput` / `ContentUpdate` DTOs; `ContentMutationRepository` port +
   `WordPressContentMutationRepository` (`wp_insert_post` / `wp_update_post`,
   revisions);

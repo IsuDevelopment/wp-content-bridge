@@ -14,6 +14,7 @@ use IsuDev\WPContentBridge\Domain\Content\ContentDetail;
 use IsuDev\WPContentBridge\Domain\Content\ContentQuery;
 use IsuDev\WPContentBridge\Domain\Content\ContentSearchResult;
 use IsuDev\WPContentBridge\Domain\Content\ContentSummary;
+use IsuDev\WPContentBridge\Domain\Mutation\VersionToken;
 use WP_Post;
 use WP_Query;
 
@@ -145,11 +146,19 @@ final class WordPressContentRepository implements ContentRepository {
 			};
 		}
 
+		$version_token = VersionToken::for_content(
+			$post->post_modified_gmt,
+			$post->post_title,
+			$post->post_content,
+			$post->post_status
+		);
+
 		return new ContentDetail(
 			$this->summary( $post ),
 			$selected_representations,
 			$selected_relationships,
 			hash( 'sha256', $post->ID . '|' . $post->post_modified_gmt . '|' . $post->post_content ),
+			$version_token,
 		);
 	}
 
