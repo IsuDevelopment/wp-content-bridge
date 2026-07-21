@@ -2,6 +2,13 @@
 
 ## Current phase
 
+**The root README ability catalog was expanded on 2026-07-21.** It now gives a
+standalone, factual description of every implemented ability, including its
+registration gate, WPCB capability, main inputs and outputs, bounds, native
+authorization, mutation safeguards, cache behavior, settings, MCP boundary,
+and unsupported operations. Planned `transition-content-status` remains
+clearly separated from the 12 abilities available in version 0.1.4.
+
 **Version 0.1.4 trash slice and status-boundary decision are code-complete on
 2026-07-21.** ADR 0015 replaces the never-released `publish-content` plan with
 the future `transition-content-status` ability: an explicit transition graph,
