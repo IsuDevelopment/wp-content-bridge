@@ -13,6 +13,7 @@ use IsuDev\WPContentBridge\Adapter\Admin\ContentAccessSettingsPage;
 use IsuDev\WPContentBridge\Adapter\Abilities\ContentAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\MutationAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\SeoAbilities;
+use IsuDev\WPContentBridge\Application\Access\IntegrationAccessManager;
 use IsuDev\WPContentBridge\Application\Content\GetContent;
 use IsuDev\WPContentBridge\Application\Content\SearchContent;
 use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessManager;
@@ -32,6 +33,7 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentAccessSettin
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentMutationRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentTypeCatalog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressEditorialContextRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressIntegrationAccessRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressRenderedSchemaReader;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressTaxonomyCatalog;
@@ -74,7 +76,10 @@ final class Plugin {
 
 		if ( is_admin() ) {
 
-			( new ContentAccessSettingsPage( $manager ) )->register_hooks();
+			( new ContentAccessSettingsPage(
+				$manager,
+				new IntegrationAccessManager( new WordPressIntegrationAccessRepository() )
+			) )->register_hooks();
 		}
 
 		$content_repository = new WordPressContentRepository();

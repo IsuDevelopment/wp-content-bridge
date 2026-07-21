@@ -12,6 +12,14 @@ Requirement identifiers are stable references for code, tests, ADRs, and release
 - **FR-ACCESS-004:** Enabling a configured operation never grants a WordPress role/object capability and never activates an unimplemented ability.
 - **FR-ACCESS-005:** Post/page default to read/search; custom post types default to deny-all.
 - **FR-ACCESS-006:** Internal WordPress content types and attachments are excluded unless a later explicit specification adds them.
+- **FR-ACCESS-007:** An authorized administrator can select one existing,
+  non-administrator WordPress user as the managed integration principal and
+  assign an exact allowlisted set of operational WPCB capabilities without
+  changing that user's native role or object capabilities.
+- **FR-ACCESS-008:** Replacing the managed integration principal revokes only
+  the WPCB operational capabilities managed by this surface from the previous
+  principal. Multisite assignment remains unavailable until separately
+  specified.
 
 ### Content discovery
 

@@ -63,6 +63,14 @@ Yoast indexables-table rows are ever returned.
 - ChatGPT has completed the five-ability read scenario live.
 - Setup guides: `docs/setup/MCP_ADAPTER.md`, `docs/setup/CHATGPT_CONNECTOR.md`.
 
+The plugin settings page includes **Integration user access** for a single-site
+deployment. Enter an existing, dedicated non-administrator WordPress user's
+login or email and assign only the required Content Bridge capabilities. The
+user must already have native WordPress `read` through its role; object-level
+permissions, content-type policy, feature flags, and connector grants remain
+independent gates. Selecting a different managed user revokes the four managed
+WPCB operational capabilities from the previous account.
+
 ### Write abilities (Milestone 5 Plans 2–3, complete — off by default)
 
 Three write abilities are implemented and reachable once an administrator

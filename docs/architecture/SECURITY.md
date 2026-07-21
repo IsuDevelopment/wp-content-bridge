@@ -32,7 +32,16 @@ Plugin capabilities:
 - `wpcb_publish_content`
 - `wpcb_manage_settings`
 
-An ability requires both its plugin capability and the native object capability. Administrators receive management capabilities on activation; broader role assignment must be explicit. Multisite/network behavior requires a separate ADR before support is claimed.
+An ability requires both its plugin capability and the native object capability.
+Administrators receive management capabilities on activation. On single-site
+installations, an administrator with `wpcb_manage_settings`, `promote_users`,
+and per-target `edit_user` may explicitly manage the four operational WPCB
+capabilities for one dedicated, non-administrator integration user from the
+plugin settings page. The surface never grants native WordPress capabilities or
+`wpcb_manage_settings`, rejects unknown capability tokens, requires native
+`read`, and revokes its managed grants from the previous principal when the
+selection changes. Multisite/network behavior requires a separate ADR before
+support is claimed.
 
 ## Threats and mitigations
 
@@ -42,7 +51,13 @@ Mitigations: deny-by-default custom post-type policy, object-level filtering, bo
 
 ### Privilege escalation
 
-Mitigations: shared content-operation policy, required permission callbacks, per-object `current_user_can`, separate publish/SEO capabilities, no caller-supplied user identity, no generic action dispatcher. Configuration enables a gate but never grants a capability.
+Mitigations: shared content-operation policy, required permission callbacks,
+per-object `current_user_can`, separate publish/SEO capabilities, no
+caller-supplied user identity, no generic action dispatcher. Content-type
+configuration enables a gate but never grants a capability. The separate
+integration-principal form uses a nonce plus `wpcb_manage_settings`,
+`promote_users`, and per-target `edit_user`; it accepts only the closed WPCB
+operational capability enum and refuses administrator principals.
 
 ### Prompt injection in stored content
 

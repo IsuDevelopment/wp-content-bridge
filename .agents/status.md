@@ -63,6 +63,34 @@ verified.
 
 ## Completed
 
+- Version 0.1.2 adds single-site integration-principal capability management to
+  the plugin settings page. An administrator can bind one existing dedicated
+  non-administrator user and assign the closed operational WPCB capability
+  allowlist; nonce, `wpcb_manage_settings`, `promote_users`, per-target
+  `edit_user`, native `read`, prior-principal revocation, and multisite denial
+  are enforced. `composer check` is green (141 tests / 351 assertions, PHPCS 0,
+  PHPStan 0). The repeatable WordPress runtime verifier was added but could not
+  be executed in this environment because the local WordPress database runtime
+  was not running (`Error establishing a database connection`).
+- Captured a dedicated media-abilities backlog with P0 priorities for a stable
+  object-envelope `get-media` contract and guaranteed featured-image ID+URL,
+  plus deterministic lookup by ID/URL/filename, `get-media-by-id`, normalized
+  media fields, separate `update-media`, upload/assignment security gates, and
+  optional cache invalidation. The third-party Enable Abilities for MCP plugin
+  is recorded as unverified comparison material, not an implementation
+  dependency.
+- Captured cross-cutting cache invalidation after every agent mutation. The
+  future design uses a provider-neutral port with documented cache-plugin/CDN
+  adapters, derives bounded same-site targets from authoritative write results,
+  forbids caller-driven actions and unrestricted full purges, and reports
+  failure explicitly without rolling back or misreporting a committed write.
+- Captured provider-neutral redirect management as a future backlog item,
+  including the required evaluation of Yoast Premium redirects versus a
+  dedicated redirects plugin and the security gates for any write ability.
+- Captured extended editorial operations in the future backlog: navigation
+  menus, revision restoration, slug/permalink changes, explicit post-status
+  transitions, trash/permanent deletion, author/date changes, and featured
+  image/media upload management with separate authorization and safety gates.
 - Fixed the GitHub release workflow to build with the project's minimum
   supported PHP version (8.2), so production-only Composer installation honors
   the root platform constraint without changing the lock file.

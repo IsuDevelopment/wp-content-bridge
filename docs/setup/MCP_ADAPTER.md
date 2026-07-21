@@ -69,6 +69,12 @@ files; the existing `isudev-mu-plugin-loader.php` is untouched.) This file is th
 only thing wiring the abilities into an MCP server, and it lives on the site
 because the plugin is forbidden from initializing the adapter.
 
+WP Content Bridge 0.1.2+ can assign its operational plugin capabilities to one
+existing dedicated integration user under **Settings → WP Content Bridge →
+Integration user access**. Native WordPress capabilities and this MCP server's
+tool allowlist remain independent gates; the settings surface never changes a
+user role or grants native object permissions.
+
 ```php
 <?php
 /**

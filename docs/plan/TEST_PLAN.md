@@ -19,6 +19,11 @@
 
 - Eligible/excluded post-type discovery and access-option sanitization.
 - Settings menu registration, nonce/Settings API path, and `wpcb_manage_settings` enforcement.
+- Integration-user capability assignment requires `wpcb_manage_settings`,
+  `promote_users`, a valid nonce, and per-target `edit_user`; unknown
+  capabilities are rejected, native `read` is a prerequisite, switching the
+  managed principal revokes only WPCB capabilities from the previous user, and
+  multisite remains unsupported.
 - Plugin bootstrap and hooks.
 - Ability category/registration lifecycle.
 - Input/output schema validation.
@@ -126,6 +131,7 @@ The repeatable local commands are:
 ```bash
 wp eval 'require "/absolute/path/to/wp-content-bridge/tests/Integration/authorization-matrix.php";'
 wp eval 'require "/absolute/path/to/wp-content-bridge/tests/Integration/abilities-runtime-verification.php";'
+wp eval 'require "/absolute/path/to/wp-content-bridge/tests/Integration/integration-access-verification.php";'
 ```
 
 The 2026-07-17 WordPress 7.0.1 run measured a 500-block fixture at 47,000 raw,

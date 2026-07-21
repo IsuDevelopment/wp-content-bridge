@@ -38,6 +38,9 @@ if ( false !== (bool) get_option( Installer::WRITES_ENABLED_OPTION ) ) {
 if ( false !== (bool) get_option( Installer::PUBLISH_ENABLED_OPTION ) ) {
 	$failures[] = 'wpcb_publish_enabled is not false by default';
 }
+if ( 0 !== (int) get_option( Installer::INTEGRATION_USER_OPTION, 0 ) ) {
+	$failures[] = 'wpcb_integration_user_id is not zero by default';
+}
 
 global $wpdb;
 $table  = Installer::audit_table_name();

@@ -46,7 +46,19 @@ Option: `wpcb_content_type_access`.
 
 The value is a bounded nested boolean map. Input is accepted only through the Settings API sanitizer. Unknown operation keys are removed. Valid saved rows for a temporarily missing post type are retained. The option is not exposed through the REST Settings API.
 
-Settings access requires `wpcb_manage_settings`. The administrator role receives that capability through the versioned installer. Other roles must be granted it explicitly by site code or a future role-management interface.
+Settings access requires `wpcb_manage_settings`. The administrator role receives
+that capability through the versioned installer.
+
+On single-site installations, the settings page also manages one dedicated,
+existing integration user. This surface assigns only the closed operational
+allowlist (`wpcb_read_content`, `wpcb_edit_content`, `wpcb_manage_seo`, and
+`wpcb_publish_content`); it never grants `wpcb_manage_settings`, changes a role,
+or grants native WordPress capabilities. The acting administrator additionally
+needs `promote_users` and `edit_user` for both the new and any replaced managed
+principal. The target must not be an administrator and must already have native
+`read`. Switching principals removes only the four managed WPCB capabilities
+from the previous user. Multisite principal management remains unavailable
+pending a dedicated ADR.
 
 ## Shared-service rule
 

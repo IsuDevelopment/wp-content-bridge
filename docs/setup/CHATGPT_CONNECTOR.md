@@ -60,6 +60,14 @@ capabilities `read` + `wpcb_read_content` only, no role):
 - `wp-content-bridge/get-editorial-context`
 - `wp-content-bridge/get-diagnostics`
 
+On a single-site installation running WP Content Bridge 0.1.2 or newer, an
+administrator can assign the WPCB capability through **Settings → WP Content
+Bridge → Integration user access**. Select an existing dedicated user that
+already has native WordPress `read` (a Subscriber role is sufficient for the
+read-only surface), then enable **Read content, SEO, editorial context, and
+diagnostics**. The plugin does not create the user, change its role, or change
+miniOrange's separate ability grant.
+
 > **Live consent caveat.** Task 6's live ChatGPT walkthrough was performed as
 > the WordPress administrator `dev` with the full ability catalog available,
 > for exploration. That is **not** the shipped shape. Before treating a

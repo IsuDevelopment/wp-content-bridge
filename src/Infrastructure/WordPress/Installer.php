@@ -14,11 +14,12 @@ namespace IsuDev\WPContentBridge\Infrastructure\WordPress;
  */
 final class Installer {
 
-	private const SCHEMA_VERSION = 4;
+	private const SCHEMA_VERSION = 5;
 	private const VERSION_OPTION = 'wpcb_schema_version';
 
-	public const WRITES_ENABLED_OPTION  = 'wpcb_writes_enabled';
-	public const PUBLISH_ENABLED_OPTION = 'wpcb_publish_enabled';
+	public const WRITES_ENABLED_OPTION   = 'wpcb_writes_enabled';
+	public const PUBLISH_ENABLED_OPTION  = 'wpcb_publish_enabled';
+	public const INTEGRATION_USER_OPTION = 'wpcb_integration_user_id';
 
 	private const AUDIT_TABLE = 'wpcb_audit';
 
@@ -32,6 +33,7 @@ final class Installer {
 		add_option( WordPressContentAccessSettingsRepository::OPTION_NAME, array(), '', false );
 		add_option( self::WRITES_ENABLED_OPTION, false, '', false );
 		add_option( self::PUBLISH_ENABLED_OPTION, false, '', false );
+		add_option( self::INTEGRATION_USER_OPTION, 0, '', false );
 		self::create_audit_table();
 		update_option( self::VERSION_OPTION, self::SCHEMA_VERSION, false );
 	}

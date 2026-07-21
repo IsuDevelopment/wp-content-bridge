@@ -33,6 +33,14 @@ Rules for this flow:
 
 ## Content access feature
 
+- `src/Domain/Access/IntegrationCapability.php` and
+  `IntegrationPrincipal.php` — closed operational grant vocabulary and bounded
+  principal descriptor; no WordPress calls.
+- `src/Application/Access/IntegrationAccessManager.php` and
+  `IntegrationAccessRepository.php` — native-read/admin rejection invariants
+  and the principal persistence port.
+- `src/Infrastructure/WordPress/WordPressIntegrationAccessRepository.php` —
+  exact WPCB user-capability replacement and managed-principal option adapter.
 - `src/Domain/ContentAccess/ContentOperation.php` — stable operation vocabulary and configuration dependencies.
 - `src/Domain/ContentAccess/ContentTypePolicy.php` — immutable normalization and dependency enforcement for one row.
 - `src/Domain/ContentAccess/ContentTypeDefinition.php` — transport-neutral post-type descriptor.
@@ -42,7 +50,13 @@ Rules for this flow:
 - `src/Infrastructure/WordPress/WordPressContentAccessSettingsRepository.php` — `wp_options` adapter.
 - `src/Infrastructure/WordPress/WordPressContentTypeCatalog.php` — registered post-type adapter and eligibility rules.
 - `src/Infrastructure/WordPress/Installer.php` — versioned capability/option setup.
-- `src/Adapter/Admin/ContentAccessSettingsPage.php` — Settings API and HTML adapter; contains no policy rules.
+- `src/Adapter/Admin/ContentAccessSettingsPage.php` — Settings API and HTML
+  adapter for content policy plus the nonce/capability-guarded integration-user
+  form; contains no capability allowlist or content-policy rules.
+- `tests/Unit/Application/Access/IntegrationAccessManagerTest.php` and
+  `tests/Integration/integration-access-verification.php` — allowlist,
+  native-read/admin rejection, exact assignment, prior-principal revocation,
+  and unrelated-capability preservation.
 - `tests/Unit/Domain/ContentAccess/ContentTypePolicyTest.php` — dependency/default parsing contract.
 
 ## Read-only content feature

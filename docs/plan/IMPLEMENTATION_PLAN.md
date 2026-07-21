@@ -272,6 +272,21 @@ Exit gate:
   exercised only via the client-agnostic smoke suite, not a manual walkthrough;
 - writes stay globally blocked.
 
+### Principal capability administration patch — **complete in 0.1.2**
+
+- the settings page can bind one existing, dedicated non-administrator
+  WordPress user as the managed integration principal;
+- the administrator assigns only the closed operational WPCB capability
+  allowlist; native WordPress roles/capabilities and connector grants remain
+  separate;
+- saves require a nonce, `wpcb_manage_settings`, `promote_users`, and
+  per-target `edit_user`; native `read` is required before any WPCB grant;
+- changing the managed principal revokes only managed WPCB capabilities from
+  the previous account; multisite remains blocked pending an ADR;
+- application contract tests and a repeatable WordPress runtime verifier cover
+  validation, exact replacement, revocation, and unrelated-capability
+  preservation.
+
 ## Milestone 5 — writes (draft mutations, SEO writes, controlled publication)
 
 Status: **in progress (Plans 1–2 of 4 complete).** During brainstorming
@@ -441,3 +456,178 @@ Deliverables only after an ADR reassessment:
 - no change to the base abilities contract.
 
 Agents API is not required for external-client usage.
+
+## Future backlog — redirect management
+
+Add bounded redirect-management abilities in a separate, post-MVP phase.
+Before planning implementation, compare a dedicated redirects plugin with
+Yoast Premium redirects as the storage/execution backend.
+
+The public application contract must remain provider-neutral. A selected
+backend should be implemented behind a redirect-provider port so that Yoast or
+a dedicated plugin can be replaced without changing stable ability IDs or
+schemas. The evaluation must cover documented API stability, supported redirect
+types, source-path normalization, redirect-chain and loop detection, duplicate
+or conflicting rules, authorization, optimistic concurrency, audit events,
+post-write verification, import/export portability, and behavior when the
+provider is unavailable. Redirect writes require their own threat-model update,
+capability, disabled-by-default feature flag, schemas, and contract/runtime
+tests; they must never expose arbitrary rewrite rules or direct database access.
+
+## Future backlog — media abilities and featured-image identity
+
+Design a dedicated, bounded media vertical slice rather than treating
+attachments as generic posts or exposing arbitrary post-meta writes. Use the
+publicly available implementation and documentation of the third-party
+**Enable Abilities for MCP** plugin as comparison material before planning, but
+verify its behavior and license independently. Reuse sound contract patterns,
+not provider-specific internals, and document where WP Content Bridge can offer
+safer or more deterministic semantics. The observations below about that plugin
+are user-reported and have not yet been verified in this repository.
+
+### P0 — eliminate media identity and schema ambiguity
+
+- Add a stable `get-media` search ability whose output is an object envelope
+  (for example `items`, `pagination`, and `provenance`), never a raw top-level
+  array that an adapter may interpret as the wrong schema type.
+- Add a separate `get-media-by-id` ability for deterministic retrieval of one
+  authorized attachment; absence and denial must use the same non-enumerating
+  public error shape.
+- Support explicit search selectors for exact positive attachment ID, exact
+  same-site full URL, and normalized filename. Define exact-versus-partial
+  filename behavior, ambiguity handling, bounds, and deterministic ordering;
+  never fetch a caller-supplied remote URL.
+- Return one normalized media record containing at least: attachment `id`,
+  title, filename, canonical attachment/file URL, ALT text, caption,
+  description, and MIME type. Add dimensions, file size, generated sizes, dates,
+  and provenance only after explicit bounds and leakage review.
+- Make featured-image identity unambiguous in content reads by returning both
+  `featured_image_id` and `featured_image_url` together. Today WP Content Bridge
+  already returns `relationships.featured_media.id`, `url`, and `alt_text` when
+  the caller explicitly includes `featured_media`; the future contract must
+  decide whether the ID+URL pair becomes an additive content-summary field or a
+  default relationship so agents cannot accidentally substitute a URL or a
+  different attachment ID. Update schemas and contract tests in the same
+  change.
+
+### P1 — safe media mutation and upload
+
+- Add a semantic `update-media` ability with an explicit allowlist for title,
+  ALT text, caption, and description. Do not route this through a generic
+  `update-post-meta` ability and never expose arbitrary attachment metadata.
+- Require a version token, `wpcb_edit_media` (or a separately accepted
+  capability mapping), native `edit_post` for the attachment, a media feature
+  flag/policy, revision or rollback strategy where WordPress supports it, and a
+  redacted audit event.
+- Add featured-image assignment/removal as a separate content-media operation.
+  Validate that the attachment exists, is readable/usable by the principal, is
+  an allowed image MIME type, and belongs to the current site; return the final
+  ID+URL pair after the write.
+- Add upload as a separate ability requiring `upload_files`, MIME allowlists,
+  file-size/dimension limits, sanitized filenames, bounded metadata, attachment
+  ownership checks, and post-write read-back. Remote import remains a distinct
+  SSRF-reviewed design and must not be implied by upload support.
+- Evaluate an optional cache-invalidation port after media or featured-image
+  changes, following the cross-cutting cache-invalidation backlog below.
+
+Before implementation, add a media access-policy decision and threat-model
+update because `attachment` is intentionally excluded from the current content
+type catalog. Define stable ability IDs, schemas, capability migration,
+optimistic concurrency, audit taxonomy, pagination limits, and WordPress/MCP
+runtime fixtures. The two first delivery priorities are the correct object
+envelope for `get-media` and guaranteed featured-image ID+URL identity.
+
+## Future backlog — cache invalidation after agent mutations
+
+Ensure that every successful AI-initiated mutation becomes visible through the
+site's active cache stack without coupling application services to a concrete
+page-cache, object-cache, hosting-cache, or CDN plugin.
+
+- Add a provider-neutral `CacheInvalidator` application port and a registry of
+  feature-detected infrastructure adapters. Integrations must use documented
+  public APIs from supported cache providers; never delete cache files, mutate
+  cache tables directly, or accept arbitrary action names/cache keys from an
+  MCP caller.
+- First determine whether WordPress core and the detected cache plugin already
+  invalidate the affected object/page on standard APIs such as
+  `wp_update_post()`. Avoid duplicate purges and add an active adapter only when
+  the provider's normal hooks do not cover the mutation path reliably.
+- Build a bounded invalidation plan from authoritative mutation results, not
+  caller-supplied URLs. Depending on the operation it may contain the exact
+  canonical object URL, both old and new URLs after a slug/permalink change,
+  relevant archive/home/feed/sitemap dependencies, attachment URLs, and
+  provider-generated SEO/schema output. Every target must be same-site unless a
+  separately configured CDN adapter owns it.
+- Run invalidation only after the write, concurrency checks, provider re-read,
+  and resulting canonical identity are known. A purge failure must not roll
+  back or misreport a committed content/SEO/media mutation; return an explicit
+  `cache_invalidation` result (`not_required`, `success`, `partial`,
+  `unsupported`, or `failed`) with bounded provider-safe warnings.
+- Emit redacted audit/observability data containing provider identity, target
+  count, outcome, and safe error code, never cache credentials, filesystem
+  paths, raw provider configuration, or secret CDN tokens.
+- Make repeated invalidation idempotent, coalesce duplicate targets, cap the
+  number of URLs/objects per mutation, and prevent an integration account from
+  triggering an unrestricted full-site purge. A manual full purge, if ever
+  supported, must be a separate administrator-only operation and is not an MCP
+  content ability.
+- Expose safe diagnostics showing whether a cache provider was detected,
+  whether an adapter is supported, and the last bounded invalidation outcome.
+  Provider-specific failures degrade explicitly and must never break content
+  reads.
+
+Apply this contract to `update-content`, `update-seo`, publication/status
+transitions, slug changes, redirect writes, menu changes, revision restoration,
+featured-image/media changes, and deletions. Before implementation, research
+the public invalidation APIs and automatic-hook behavior of the cache plugins
+actually targeted by the compatibility matrix. Add no provider claim without a
+fixture or manual runtime test.
+
+Required tests: no cache plugin (safe no-op), automatically invalidating
+provider, explicitly supported purge adapter, unsupported provider, adapter
+exception/timeout, old+new URL invalidation after a slug change, bounded target
+deduplication, no arbitrary URL/action input, no full-site purge, and committed
+write success preserved when cache invalidation fails.
+
+## Future backlog — extended editorial operations
+
+Add the following editorial capabilities after the current write milestone.
+They must remain separate semantic abilities over shared application services;
+do not expand `update-content` into a generic action dispatcher.
+
+- **Navigation menu editing:** support both classic menus and the block-based
+  Navigation model through a normalized menu contract. Require explicit menu
+  selection, bounded item trees, cycle validation, theme/location awareness,
+  native capabilities, optimistic concurrency, revisions where WordPress
+  supports them, and mutation audit events.
+- **Revision restoration:** list bounded revision metadata and restore one
+  explicitly selected revision. Restoration must create/preserve a recoverable
+  revision, require `edit_post`, reject stale targets, and never silently change
+  publication state, author, slug, or publication date.
+- **Slug and permalink changes:** expose a deliberate slug update with collision
+  checks, resulting canonical URL, and post-write verification. Define whether
+  an old-URL redirect is suggested or created through the future redirect
+  provider; never create a redirect implicitly without an explicit policy.
+- **Post-status transitions:** add an explicit finite-state transition ability
+  for editorial states such as draft, pending review, scheduled, published, and
+  private where supported. Keep publication/scheduling behind the dedicated
+  publish feature flag and capability; do not add a free-form `post_status`
+  field to `update-content`.
+- **Trash and permanent deletion:** prefer a reversible move-to-trash operation.
+  Permanent deletion must be a distinct destructive ability with stronger
+  authorization, explicit confirmation/approval semantics, conflict checks,
+  attachment/reference impact reporting, and audit events.
+- **Author and publication-date changes:** allow assignment only to an eligible,
+  explicitly selected WordPress user and enforce native `edit_others_posts` or
+  equivalent type capabilities. Date changes must distinguish authored date,
+  immediate publication, and scheduling, validate timezone handling, and reuse
+  publication gates instead of bypassing them.
+- **Featured image and media management:** follow the dedicated media backlog
+  above; keep retrieval, metadata updates, featured-image assignment, upload,
+  and any remote import as separate semantic operations.
+
+Before implementation, update the content-operation policy vocabulary and
+dependencies, threat model, capability map, Ability schemas, audit taxonomy,
+and runtime authorization matrix for each operation. Media/attachments and
+navigation entities require dedicated access-policy decisions because they are
+intentionally outside the current eligible content-type catalog.
