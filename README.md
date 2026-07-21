@@ -1,238 +1,211 @@
 # WP Content Bridge
 
-WP Content Bridge is a standalone WordPress 7 plugin that exposes secure,
-provider-neutral **content and SEO capabilities** through the WordPress
-Abilities API. The official WordPress MCP Adapter can project those abilities to
-ChatGPT, Codex, Gemini, and other MCP clients — so an agent can read (and, from
-Milestone 5 on, safely write) your site's content and SEO without direct
-database or REST access.
+WP Content Bridge exposes WordPress content, media, block patterns, editorial
+context, and normalized SEO data through the WordPress Abilities API. It also
+provides narrowly scoped draft, content, SEO, and reversible-trash mutations.
 
-The repository is intentionally independent from any site project. During
-development it is symlinked into a local WordPress install for integration
-testing.
+The plugin does not bundle an MCP server, authentication layer, or AI model.
+The official WordPress MCP Adapter can expose selected abilities to MCP clients.
 
-- **WordPress:** 7.0+ **PHP:** 8.2+
-- **Standard:** WordPress Coding Standards (PHPCS), PHPStan max level, PHPUnit 11
-- **Architecture:** DDD layers — Domain → Application → Infrastructure → Adapter
+## Requirements
 
----
+- WordPress 7.0 or newer
+- PHP 8.2 or newer
+- Composer dependencies included in a packaged release or installed locally
+- Optional: Yoast SEO 28.x for SEO reads and writes
+- Optional: Yoast SEO Premium 28.x for keyphrase synonyms and related
+  keyphrases
+- Optional: Yoast Local SEO 15.x for public business/location data resolved
+  from Schema
 
-## What you can do with it today
+## Abilities
 
-### Read abilities (live, read-only)
+All ability IDs use the `wp-content-bridge/` namespace. Every ability declares
+strict JSON Schemas and is exposed to the WordPress REST projection.
 
-Five private Abilities are registered. All require the `wpcb_read_content`
-capability; object reads additionally enforce a per-post-type READ policy **and**
-native WordPress object-access checks.
+| Ability | Availability | Required WPCB capability | Function |
+|---|---|---|---|
+| `search-content` | Always registered | `wpcb_read_content` | Searches configured post types with status, author, taxonomy, date, ordering, and pagination filters. Authorization is applied before pagination. |
+| `get-content` | Always registered | `wpcb_read_content` | Returns one content object with selected raw, rendered, or plain-text representations, optional relationships, payload sizes, and a concurrency token. |
+| `get-url-seo` | Always registered | `wpcb_read_content` | Returns normalized configured and resolved SEO for one readable post ID or same-origin URL. |
+| `get-editorial-context` | Always registered | `wpcb_read_content` | Returns selected post types, taxonomies, terms, observed authors, recent readable content, and public Local SEO entities. |
+| `get-diagnostics` | Always registered | `wpcb_read_content` | Returns safe plugin, WordPress, Abilities API, MCP Adapter, SEO-provider, payload-limit, and readable-post-type status. |
+| `get-media` | `Media library reads` enabled | `wpcb_read_media` | Lists or searches authorized attachments by exact ID, same-site original URL, exact filename, or text query. |
+| `get-media-by-id` | `Media library reads` enabled | `wpcb_read_media` | Returns one authorized attachment by exact ID. |
+| `list-block-patterns` | `Registered block patterns` enabled | `wpcb_read_patterns` | Lists registered local block-pattern metadata and, optionally, complete block markup. |
+| `create-draft` | `Content writes` enabled | `wpcb_edit_content` | Creates a draft with title, Gutenberg markup, excerpt, taxonomy assignments, and an optional idempotency key. It cannot publish. |
+| `update-content` | `Content writes` enabled | `wpcb_edit_content` | Updates title, Gutenberg markup, excerpt, or taxonomy assignments using optimistic concurrency. It does not change post status. |
+| `update-seo` | `Content writes` enabled | `wpcb_manage_seo` | Updates an allowlist of Yoast SEO fields using optimistic concurrency and returns the effective SEO result. |
+| `trash-content` | `Content writes` and `Move content to trash` enabled | `wpcb_delete_content` | Moves one current, authorized object to reversible WordPress trash. It never performs permanent deletion. |
 
-| Ability | What it does |
-|---|---|
-| `wp-content-bridge/search-content` | Authorization-aware content search with bounded taxonomy filters. Authorization is applied **before** pagination; candidate scans are capped at 1,000 and inexact totals are labelled, so unreadable objects never leak through counts. |
-| `wp-content-bridge/get-content` | Single-object detail in raw / rendered / plain-text representations, with per-representation byte sizes and a combined 2 MiB cap (`wpcb_content_too_large`). |
-| `wp-content-bridge/get-url-seo` | Provider-neutral SEO for a post ID or same-origin URL: title, description, canonical, robots, Open Graph, Twitter, and a bounded Schema graph. |
-| `wp-content-bridge/get-editorial-context` | Bounded, context-only composition: selectable `post_types`, `taxonomies`, `terms`, `authors`, `recent_content`, `local_businesses`. Never calls an LLM and never generates a plan. |
-| `wp-content-bridge/get-diagnostics` | Safe environment/provider status (no secrets, no license/update state). |
+The required plugin capability is only one authorization gate. Content and SEO
+object operations also enforce content-type policy and the corresponding native
+WordPress type/object capability. Media additionally requires native
+`read_post` permission for every attachment. Block patterns require native
+editor-level access. Diagnostics require `wpcb_read_content` but do not access
+individual content objects.
 
-Content and SEO stay **composable, not embedded** (ADR 0008): an SEO-provider
-failure can never break an authoritative content read.
+### Content search and retrieval
 
-### Media reads (0.1.3 — off by default)
+`search-content` supports:
 
-Two dedicated read abilities are registered only after an administrator enables
-the `wpcb_media_reads_enabled` setting. They require `wpcb_read_media` plus
-native `read_post` permission for every returned attachment:
+- query text and selected post types/statuses/authors;
+- up to 10 public or REST-visible taxonomy filters;
+- published and modified date ranges;
+- deterministic ordering and pages of up to 100 items.
 
-| Ability | What it does |
-|---|---|
-| `wp-content-bridge/get-media` | Returns a strict object envelope and bounded pagination. Supports exact attachment ID, exact same-site original URL, exact filename, or text search. |
-| `wp-content-bridge/get-media-by-id` | Deterministically returns one authorized attachment without revealing whether a missing result was absent or denied. |
+Search inspects at most 1,000 candidates. The response states whether totals
+are exact and never includes known unreadable objects in pagination totals.
 
-Every media item contains ID, title, filename, URL, ALT, caption, description,
-and MIME type. Content summaries also return `featured_image_id` and
-`featured_image_url` together, or both as null.
+`get-content` accepts a positive `post_id`, selected representations (`raw`,
+`rendered`, `plain_text`), and optional `author`, `taxonomies`,
+`featured_media`, and `revision` relationships. Selected representations share
+a 2 MiB limit. Content summaries contain both `featured_image_id` and
+`featured_image_url`; both are `null` when no readable featured image exists.
+The returned `version_token` is required by update abilities.
 
-Successful bridge mutations also invalidate the affected WordPress post cache.
-When LiteSpeed Cache is active, its public post-scoped purge hook is dispatched
-for the same ID, including metadata-only SEO updates that may not trigger its
-normal post lifecycle integration. WP Content Bridge never performs a global
-cache flush (ADR 0012).
+### SEO
 
-### Block-pattern reads (0.1.3 — off by default)
+`get-url-seo` accepts exactly one `post_id` or same-origin `url`. Its normalized
+response separates:
 
-`wp-content-bridge/list-block-patterns` is registered only after enabling
-`wpcb_pattern_reads_enabled`. It requires `wpcb_read_patterns` plus native
-editor-level permission. The ability returns deterministic, bounded pattern
-metadata by default and optional complete block markup under a combined 2 MiB
-limit. It never exposes pattern file paths or triggers remote WordPress.org
-pattern loading (ADR 0013).
+- configured editor values;
+- resolved public title, description, canonical, robots, Open Graph, Twitter,
+  and Local business data;
+- available SEO/readability analysis;
+- bounded Schema graph;
+- provider provenance, completeness, and warnings.
 
-### SEO (read)
+`update-seo` accepts a `post_id`, current `version_token`, and any supported
+subset of:
 
-A provider-neutral SEO model (`src/Domain/Seo`) with a Yoast adapter
-(`src/Infrastructure/Yoast`) covering **Yoast Free / Premium / Local 28.x**:
+- SEO title, meta description, focus keyphrase, and canonical URL;
+- robots index/follow;
+- Open Graph title/description;
+- Twitter title/description;
+- Yoast Premium primary-keyphrase synonyms and related keyphrases.
 
-- documented Yoast Surfaces output (resolved title/description/canonical/robots/
-  social/Schema);
-- a narrow, version-gated configured-meta allowlist (never arbitrary postmeta);
-- Premium primary/additional keyphrases with optional public scores;
-- Local single- and multiple-location public business profiles, including branch
-  `parentOrganization` schema captured via a bounded same-origin rendered-schema
-  fetch (ADR 0009).
+Unsupported fields reject the complete request. The plugin never exposes or
+writes arbitrary post meta, Yoast options, indexables tables, license data, or
+raw Premium JSON.
 
-No arbitrary postmeta, raw provider options, license/update state, secrets, or
-Yoast indexables-table rows are ever returned.
+### Media
 
-### MCP client interoperability (Milestone 4 Phase 1, complete)
+Media results use object envelopes and contain exactly: attachment ID, title,
+filename, original URL, ALT text, caption, description, and MIME type.
+`get-media` returns up to 100 authorized items per page and scans at most 1,000
+candidates. Missing and denied attachments use the same unavailable response.
 
-- The official `WordPress/mcp-adapter` projects exactly the five read abilities
-  at `/wp-json/wpcb-mcp/mcp` (App-Password auth) — it is site infrastructure,
-  **not** bundled in this plugin (Approach A, ADR 0010).
-- An **external** OAuth 2.1 layer (miniOrange Secure MCP Connector) fronts
-  ChatGPT's connector at `/wp-json/mosmcp/v1/mcp` (DCR + PKCE; token
-  principal-bound to a WordPress user).
-- ChatGPT has completed the five-ability read scenario live.
-- Setup guides: `docs/setup/MCP_ADAPTER.md`, `docs/setup/CHATGPT_CONNECTOR.md`.
+Media upload, metadata updates, deletion, and featured-image assignment are not
+implemented.
 
-The plugin settings page includes **Integration user access** for a single-site
-deployment. Enter an existing, dedicated non-administrator WordPress user's
-login or email and assign only the required Content Bridge capabilities. The
-user must already have native WordPress `read` through its role; object-level
-permissions, content-type policy, feature flags, and connector grants remain
-independent gates. Selecting a different managed user revokes the six managed
-WPCB operational capabilities from the previous account.
+### Block patterns
 
-### Write abilities (Milestone 5 Plans 2–3, complete — off by default)
+`list-block-patterns` filters by text, namespace, category, or post type. It
+returns metadata only by default and up to 50 items per page. With
+`include_content: true`, complete block markup is returned under a combined
+2 MiB limit. Pattern file paths and unknown registry properties are excluded;
+remote WordPress.org patterns are not loaded by this ability.
 
-Three write abilities are implemented and reachable once an administrator
-turns on `wpcb_writes_enabled` (still off by default) and the relevant
-per-post-type policy:
+### Writes
 
-| Ability | What it does |
-|---|---|
-| `wp-content-bridge/create-draft` | Creates a new post/page/CPT, always as `draft` — no status input, so it can never publish as a side effect. Supports an idempotency key for safe replay. |
-| `wp-content-bridge/update-content` | Updates title/content/excerpt/taxonomies on an existing post via optimistic concurrency (`version_token`); creates a WordPress revision on every write; never touches `post_status`. |
-| `wp-content-bridge/update-seo` | Writes the version-tested Yoast Free core-field allowlist plus normalized Premium 28.x primary synonyms and related keyphrases, then re-reads `effective_seo`. Raw Premium JSON and fields outside the allowlist are rejected. |
+`create-draft`, `update-content`, `update-seo`, and `trash-content` are off by
+default. Their shared safeguards are:
 
-Shared invariants across all three:
+- a global write switch plus a matching per-post-type policy;
+- dedicated WPCB and native WordPress capabilities;
+- optimistic concurrency for mutations of existing objects;
+- WordPress revisions for content updates and trash attempts;
+- an audit record containing field names, not content or SEO values;
+- no publication side effect;
+- post-scoped cache invalidation after a successful mutation.
 
-- `VersionToken` optimistic-concurrency primitive (mismatch → `wpcb_conflict`);
-- capabilities `wpcb_edit_content` (create-draft/update-content) and
-  `wpcb_manage_seo` (update-seo), plus native WordPress object capabilities and
-  per-post-type policy (`ContentAccessManager`) — independently enforced gates;
-- the `wpcb_writes_enabled` master flag and (separately) `wpcb_publish_enabled`
-  for publishing — both **off by default**; abilities are not registered while
-  their flag is off, so they are invisible over MCP;
-- a capped `{prefix}wpcb_audit` table + `do_action( 'wpcb_mutation', … )` hook
-  recording field **names** only (never content, SEO values, or secrets).
+Cache invalidation calls `clean_post_cache()` for the changed object. If
+LiteSpeed Cache is active, the plugin also dispatches its public post-specific
+purge hook. It never performs a global cache purge.
 
-**Not yet visible to any MCP client:** the site-infrastructure MCP glue still
-hardcodes an explicit five-read-ability allowlist that has not been updated to
-include pattern/media reads or any of the three write abilities — see
-`docs/setup/MCP_ADAPTER.md`.
+`trash-content` additionally requires the per-type Trash policy, native
+`delete_post`, and a current `version_token`. It refuses to execute when
+WordPress trash retention is disabled, because WordPress would otherwise fall
+back to permanent deletion. Already trashed, `auto-draft`, and `inherit`
+objects are rejected. Restoration and permanent deletion are separate future
+operations.
 
-`publish-content` (Plan 4) remains planned; see the roadmap below.
+## Settings and access control
 
----
+The settings page is at **Settings → WP Content Bridge** and requires
+`wpcb_manage_settings`.
 
-## Security model (at a glance)
+It provides:
 
-- **Least privilege:** every ability is capability-gated; writes add per-operation
-  capabilities on top of two master flags that are off until an administrator
-  turns them on.
-- **Publication is doubly gated:** `publish-content` needs its own
-  `wpcb_publish_enabled` flag *and* the `wpcb_publish_content` capability; no
-  create/update path can publish.
-- **Optimistic concurrency:** writes carry a `version_token` read from
-  `get-content`; a stale token is rejected with `wpcb_conflict` and never
-  overwrites a newer edit.
-- **Redacted audit:** the audit table stores who/which-ability/which-fields and
-  outcome — never post content or secret values.
-- **No ambient authority:** MCP/OAuth transport is external and principal-bound;
-  a credential can never exceed its bound WordPress user's authority.
+- per-post-type policies for Read, Search, Create draft, Update content, Update
+  SEO, Trash, and reserved status-transition access;
+- independent master switches for media reads, block-pattern reads, content
+  writes, and destructive trash access;
+- assignment of the closed WPCB capability set to one existing integration
+  user.
 
-Full model: `docs/architecture/SECURITY.md`.
+Unsaved `post` and `page` policies default to Read and Search. Other eligible
+post types default to no access. Search and every write policy require Read;
+invalid combinations are disabled during normalization.
 
----
+The managed integration user must be an existing non-administrator with native
+WordPress `read`. The interface can assign:
 
-## Architecture
+- `wpcb_read_content`
+- `wpcb_read_media`
+- `wpcb_read_patterns`
+- `wpcb_edit_content`
+- `wpcb_manage_seo`
+- `wpcb_publish_content` (reserved for public/scheduled status transitions)
+- `wpcb_delete_content`
 
-Strict DDD layering (enforced in review — see `docs/architecture/CODE_MAP.md`):
+Saving replaces that user's exact WPCB capability set. Selecting another user
+revokes the managed WPCB capabilities from the previous user without changing
+unrelated WordPress capabilities. Integration-user management is currently
+disabled on multisite.
 
+The status-transition policy, `wpcb_publish_content`, and the internal
+publication flag are reserved for a future `transition-content-status`
+ability. Publication and scheduling will require both native `publish_post`
+and the extra publication gate. Configuring the reserved policy or capability
+does not currently expose status changes.
+
+## MCP integration
+
+Abilities are the plugin's public application contract. MCP is an optional
+projection. Install and configure the official WordPress MCP Adapter separately,
+then explicitly allow the abilities required by the client. Adapter and OAuth
+allowlists can further restrict access; they never grant authority that the
+bound WordPress user does not have.
+
+See [MCP Adapter setup](docs/setup/MCP_ADAPTER.md) and
+[ChatGPT connector setup](docs/setup/CHATGPT_CONNECTOR.md).
+
+## Not implemented
+
+The current version does not provide abilities for publication or other status
+transitions, slug/permalink changes, author/date changes, permanent deletion,
+trash restoration, revision restoration, navigation-menu editing, redirects,
+media writes/uploads, or featured-image assignment.
+
+## Installation from source
+
+```bash
+composer install --no-dev --optimize-autoloader
 ```
-src/
-  Domain/          pure PHP, never calls WordPress (ContentAccess, Content, Seo, Mutation)
-  Application/     use cases + ports, never calls WordPress (…/Mutation ports live here)
-  Infrastructure/  the ONLY layer allowed to call WordPress (WordPress/, Yoast/)
-  Adapter/         maps I/O + WP_Error; Abilities registration
-```
 
-- **Domain / Application** are framework-free and unit-tested with fakes (PHPUnit).
-- **Infrastructure** (WordPress/Yoast calls) is verified by runtime scripts in
-  `tests/Integration/` run via `wp eval`.
-- DTOs are `final readonly` with a factory that throws `InvalidArgumentException`
-  on bad input.
+Activate **WP Content Bridge** in WordPress, then configure access under
+**Settings → WP Content Bridge**. The production host must use PHP 8.2 or newer.
 
----
-
-## Development
+For development:
 
 ```bash
 composer install
-composer check          # PHPCS + PHPStan (max) + PHPUnit
+composer check
 ```
 
-Individual tools:
-
-```bash
-vendor/bin/phpcs --report=summary
-vendor/bin/phpstan analyse --memory-limit=512M --no-progress
-vendor/bin/phpunit --colors=never
-```
-
-Runtime (WordPress-touching) verifiers run inside the symlinked Local install:
-
-```bash
-cd "/Users/lukaszbiedron/Local Sites/kormas-isu/app"
-wp eval 'require "<repo>/tests/Integration/abilities-runtime-verification.php";'
-wp eval 'require "<repo>/tests/Integration/authorization-matrix.php";'
-wp eval 'require "<repo>/tests/Integration/writes-foundation-verification.php";'
-wp eval 'require "<repo>/tests/Integration/writes-mutation-verification.php";'
-wp eval 'require "<repo>/tests/Integration/writes-seo-verification.php";'
-```
-
-**Current baseline:** PHPCS clean · PHPStan 0 errors · PHPUnit 155 tests /
-380 assertions. Media, integration-access, update-SEO, and cache runtime
-verification on WordPress 7.0.2 is pending while Kormas Local is stopped.
-
-Read [AGENTS.md](AGENTS.md) before making changes, and `.continue-here.md` for
-the current continuation point.
-
----
-
-## Roadmap
-
-| Milestone | Status |
-|---|---|
-| M0 scaffold · M1 read core · M2 Yoast Free SEO · M3 Premium/Local + editorial | ✅ complete |
-| M4 Phase 1 — ChatGPT MCP read interoperability | ✅ complete (staging TLS re-consent pending) |
-| **M5 writes** — executed as 4 plans | 🚧 Plans 1–3 done |
-| ↳ Plan 1 — writes foundation | ✅ complete |
-| ↳ Plan 2 — `create-draft` + `update-content` | ✅ complete |
-| ↳ Plan 3 — `update-seo` (Free + bounded Premium keyphrases) | 🧪 code complete; local runtime pending |
-| Media P0 — deterministic reads + featured-image identity | 🧪 code complete; local runtime pending |
-| Post-scoped cache invalidation (WordPress + optional LiteSpeed) | 🧪 code complete; local runtime pending |
-| ↳ Plan 4a — `list-block-patterns` | 🧪 code complete; local runtime pending |
-| ↳ Plan 4b — `publish-content` (separately gated) | planned after security review |
-| M8 — optional Agents API integration | deferred (needs ADR reassessment) |
-
-Details: [docs/plan/IMPLEMENTATION_PLAN.md](docs/plan/IMPLEMENTATION_PLAN.md).
-
----
-
-## Product boundary
-
-- The WordPress **Abilities API** defines the stable domain contracts.
-- The **MCP Adapter** is an optional projection dependency, not bundled here.
-- **Yoast SEO** is an optional SEO provider; content reads work without it.
-- The **Agents API** is reserved for a later optional embedded-agent integration
-  and is not required for external-client usage.
+Architecture and contracts are documented in
+[Abilities](docs/architecture/ABILITIES.md),
+[Content access](docs/architecture/CONTENT_ACCESS.md), and
+[Security](docs/architecture/SECURITY.md).

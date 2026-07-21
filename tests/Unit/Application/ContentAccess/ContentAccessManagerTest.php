@@ -81,7 +81,7 @@ final class ContentAccessManagerTest extends TestCase {
 	 * @return ContentAccessManager
 	 */
 	private function manager( array $stored, array $post_types ): ContentAccessManager {
-		$repository = new readonly class( $stored ) implements ContentAccessSettingsRepository {
+		$repository = new class( $stored ) implements ContentAccessSettingsRepository {
 
 			/**
 			 * Creates an in-memory settings repository.
@@ -101,7 +101,7 @@ final class ContentAccessManagerTest extends TestCase {
 			}
 		};
 
-		$catalog = new readonly class( $post_types ) implements ContentTypeCatalog {
+		$catalog = new class( $post_types ) implements ContentTypeCatalog {
 
 			/**
 			 * Creates an in-memory content-type catalog.

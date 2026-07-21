@@ -89,7 +89,7 @@ final readonly class ContentAccessSettingsPage {
 			array(
 				'type'              => 'boolean',
 				'default'           => false,
-				'sanitize_callback' => static fn ( mixed $value ): bool => (bool) $value,
+				'sanitize_callback' => array( self::class, 'sanitize_checkbox' ),
 				'show_in_rest'      => false,
 			)
 		);
@@ -100,7 +100,7 @@ final readonly class ContentAccessSettingsPage {
 			array(
 				'type'              => 'boolean',
 				'default'           => false,
-				'sanitize_callback' => static fn ( mixed $value ): bool => (bool) $value,
+				'sanitize_callback' => array( self::class, 'sanitize_checkbox' ),
 				'show_in_rest'      => false,
 			)
 		);
@@ -111,10 +111,31 @@ final readonly class ContentAccessSettingsPage {
 			array(
 				'type'              => 'boolean',
 				'default'           => false,
-				'sanitize_callback' => static fn ( mixed $value ): bool => (bool) $value,
+				'sanitize_callback' => array( self::class, 'sanitize_checkbox' ),
 				'show_in_rest'      => false,
 			)
 		);
+
+		register_setting(
+			self::OPTION_GROUP,
+			Installer::TRASH_ENABLED_OPTION,
+			array(
+				'type'              => 'boolean',
+				'default'           => false,
+				'sanitize_callback' => array( self::class, 'sanitize_checkbox' ),
+				'show_in_rest'      => false,
+			)
+		);
+	}
+
+	/**
+	 * Accepts only the values emitted by WordPress checkboxes.
+	 *
+	 * @param mixed $value Submitted option value.
+	 * @return bool
+	 */
+	public static function sanitize_checkbox( mixed $value ): bool {
+		return true === $value || 1 === $value || '1' === $value || 'yes' === $value || 'on' === $value;
 	}
 
 	/**
@@ -151,7 +172,7 @@ final readonly class ContentAccessSettingsPage {
 		<div class="wrap">
 			<h1><?php echo esc_html__( 'WP Content Bridge: Content Access', 'wp-content-bridge' ); ?></h1>
 			<p><?php echo esc_html__( 'Choose which operations agent integrations may request for each content type. WordPress capabilities are always checked in addition to this configuration.', 'wp-content-bridge' ); ?></p>
-			<p><?php echo esc_html__( 'Write switches configure per-type policy. The global switch below must also be enabled for create-draft and update-content to become available.', 'wp-content-bridge' ); ?></p>
+			<p><?php echo esc_html__( 'Write switches configure per-type policy. The global switch below must also be enabled for create-draft, update-content, update-seo, and trash-content to become available.', 'wp-content-bridge' ); ?></p>
 
 			<form method="post" action="options.php">
 				<?php settings_fields( self::OPTION_GROUP ); ?>
@@ -187,6 +208,7 @@ final readonly class ContentAccessSettingsPage {
 					</tbody>
 				</table>
 				<p id="wpcb-content-access-help" class="description"><?php echo esc_html__( 'Search and every write operation require Read. Invalid combinations are disabled when settings are saved.', 'wp-content-bridge' ); ?></p>
+				<p class="description"><?php echo esc_html__( 'Status-transition policy is reserved for the planned transition-content-status ability. Public and scheduled transitions will additionally require the publication flag and capability.', 'wp-content-bridge' ); ?></p>
 
 				<h2><?php echo esc_html__( 'Media reads', 'wp-content-bridge' ); ?></h2>
 				<table class="widefat striped" aria-describedby="wpcb-media-reads-enabled-help">
@@ -231,13 +253,30 @@ final readonly class ContentAccessSettingsPage {
 								<input type="hidden" name="<?php echo esc_attr( Installer::WRITES_ENABLED_OPTION ); ?>" value="0">
 								<label>
 									<input type="checkbox" name="<?php echo esc_attr( Installer::WRITES_ENABLED_OPTION ); ?>" value="1" <?php checked( (bool) get_option( Installer::WRITES_ENABLED_OPTION ) ); ?>>
-									<?php echo esc_html__( 'Enable create-draft and update-content abilities (master switch, off by default).', 'wp-content-bridge' ); ?>
+									<?php echo esc_html__( 'Enable create-draft, update-content, and update-seo abilities (master switch, off by default).', 'wp-content-bridge' ); ?>
 								</label>
 							</td>
 						</tr>
 					</tbody>
 				</table>
-				<p id="wpcb-writes-enabled-help" class="description"><?php echo esc_html__( 'This master switch must be enabled, in addition to per-type Create/Update policy above, for write abilities to be registered.', 'wp-content-bridge' ); ?></p>
+				<p id="wpcb-writes-enabled-help" class="description"><?php echo esc_html__( 'This master switch must be enabled in addition to the matching per-type policy. Trash-content also requires its separate destructive switch below.', 'wp-content-bridge' ); ?></p>
+
+				<h2><?php echo esc_html__( 'Content trash', 'wp-content-bridge' ); ?></h2>
+				<table class="widefat striped" aria-describedby="wpcb-trash-enabled-help">
+					<tbody>
+						<tr>
+							<th scope="row"><?php echo esc_html__( 'Move content to trash', 'wp-content-bridge' ); ?></th>
+							<td>
+								<input type="hidden" name="<?php echo esc_attr( Installer::TRASH_ENABLED_OPTION ); ?>" value="0">
+								<label>
+									<input type="checkbox" name="<?php echo esc_attr( Installer::TRASH_ENABLED_OPTION ); ?>" value="1" <?php checked( (bool) get_option( Installer::TRASH_ENABLED_OPTION ) ); ?>>
+									<?php echo esc_html__( 'Enable trash-content (additional destructive switch, off by default).', 'wp-content-bridge' ); ?>
+								</label>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+				<p id="wpcb-trash-enabled-help" class="description"><?php echo esc_html__( 'Content writes, the per-type Trash policy, Delete content capability, native delete_post permission, and reversible WordPress trash must also be available.', 'wp-content-bridge' ); ?></p>
 
 				<?php submit_button(); ?>
 			</form>
@@ -427,7 +466,8 @@ final readonly class ContentAccessSettingsPage {
 			IntegrationCapability::READ_PATTERNS->value   => esc_html__( 'Read registered block patterns (also requires native editor access)', 'wp-content-bridge' ),
 			IntegrationCapability::EDIT_CONTENT->value    => esc_html__( 'Create drafts and update content', 'wp-content-bridge' ),
 			IntegrationCapability::MANAGE_SEO->value      => esc_html__( 'Update supported SEO fields', 'wp-content-bridge' ),
-			IntegrationCapability::PUBLISH_CONTENT->value => esc_html__( 'Publish content (still requires the publication feature flag and native permission)', 'wp-content-bridge' ),
+			IntegrationCapability::PUBLISH_CONTENT->value => esc_html__( 'Publish or schedule through status transition (reserved; not implemented)', 'wp-content-bridge' ),
+			IntegrationCapability::DELETE_CONTENT->value  => esc_html__( 'Move authorized content to trash', 'wp-content-bridge' ),
 		);
 	}
 
@@ -438,12 +478,13 @@ final readonly class ContentAccessSettingsPage {
 	 */
 	private function operation_labels(): array {
 		return array(
-			ContentOperation::READ->value       => esc_html__( 'Read', 'wp-content-bridge' ),
-			ContentOperation::SEARCH->value     => esc_html__( 'Search', 'wp-content-bridge' ),
-			ContentOperation::CREATE->value     => esc_html__( 'Create draft', 'wp-content-bridge' ),
-			ContentOperation::UPDATE->value     => esc_html__( 'Update content', 'wp-content-bridge' ),
-			ContentOperation::UPDATE_SEO->value => esc_html__( 'Update SEO', 'wp-content-bridge' ),
-			ContentOperation::PUBLISH->value    => esc_html__( 'Publish', 'wp-content-bridge' ),
+			ContentOperation::READ->value              => esc_html__( 'Read', 'wp-content-bridge' ),
+			ContentOperation::SEARCH->value            => esc_html__( 'Search', 'wp-content-bridge' ),
+			ContentOperation::CREATE->value            => esc_html__( 'Create draft', 'wp-content-bridge' ),
+			ContentOperation::UPDATE->value            => esc_html__( 'Update content', 'wp-content-bridge' ),
+			ContentOperation::UPDATE_SEO->value        => esc_html__( 'Update SEO', 'wp-content-bridge' ),
+			ContentOperation::TRANSITION_STATUS->value => esc_html__( 'Change status (reserved)', 'wp-content-bridge' ),
+			ContentOperation::TRASH->value             => esc_html__( 'Trash', 'wp-content-bridge' ),
 		);
 	}
 }

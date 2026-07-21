@@ -289,12 +289,12 @@ Exit gate:
   validation, exact replacement, revocation, and unrelated-capability
   preservation.
 
-## Milestone 5 — writes (draft mutations, SEO writes, controlled publication)
+## Milestone 5 — writes (drafts, SEO, trash, and controlled status workflow)
 
-Status: **in progress (Plans 1–3 complete; publication remains).** During brainstorming
+Status: **in progress (Plans 1–3 complete; trash code-complete; status workflow remains).** During brainstorming
 (2026-07-20) the write scope originally spread across Milestones 5–7 was
 folded into a single Milestone 5, executed as four sequential, independently
-shippable plans. Publication stays gated behind its own separate feature flag
+shippable plans. Public and scheduled transitions stay gated behind their own feature flag
 and capability (the M7 guardrails, pulled forward). Architecture is
 **Approach A**: a new `src/*/Mutation/` vertical slice mirroring the read
 layers; the read surface is untouched except for one additive `version_token`
@@ -414,13 +414,34 @@ stopped Local database, so no fixture mutation ran.
   fields, and no remote pattern loading;
 - ADR 0013, strict schemas/unit coverage, and disposable runtime fixture.
 
-### Plan 4b — `publish-content`
+### Plan 4b — `trash-content`
 
-- `PublishContent` use case (draft→publish only, approval-compatible contract,
-  its own `wpcb_publish_enabled` flag + `wpcb_publish_content` capability);
-- Settings-page checkboxes for both master flags;
-- final exit-gate integration matrix (publish-blocked-when-flag-off;
-  abilities invisible over MCP when the master flag is off).
+Status: **code-complete for 0.1.4; WordPress runtime verification pending.**
+The Kormas verifier was attempted on 2026-07-21, but Local's database socket
+was unavailable, so WordPress did not bootstrap and no fixture mutation ran.
+
+- separate `wpcb_trash_enabled` flag, `wpcb_delete_content` capability, and
+  per-type `trash_content` policy;
+- `TrashInput`, `MutationTarget`, `ContentTrashRepository`, `TrashContent`,
+  `WordPressContentTrashRepository`, and `TrashAbilities`;
+- optimistic concurrency, native `delete_post`, revision attempt, redacted
+  audit, and post-scoped cache invalidation;
+- fail-closed behavior when WordPress trash retention is disabled, preventing
+  fallback to permanent deletion;
+- strict schema/unit coverage and disposable WordPress verifier.
+
+### Plan 4c — `transition-content-status`
+
+ADR 0015 replaces the never-released `publish-content` plan with a controlled
+status-workflow ability:
+
+- explicit administrator-configured transition graph per content type;
+- `post_id`, `version_token`, `target_status`, and `publish_at` only for
+  scheduling;
+- editorial transitions require `wpcb_edit_content` + native `edit_post`;
+- `publish` and `future` additionally require `wpcb_publish_enabled`,
+  `wpcb_publish_content`, native `publish_post`, and approval-compatible audit;
+- internal statuses and `trash` are excluded; trash remains Plan 4b.
 
 Cross-cutting tests (across the four plans):
 
@@ -434,8 +455,8 @@ Cross-cutting tests (across the four plans):
 
 Exit gate:
 
-- no create/update path can publish; publication is reachable only through the
-  separately-flagged, separately-capability-gated `publish-content`;
+- no create/update path can publish; public or scheduled status is reachable
+  only through the separately-gated `transition-content-status`;
 - conflicts never overwrite newer edits;
 - writes are invisible over MCP unless their master flag is enabled;
 - security review signs off before beta.
@@ -461,15 +482,16 @@ Exit gate:
 - Premium/Local writes beyond the two Premium keyphrase fields in ADR 0014
   remain out until separately specified.
 
-## Milestone 7 — controlled publication
+## Milestone 7 — controlled status transitions
 
 Deliverables:
 
 - disabled-by-default feature flag;
 - dedicated publish capability;
-- separate `publish-content` ability;
+- separate `transition-content-status` ability with an explicit transition graph;
 - approval-compatible request/result contract;
-- scheduled-content policy and audit trail.
+- scheduled-content date/time policy and audit trail;
+- `trash` explicitly excluded from the status-transition vocabulary.
 
 Exit gate:
 
@@ -647,13 +669,14 @@ do not expand `update-content` into a generic action dispatcher.
   checks, resulting canonical URL, and post-write verification. Define whether
   an old-URL redirect is suggested or created through the future redirect
   provider; never create a redirect implicitly without an explicit policy.
-- **Post-status transitions:** add an explicit finite-state transition ability
+- **Post-status transitions:** add `transition-content-status` with an explicit
+  finite-state transition graph
   for editorial states such as draft, pending review, scheduled, published, and
   private where supported. Keep publication/scheduling behind the dedicated
   publish feature flag and capability; do not add a free-form `post_status`
   field to `update-content`.
-- **Trash and permanent deletion:** prefer a reversible move-to-trash operation.
-  Permanent deletion must be a distinct destructive ability with stronger
+- **Trash and permanent deletion:** `trash-content` is delivered as a reversible,
+  separately gated operation. Permanent deletion must remain a distinct ability with stronger
   authorization, explicit confirmation/approval semantics, conflict checks,
   attachment/reference impact reporting, and audit events.
 - **Author and publication-date changes:** allow assignment only to an eligible,

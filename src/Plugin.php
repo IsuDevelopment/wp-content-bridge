@@ -15,6 +15,7 @@ use IsuDev\WPContentBridge\Adapter\Abilities\MediaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\MutationAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\PatternAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\SeoAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\TrashAbilities;
 use IsuDev\WPContentBridge\Application\Access\IntegrationAccessManager;
 use IsuDev\WPContentBridge\Application\Content\GetContent;
 use IsuDev\WPContentBridge\Application\Content\SearchContent;
@@ -23,6 +24,7 @@ use IsuDev\WPContentBridge\Application\Editorial\GetEditorialContext;
 use IsuDev\WPContentBridge\Application\Mutation\CreateDraft;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateContent;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateSeo;
+use IsuDev\WPContentBridge\Application\Mutation\TrashContent;
 use IsuDev\WPContentBridge\Application\Pattern\ListBlockPatterns;
 use IsuDev\WPContentBridge\Application\Pattern\PatternAccessManager;
 use IsuDev\WPContentBridge\Application\Media\GetMediaById;
@@ -40,6 +42,7 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressBlockPatternAccess;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressBlockPatternCatalog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentAccessSettingsRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentMutationRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentTrashRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentTypeCatalog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressEditorialContextRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressIntegrationAccessRepository;
@@ -154,6 +157,12 @@ final class Plugin {
 				new UpdateContent( $manager, $block_validator, $mutation_repository, $audit_log ),
 				new UpdateSeo( $manager, $mutation_repository, $seo_writer, $audit_log )
 			) )->register_hooks();
+
+			if ( get_option( Installer::TRASH_ENABLED_OPTION ) ) {
+				( new TrashAbilities(
+					new TrashContent( $manager, new WordPressContentTrashRepository(), $audit_log )
+				) )->register_hooks();
+			}
 		}
 
 		/**

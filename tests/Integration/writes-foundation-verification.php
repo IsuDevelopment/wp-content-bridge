@@ -26,7 +26,7 @@ Installer::activate();
 $failures = array();
 
 $administrator = get_role( 'administrator' );
-foreach ( array( 'wpcb_edit_content', 'wpcb_manage_seo', 'wpcb_publish_content' ) as $capability ) {
+foreach ( array( 'wpcb_edit_content', 'wpcb_manage_seo', 'wpcb_publish_content', 'wpcb_delete_content' ) as $capability ) {
 	if ( null === $administrator || ! $administrator->has_cap( $capability ) ) {
 		$failures[] = "administrator missing {$capability}";
 	}
@@ -37,6 +37,9 @@ if ( false !== (bool) get_option( Installer::WRITES_ENABLED_OPTION ) ) {
 }
 if ( false !== (bool) get_option( Installer::PUBLISH_ENABLED_OPTION ) ) {
 	$failures[] = 'wpcb_publish_enabled is not false by default';
+}
+if ( false !== (bool) get_option( Installer::TRASH_ENABLED_OPTION ) ) {
+	$failures[] = 'wpcb_trash_enabled is not false by default';
 }
 if ( 0 !== (int) get_option( Installer::INTEGRATION_USER_OPTION, 0 ) ) {
 	$failures[] = 'wpcb_integration_user_id is not zero by default';

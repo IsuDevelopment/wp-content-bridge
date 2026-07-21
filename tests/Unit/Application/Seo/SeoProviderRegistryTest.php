@@ -63,7 +63,7 @@ final class SeoProviderRegistryTest extends TestCase {
 	 * @return SeoProvider
 	 */
 	private function provider( string $name, bool $available ): SeoProvider {
-		return new readonly class( $name, $available ) implements SeoProvider {
+		return new class( $name, $available ) implements SeoProvider {
 
 			/**
 			 * Creates the fake.

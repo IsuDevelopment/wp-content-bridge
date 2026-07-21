@@ -143,4 +143,20 @@ final class AbilitySchemasTest extends TestCase {
 		self::assertSame( 20, $input['properties']['related_keyphrases']['maxItems'] );
 		self::assertSame( 191, $input['properties']['related_keyphrases']['items']['maxLength'] );
 	}
+
+	/**
+	 * Trash requires exact target identity and optimistic concurrency.
+	 *
+	 * @return void
+	 */
+	public function test_trash_contract_is_strict_and_versioned(): void {
+		$input  = AbilitySchemas::trash_content_input();
+		$output = AbilitySchemas::trash_content_output();
+
+		self::assertSame( array( 'post_id', 'version_token' ), $input['required'] );
+		self::assertFalse( $input['additionalProperties'] );
+		self::assertContains( 'status', $output['required'] );
+		self::assertContains( 'version_token', $output['required'] );
+		self::assertFalse( $output['additionalProperties'] );
+	}
 }

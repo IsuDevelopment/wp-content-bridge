@@ -321,7 +321,7 @@ final class CreateDraftTest extends TestCase {
 				),
 			);
 
-		$repository = new readonly class( $stored ) implements ContentAccessSettingsRepository {
+		$repository = new class( $stored ) implements ContentAccessSettingsRepository {
 
 			/**
 			 * Creates an in-memory settings repository.
@@ -341,7 +341,7 @@ final class CreateDraftTest extends TestCase {
 			}
 		};
 
-		$catalog = new readonly class() implements ContentTypeCatalog {
+		$catalog = new class() implements ContentTypeCatalog {
 
 			/**
 			 * Lists a single eligible "post" content type.

@@ -908,6 +908,41 @@ final class AbilitySchemas {
 	}
 
 	/**
+	 * Returns the reversible trash input schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function trash_content_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'post_id', 'version_token' ),
+			'properties'           => array(
+				'post_id'       => array(
+					'description' => 'Target post ID.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+				),
+				'version_token' => array(
+					'description' => 'Optimistic-concurrency token from get-content.',
+					'type'        => 'string',
+					'minLength'   => 18,
+					'maxLength'   => 191,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the reversible trash result schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function trash_content_output(): array {
+		return self::mutation_output();
+	}
+
+	/**
 	 * Returns the compact content schema.
 	 *
 	 * @return array<string, mixed>

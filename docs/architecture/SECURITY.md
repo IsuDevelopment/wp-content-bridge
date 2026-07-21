@@ -32,12 +32,13 @@ Plugin capabilities:
 - `wpcb_edit_content`
 - `wpcb_manage_seo`
 - `wpcb_publish_content`
+- `wpcb_delete_content`
 - `wpcb_manage_settings`
 
 An ability requires both its plugin capability and the native object capability.
 Administrators receive management capabilities on activation. On single-site
 installations, an administrator with `wpcb_manage_settings`, `promote_users`,
-and per-target `edit_user` may explicitly manage the six operational WPCB
+and per-target `edit_user` may explicitly manage the seven operational WPCB
 capabilities for one dedicated, non-administrator integration user from the
 plugin settings page. The surface never grants native WordPress capabilities or
 `wpcb_manage_settings`, rejects unknown capability tokens, requires native
@@ -81,7 +82,20 @@ Mitigations: expected-version token, conflict response, WordPress revisions, edi
 
 ### Accidental publication
 
-Mitigations: create-draft never publishes, publication is a separate disabled-by-default ability and capability, future approval envelope, audit event.
+Mitigations: `create-draft` never publishes or schedules. The future
+`transition-content-status` ability uses an explicit transition graph;
+transitions to `publish` or `future` require the separate disabled-by-default
+publication flag, `wpcb_publish_content`, native `publish_post`, concurrency,
+and an audit event.
+
+### Accidental permanent deletion
+
+Mitigations: `trash-content` has a separate off-by-default flag, per-type
+policy, `wpcb_delete_content`, native `delete_post`, and optimistic concurrency.
+It rejects internal/already-trashed states and fails closed when WordPress trash
+retention is disabled, preventing `wp_trash_post()` from falling back to
+permanent deletion. Permanent deletion and restoration are not part of this
+ability.
 
 ### SSRF through URL-based SEO lookup
 

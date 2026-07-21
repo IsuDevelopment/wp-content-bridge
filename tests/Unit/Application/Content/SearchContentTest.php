@@ -190,7 +190,7 @@ final class SearchContentTest extends TestCase {
 	 * @phpstan-param array<string, list<string>> $assignments
 	 */
 	private function taxonomy_catalog( array $assignments ): TaxonomyCatalog {
-		return new readonly class( $assignments ) implements TaxonomyCatalog {
+		return new class( $assignments ) implements TaxonomyCatalog {
 
 			/**
 			 * Creates the taxonomy fake.

@@ -123,6 +123,18 @@ final class IntegrationAccessManagerTest extends TestCase {
 	}
 
 	/**
+	 * Destructive trash access is part of the closed capability vocabulary.
+	 *
+	 * @return void
+	 */
+	public function test_allows_dedicated_delete_content_capability(): void {
+		$manager = new IntegrationAccessManager( $this->repository( true ) );
+		$result  = $manager->update( 7, array( IntegrationCapability::DELETE_CONTENT->value ) );
+
+		self::assertSame( array( IntegrationCapability::DELETE_CONTENT ), $result->capabilities );
+	}
+
+	/**
 	 * Creates an in-memory repository around one principal.
 	 *
 	 * @param bool $has_native_read Native WordPress read state.

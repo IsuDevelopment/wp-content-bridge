@@ -14,12 +14,13 @@ namespace IsuDev\WPContentBridge\Domain\ContentAccess;
  */
 enum ContentOperation: string {
 
-	case READ       = 'get_content';
-	case SEARCH     = 'search_content';
-	case CREATE     = 'create_draft';
-	case UPDATE     = 'update_content';
-	case UPDATE_SEO = 'update_seo';
-	case PUBLISH    = 'publish_content';
+	case READ              = 'get_content';
+	case SEARCH            = 'search_content';
+	case CREATE            = 'create_draft';
+	case UPDATE            = 'update_content';
+	case UPDATE_SEO        = 'update_seo';
+	case TRANSITION_STATUS = 'transition_content_status';
+	case TRASH             = 'trash_content';
 
 	/**
 	 * Returns operations that must also be enabled.
@@ -35,7 +36,8 @@ enum ContentOperation: string {
 			self::CREATE,
 			self::UPDATE,
 			self::UPDATE_SEO,
-			self::PUBLISH => array( self::READ ),
+			self::TRANSITION_STATUS,
+			self::TRASH => array( self::READ ),
 		};
 	}
 }

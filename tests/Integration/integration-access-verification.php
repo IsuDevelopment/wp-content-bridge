@@ -67,6 +67,7 @@ try {
 			IntegrationCapability::READ_MEDIA->value,
 			IntegrationCapability::READ_PATTERNS->value,
 			IntegrationCapability::EDIT_CONTENT->value,
+			IntegrationCapability::DELETE_CONTENT->value,
 		)
 	);
 
@@ -74,6 +75,7 @@ try {
 		|| ! user_can( $first, IntegrationCapability::READ_MEDIA->value )
 		|| ! user_can( $first, IntegrationCapability::READ_PATTERNS->value )
 		|| ! user_can( $first, IntegrationCapability::EDIT_CONTENT->value )
+		|| ! user_can( $first, IntegrationCapability::DELETE_CONTENT->value )
 	) {
 		$failures[] = 'first managed user did not receive the selected capabilities';
 	}
@@ -88,6 +90,7 @@ try {
 		|| user_can( $first, IntegrationCapability::READ_MEDIA->value )
 		|| user_can( $first, IntegrationCapability::READ_PATTERNS->value )
 		|| user_can( $first, IntegrationCapability::EDIT_CONTENT->value )
+		|| user_can( $first, IntegrationCapability::DELETE_CONTENT->value )
 	) {
 		$failures[] = 'previously managed user retained WPCB capabilities';
 	}

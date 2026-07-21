@@ -2,6 +2,13 @@
 
 Design/spec. Date: 2026-07-20. Status: approved, ready for implementation planning.
 
+> **2026-07-21 amendment:** ADR 0015 supersedes this document's unreleased
+> `publish-content` contract. Public and scheduled publication will be part of
+> the future `transition-content-status` ability. Reversible deletion is now a
+> separate `trash-content` ability; permanent deletion and restore remain out
+> of scope. Historical publication sections below are retained as design
+> provenance, not as the current contract.
+
 This document is written to be executed by an implementer who has **not** seen
 the brainstorming conversation. Follow it literally. Where it says "reuse", find
 the named existing class and call it — do not reimplement.

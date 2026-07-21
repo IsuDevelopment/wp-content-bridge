@@ -14,13 +14,14 @@ namespace IsuDev\WPContentBridge\Infrastructure\WordPress;
  */
 final class Installer {
 
-	private const SCHEMA_VERSION = 7;
+	private const SCHEMA_VERSION = 8;
 	private const VERSION_OPTION = 'wpcb_schema_version';
 
 	public const WRITES_ENABLED_OPTION        = 'wpcb_writes_enabled';
 	public const PUBLISH_ENABLED_OPTION       = 'wpcb_publish_enabled';
 	public const MEDIA_READS_ENABLED_OPTION   = 'wpcb_media_reads_enabled';
 	public const PATTERN_READS_ENABLED_OPTION = 'wpcb_pattern_reads_enabled';
+	public const TRASH_ENABLED_OPTION         = 'wpcb_trash_enabled';
 	public const INTEGRATION_USER_OPTION      = 'wpcb_integration_user_id';
 
 	private const AUDIT_TABLE = 'wpcb_audit';
@@ -37,6 +38,7 @@ final class Installer {
 		add_option( self::PUBLISH_ENABLED_OPTION, false, '', false );
 		add_option( self::MEDIA_READS_ENABLED_OPTION, false, '', false );
 		add_option( self::PATTERN_READS_ENABLED_OPTION, false, '', false );
+		add_option( self::TRASH_ENABLED_OPTION, false, '', false );
 		add_option( self::INTEGRATION_USER_OPTION, 0, '', false );
 		self::create_audit_table();
 		update_option( self::VERSION_OPTION, self::SCHEMA_VERSION, false );
@@ -94,6 +96,7 @@ final class Installer {
 			'wpcb_edit_content',
 			'wpcb_manage_seo',
 			'wpcb_publish_content',
+			'wpcb_delete_content',
 		) as $capability ) {
 			$administrator->add_cap( $capability );
 		}

@@ -226,7 +226,7 @@ final class UpdateSeoTest extends TestCase {
 			),
 		);
 
-		$repository = new readonly class( $stored ) implements ContentAccessSettingsRepository {
+		$repository = new class( $stored ) implements ContentAccessSettingsRepository {
 			/**
 			 * Creates the fake repository.
 			 *
@@ -244,7 +244,7 @@ final class UpdateSeoTest extends TestCase {
 			}
 		};
 
-		$catalog = new readonly class() implements ContentTypeCatalog {
+		$catalog = new class() implements ContentTypeCatalog {
 			/**
 			 * Lists content types that may be configured.
 			 *

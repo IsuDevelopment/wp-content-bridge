@@ -41,7 +41,8 @@ Eligibility controls panel noise, not capability. A future requirement to suppor
 | `create_draft` | `get_content` | post type's `create_posts`; `read_post` after creation |
 | `update_content` | `get_content` | `edit_post` plus concurrency/state rules |
 | `update_seo` | `get_content` | `edit_post` plus provider support and WPCB SEO capability |
-| `publish_content` | `get_content` | `publish_post`, feature flag, state and approval rules |
+| `transition_content_status` | `get_content` | `edit_post`; public/scheduled targets add `publish_post`, feature flag, state and approval rules |
+| `trash_content` | `get_content` | `delete_post`, writes flag, trash flag, state and concurrency rules |
 
 The matrix is intentionally more restrictive than WordPress role capabilities. Enabling a cell never grants a role capability.
 
@@ -56,12 +57,13 @@ that capability through the versioned installer.
 
 On single-site installations, the settings page also manages one dedicated,
 existing integration user. This surface assigns only the closed operational
-allowlist (`wpcb_read_content`, `wpcb_edit_content`, `wpcb_manage_seo`, and
-`wpcb_publish_content`); it never grants `wpcb_manage_settings`, changes a role,
+allowlist (`wpcb_read_content`, `wpcb_read_media`, `wpcb_read_patterns`,
+`wpcb_edit_content`, `wpcb_manage_seo`, `wpcb_publish_content`, and
+`wpcb_delete_content`); it never grants `wpcb_manage_settings`, changes a role,
 or grants native WordPress capabilities. The acting administrator additionally
 needs `promote_users` and `edit_user` for both the new and any replaced managed
 principal. The target must not be an administrator and must already have native
-`read`. Switching principals removes only the four managed WPCB capabilities
+`read`. Switching principals removes only the seven managed WPCB capabilities
 from the previous user. Multisite principal management remains unavailable
 pending a dedicated ADR.
 

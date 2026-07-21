@@ -41,6 +41,12 @@
 - Pattern registration flag, dedicated capability, native editor-level denial,
   deterministic filters/pagination, content opt-in, and remote/path leakage
   rejection.
+- Trash registration requires both write and trash flags; execution requires
+  per-type Read+Trash policy, `wpcb_delete_content`, native `delete_post`, a
+  current version token, supported reversible trash, and a valid source state.
+- Trash verification proves the object reaches `trash`, content is retained,
+  audit stores field names only, cache invalidation receives the exact post ID,
+  and stale/denied attempts do not mutate.
 
 Repeatable Kormas local media verification:
 
@@ -48,6 +54,7 @@ Repeatable Kormas local media verification:
 cd "/Users/lukaszbiedron/Local Sites/kormas-isu/app"
 wp eval 'require "/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/Integration/media-read-verification.php";'
 wp eval 'require "/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/Integration/block-patterns-verification.php";'
+wp eval 'require "/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/Integration/trash-content-verification.php";'
 ```
 
 ### Contract
@@ -239,6 +246,8 @@ Verified on 2026-07-17 against WordPress 7.0.1 with Yoast Free 28.0, Premium
 - Arbitrary meta/option requests rejected.
 - Oversized query/schema/content requests bounded.
 - Concurrent stale writes rejected.
+- Trash cannot fall back to permanent deletion when WordPress trash retention
+  is disabled.
 - Capability revocation effective immediately.
 - Logs contain no secrets or full private content.
 

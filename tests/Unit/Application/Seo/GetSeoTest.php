@@ -57,7 +57,7 @@ final class GetSeoTest extends TestCase {
 	 * @return SeoTargetAccess
 	 */
 	private function access( bool $allowed ): SeoTargetAccess {
-		return new readonly class( $allowed ) implements SeoTargetAccess {
+		return new class( $allowed ) implements SeoTargetAccess {
 
 			/**
 			 * Creates the access fake.

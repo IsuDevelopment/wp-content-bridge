@@ -235,7 +235,7 @@ get-editorial-context Ability
 ## Write (mutation) feature
 
 ```text
-create-draft / update-content Ability
+create-draft / update-content / trash-content Ability
   -> plugin capability (`wpcb_edit_content`) + native object capability
      (`create_posts`/`edit_posts` or `edit_post`) — MutationAbilities
      permission callback
@@ -288,6 +288,11 @@ Files:
   (`{content_hash}:{modified_gmt}`), from Plan 1.
 - `src/Application/Mutation/ContentMutationRepository.php` — write port
   (`post_type`/`current_version`/`create`/`update`/`result_for`).
+- `src/Domain/Mutation/TrashInput.php` and `MutationTarget.php` — strict trash
+  request plus current target state/version snapshot.
+- `src/Application/Mutation/ContentTrashRepository.php` and
+  `TrashContent.php` — reversible-trash port and policy/concurrency/audit use
+  case.
 - `src/Application/Mutation/IdempotencyStore.php` — port
   (`find`/`remember`) for create-draft's idempotency-key replay.
 - `src/Application/Mutation/MutationForbidden.php` and `MutationWriteFailed.php`
@@ -309,6 +314,9 @@ Files:
   `wp_insert_post`/`wp_update_post`, revisions, and `result_for()` replay
   lookup; the only place `post_status` is written, and it is never
   `publish`/`future`/`pending`.
+- `src/Infrastructure/WordPress/WordPressContentTrashRepository.php` — checks
+  trash retention before calling `wp_trash_post`, attempts a pre-trash
+  revision, and verifies the resulting `trash` state.
 - `src/Infrastructure/WordPress/WordPressTransientIdempotencyStore.php` —
   per-user (`wpcb_idem_{user_id}_{md5(key)}`), 24h-TTL transient; recovers
   both a real int (persistent object-cache backends) and a stringified
@@ -328,6 +336,9 @@ Files:
   thrown failures to stable `WP_Error` codes (`wpcb_invalid_input`,
   `wpcb_conflict`, `wpcb_invalid_blocks`, `wpcb_forbidden`,
   `wpcb_content_unavailable`, `wpcb_write_failed`, `wpcb_internal_error`).
+- `src/Adapter/Abilities/TrashAbilities.php` — separately registers
+  `trash-content` only through the composition root's write+trash flag gate and
+  enforces `wpcb_delete_content` plus native `delete_post`.
 - `src/Adapter/Abilities/AbilitySchemas.php` — adds
   `create_draft_input/output`, `update_content_input/output`, and the
   additive `version_token` property on `get_output()`.
@@ -367,6 +378,8 @@ explicit five-read-ability allowlist and has not been updated to add
   `docs/adr/0013-block-pattern-reads-use-a-dedicated-editor-policy.md`.
 - Premium keyphrase write decision:
   `docs/adr/0014-premium-keyphrases-use-a-normalized-versioned-write-contract.md`.
+- Status workflow and trash boundary:
+  `docs/adr/0015-content-status-transitions-and-trash-are-separate-intents.md`.
 - Agent procedures: `.agents/instructions/`.
 - Milestone 1B evidence: `docs/verification/ABILITIES_VERIFICATION.md`.
 
@@ -376,10 +389,12 @@ Milestones 1–4 are complete. Milestone 5 Plans 1–3 are merged. Media P0, cac
 invalidation, and Plan 4a `list-block-patterns` are code-complete in the current
 worktree and await the stopped Kormas Local runtime gate. The next path is:
 
-1. Run every pending local verifier and release 0.1.3.
-2. Milestone 5 **Plan 4b** — `publish-content` with its own
-   `wpcb_publish_enabled` flag/capability and final integration exit gate.
-3. Separately: update the site-infrastructure MCP glue
+1. Run every pending local verifier and release 0.1.4.
+2. Run the Plan 4b `trash-content` WordPress verifier.
+3. Milestone 5 **Plan 4c** — `transition-content-status`; public/scheduled
+   targets add the `wpcb_publish_enabled` flag/capability and final integration
+   exit gate.
+4. Separately: update the site-infrastructure MCP glue
    (`wpcb-mcp-server.php`) to add the two Plan 2 write abilities to its
    allowlist so an external MCP client can reach them (not blocking Plan 3/4).
 

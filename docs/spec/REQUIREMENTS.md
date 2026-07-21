@@ -7,7 +7,8 @@ Requirement identifiers are stable references for code, tests, ADRs, and release
 ### Content-type access configuration
 
 - **FR-ACCESS-001:** Administrators can configure allowed operations independently for every eligible post type.
-- **FR-ACCESS-002:** The stable operations are read, search, create draft, update content, update SEO, and publish.
+- **FR-ACCESS-002:** The stable operations are read, search, create draft,
+  update content, update SEO, transition content status, and trash content.
 - **FR-ACCESS-003:** Search and mutation policies require read policy for the same post type; invalid combinations normalize to disabled.
 - **FR-ACCESS-004:** Enabling a configured operation never grants a WordPress role/object capability and never activates an unimplemented ability.
 - **FR-ACCESS-005:** Post/page default to read/search; custom post types default to deny-all.
@@ -71,11 +72,20 @@ Requirement identifiers are stable references for code, tests, ADRs, and release
 - **FR-WRITE-002:** Update content only with object-level authorization and optimistic concurrency.
 - **FR-WRITE-003:** Preserve WordPress revisions and return the resulting revision/object version.
 - **FR-WRITE-004:** Update SEO through a narrow provider-supported field set.
-- **FR-WRITE-005:** Publish through a separate ability, separate capability, explicit feature flag, and approval-compatible contract.
+- **FR-WRITE-005:** Transition status through a separate ability and explicit
+  per-type transition graph. Public and scheduled targets additionally require
+  a separate capability, feature flag, native publication permission, and
+  approval-compatible contract.
 - **FR-WRITE-006:** Emit an audit event for every attempted and completed mutation without logging secrets or full private content.
 - **FR-WRITE-007:** When compatible Yoast Premium is active, update primary
   keyphrase synonyms and related keyphrases through bounded normalized lists;
   never expose the provider's positional JSON contract.
+- **FR-WRITE-008:** Move content to reversible trash only through a separate,
+  disabled-by-default ability requiring per-type policy, dedicated plugin
+  capability, native deletion permission, optimistic concurrency, and audit.
+- **FR-WRITE-009:** Trash must fail closed when WordPress would bypass trash
+  and permanently delete. Restoration and permanent deletion are separate
+  future operations.
 
 ### Block patterns
 

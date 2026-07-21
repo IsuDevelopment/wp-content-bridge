@@ -2,6 +2,25 @@
 
 ## Current phase
 
+**Version 0.1.4 trash slice and status-boundary decision are code-complete on
+2026-07-21.** ADR 0015 replaces the never-released `publish-content` plan with
+the future `transition-content-status` ability: an explicit transition graph,
+with public/scheduled transitions additionally gated by the publication flag,
+`wpcb_publish_content`, and native `publish_post`. Trash is deliberately a
+separate `wp-content-bridge/trash-content` intent. It is off by default behind
+the writes flag, its own trash flag, per-type read + trash policy,
+`wpcb_delete_content`, native `delete_post`, optimistic concurrency, redacted
+audit, and post-scoped cache invalidation. It fails closed when WordPress would
+skip reversible trash, and rejects `trash`, `auto-draft`, and `inherit` source
+states. Permanent deletion and restore are not exposed. The root README now
+catalogs all 12 implemented abilities, and the settings surface includes all
+seven managed capabilities plus the new policy and destructive switch. Full
+`composer check` is green on the minimum supported PHP 8.2.30: PHPCS and
+PHPStan clean, PHPUnit 197 tests / 474 assertions. Anonymous readonly test
+fixtures that accidentally required PHP 8.3 were made PHP 8.2-compatible. The
+Kormas runtime verifier was attempted but the Local
+database remains stopped, so no fixture mutation ran.
+
 Milestone 5 (writes) — **in progress.** Executed as four sequential plans.
 **Plan 1 (writes foundation) is complete and merged** to `main` (merge commit
 `ab4805f`). **Plan 2 (`create-draft` + `update-content`) is complete and
@@ -31,7 +50,8 @@ site-infra allowlist is updated separately (outside this plugin repo).
 The current 0.1.3 worktree extends its fixed Yoast Free core-field allowlist
 with normalized `keyphrase_synonyms` and `related_keyphrases` for compatible
 Yoast Premium 28.x (ADR 0014), advances normalized SEO output to schema 1.2,
-and extends the repeatable verifier. `composer check` passes with 173 tests / 431
+and extends the repeatable verifier. The current `composer check` baseline is
+185 tests / 443
 assertions. The verifier was retried on 2026-07-21, but WordPress could not
 connect to the stopped Local database; no fixture mutation ran.
 
@@ -42,7 +62,7 @@ off-by-default `get-media` and `get-media-by-id` abilities, the dedicated
 ID/same-site URL/filename lookup, strict object envelopes, normalized media
 fields, and required nullable `featured_image_id` + `featured_image_url` content
 summary fields. ADR 0011 owns the separate media policy. The current combined
-worktree passes `composer check` (173 tests / 431 assertions); Kormas runtime
+worktree passes `composer check` (185 tests / 443 assertions); Kormas runtime
 verification is pending only because the Local site/database is stopped.
 Successful mutations now clear the
 affected WordPress post cache and, when active, dispatch LiteSpeed Cache's
@@ -54,7 +74,7 @@ worktree.** The ability is independently off by default, requires
 `wpcb_read_patterns` plus WordPress editor-level access, returns metadata by
 default, and exposes optional complete markup under a 2 MiB bound. It uses the
 current registry without remote loading and never exposes pattern filesystem
-paths (ADR 0013). Static/unit quality is green (173 tests / 431 assertions).
+paths (ADR 0013). Static/unit quality is green (185 tests / 443 assertions).
 The verifier was retried on 2026-07-21 and reached WordPress, but the stopped
 Local database socket prevented bootstrap; no fixture mutation ran.
 
@@ -302,12 +322,14 @@ verified.
 - Strict least-privilege re-consent as `wpcb-bridge-reader` (Task 6's live
   ChatGPT consent was done as admin `dev` for exploration; re-run on staging
   with a real certificate).
-- Controlled publication (`publish-content`) is not implemented.
+- Controlled status transitions (`transition-content-status`) are not
+  implemented. Public and scheduled transitions are part of that future
+  contract; the old `publish-content` plan is superseded by ADR 0015.
   `list-block-patterns`, `update-seo`, `create-draft`, and `update-content` are
   implemented; pattern runtime sign-off is pending.
 - Media P1 writes are not implemented: `update-media`, upload, featured-image
   assignment/removal, and remote import remain separately gated future work.
-- MCP exposure of the three write abilities, two media abilities, and pattern ability: the site-infrastructure MCP glue
+- MCP exposure of the four write abilities, two media abilities, and pattern ability: the site-infrastructure MCP glue
   (`wpcb-mcp-server.php` mu-plugin and the ChatGPT-facing miniOrange OAuth
   scope) still hardcodes an explicit five-read-ability allowlist and has not
   been updated for the new abilities — this is a site-config
@@ -317,13 +339,13 @@ verified.
 
 ## Next action
 
-1. Start Kormas in Local and run the integration-access, update-seo, media, cache, and pattern
-   runtime verifiers recorded in `.continue-here.md`.
+1. Start Kormas in Local and run the integration-access, update-seo, media,
+   cache, pattern, and trash runtime verifiers recorded in `.continue-here.md`.
 2. Delete the now-inert `wpcb_public_base_url` option and uninstall the old
    root-owned cloudflared service; the dev-only MU shim has already been removed.
-3. After runtime sign-off, ship 0.1.3.
-4. Start separately gated Plan 4b `publish-content`. Reuse ADR 0012's
-   invalidation event and specify old/new URL dependencies before slug changes.
+3. After runtime sign-off, ship 0.1.4.
+4. Start Plan 4c `transition-content-status`; keep the explicit transition
+   graph and the stronger public/scheduled gates defined by ADR 0015.
 
 External MCP allowlists remain site infrastructure and must be updated only
 when the new abilities are intentionally exposed to a specific principal.

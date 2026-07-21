@@ -23,7 +23,8 @@ Initial operation keys are:
 - `create_draft`;
 - `update_content`;
 - `update_seo`;
-- `publish_content`.
+- `transition_content_status`;
+- `trash_content`.
 
 `post` and `page` default to read/search until explicitly saved. Eligible custom post types default to deny-all. Attachments and WordPress internal `wp_*` types are not configurable in the initial UI.
 
@@ -36,6 +37,10 @@ Execution requires all three gates:
 3. native WordPress type/object capability.
 
 The settings UI may display switches for future writes. A switch never registers an ability and never bypasses a missing implementation or authorization check.
+
+ADR 0015 replaces the never-released `publish_content` reservation with
+`transition_content_status` and keeps reversible trash as the distinct
+`trash_content` operation.
 
 ## Consequences
 

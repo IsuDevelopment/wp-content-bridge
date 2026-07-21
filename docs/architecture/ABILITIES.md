@@ -213,16 +213,16 @@ Annotations: read-only, non-destructive, idempotent.
 
 ## Write abilities
 
-`create-draft`, `update-content`, and `update-seo` are **implemented and
-reachable** (Milestone 5 Plans 2–3), registered only when
+`create-draft`, `update-content`, `update-seo`, and `trash-content` are
+**implemented and reachable**. The first three are registered when
 `get_option( Installer::WRITES_ENABLED_OPTION )` (`wpcb_writes_enabled`) is
-truthy — an ability that is not registered is invisible to Abilities
-discovery and to any MCP projection. All three additionally require a plugin
-capability (`wpcb_edit_content` for the first two, `wpcb_manage_seo` for
-`update-seo`), the native WordPress type/object capability, and a
+truthy; `trash-content` additionally requires `wpcb_trash_enabled`. An ability
+that is not registered is invisible to Abilities discovery and to any MCP
+projection. Every write additionally requires its plugin capability
+(`wpcb_edit_content`, `wpcb_manage_seo`, or `wpcb_delete_content`), the native
+WordPress type/object capability, and a
 per-post-type policy (`ContentAccessManager`) — three independently-enforced
-gates. None of the three can ever set post status to `publish`, `future`, or
-`pending`.
+gates. None can set post status to `publish`, `future`, or `pending`.
 
 Stable error codes shared by `create-draft`/`update-content`:
 `wpcb_invalid_input`, `wpcb_conflict`, `wpcb_invalid_blocks`, `wpcb_forbidden`,
@@ -234,7 +234,7 @@ the whole request).
 **Not yet visible to any MCP client:** the site-infrastructure MCP glue
 (`wpcb-mcp-server.php` mu-plugin, and the ChatGPT-facing miniOrange OAuth
 scope) still hardcode an explicit five-read-ability allowlist that has not
-been updated to include pattern/media reads or any of the three write abilities — see
+been updated to include pattern/media reads or any of the four write abilities — see
 `docs/setup/MCP_ADAPTER.md`.
 
 ### `wp-content-bridge/create-draft`
@@ -323,11 +323,40 @@ provider's raw positional JSON is never part of the Ability contract (ADR
 
 Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
 
-### `wp-content-bridge/publish-content` (planned — Plan 4)
+### `wp-content-bridge/trash-content`
 
-Transitions a supported object to publish. Requires dedicated capability, feature flag, expected version, and approval-compatible request metadata. Disabled by default.
+Moves one eligible content object to reversible WordPress trash. The ability is
+registered only when both `wpcb_writes_enabled` and `wpcb_trash_enabled` are
+true. It requires `wpcb_delete_content`, native `delete_post`, configured Read
+and Trash policy for the post type, and a current optimistic-concurrency token.
 
-Annotations: not read-only, destructive, idempotent for an already-published unchanged object only if contract tests prove it; otherwise false.
+Inputs:
+
+- `post_id: integer` (required);
+- `version_token: string` (required), from `get-content`.
+
+The ability rejects `trash`, `auto-draft`, and `inherit` source states. It
+fails with `wpcb_trash_unavailable` when WordPress trash retention is disabled,
+so `wp_trash_post()` can never fall back to permanent deletion. Success returns
+the standard mutation envelope with `status: trash` and `changed_fields:
+["status"]`. WordPress revision saving, redacted audit, and post-scoped cache
+invalidation run through the mutation infrastructure. Restoration and permanent
+deletion are not included.
+
+Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
+
+### `wp-content-bridge/transition-content-status` (planned)
+
+Per ADR 0015, this replaces the never-released `publish-content` plan. It will
+perform runtime-validated transitions from an explicit per-type transition
+graph rather than accept an arbitrary registered WordPress status.
+
+Inputs will include `post_id`, `version_token`, `target_status`, and
+`publish_at` only for scheduling. Editorial transitions require
+`wpcb_edit_content` and native `edit_post`; transitions to `publish` or `future`
+additionally require `wpcb_publish_content`, native `publish_post`, and the
+off-by-default `wpcb_publish_enabled` flag. Internal statuses and `trash` are
+excluded. Draft creation and scheduling remain two separate calls.
 
 ## Versioning
 

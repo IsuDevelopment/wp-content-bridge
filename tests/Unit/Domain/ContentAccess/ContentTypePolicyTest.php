@@ -41,7 +41,8 @@ final class ContentTypePolicyTest extends TestCase {
 		self::assertFalse( $policy->allows( ContentOperation::CREATE ) );
 		self::assertFalse( $policy->allows( ContentOperation::UPDATE ) );
 		self::assertFalse( $policy->allows( ContentOperation::UPDATE_SEO ) );
-		self::assertFalse( $policy->allows( ContentOperation::PUBLISH ) );
+		self::assertFalse( $policy->allows( ContentOperation::TRANSITION_STATUS ) );
+		self::assertFalse( $policy->allows( ContentOperation::TRASH ) );
 	}
 
 	/**
