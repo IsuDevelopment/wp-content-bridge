@@ -16,7 +16,9 @@ use IsuDev\WPContentBridge\Application\Mutation\InvalidBlockMarkup;
 use IsuDev\WPContentBridge\Application\Mutation\MutationConflict;
 use IsuDev\WPContentBridge\Application\Mutation\MutationForbidden;
 use IsuDev\WPContentBridge\Application\Mutation\MutationWriteFailed;
+use IsuDev\WPContentBridge\Application\Mutation\SeoFieldUnsupported;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateContent;
+use IsuDev\WPContentBridge\Application\Mutation\UpdateSeo;
 use Throwable;
 use WP_Error;
 
@@ -32,12 +34,14 @@ final readonly class MutationAbilities {
 	/**
 	 * Creates the Abilities projection.
 	 *
-	 * @param CreateDraft   $create Create-draft use case.
-	 * @param UpdateContent $update Update-content use case.
+	 * @param CreateDraft   $create     Create-draft use case.
+	 * @param UpdateContent $update     Update-content use case.
+	 * @param UpdateSeo     $update_seo Update-SEO use case.
 	 */
 	public function __construct(
 		private CreateDraft $create,
 		private UpdateContent $update,
+		private UpdateSeo $update_seo,
 	) {
 	}
 
@@ -83,6 +87,20 @@ final readonly class MutationAbilities {
 				'meta'                => self::write_meta( true ),
 			)
 		);
+
+		wp_register_ability(
+			UpdateSeo::ABILITY,
+			array(
+				'label'               => __( 'Update SEO', 'wp-content-bridge' ),
+				'description'         => __( 'Write the Yoast Free core SEO field allowlist for an existing post.', 'wp-content-bridge' ),
+				'category'            => self::CATEGORY,
+				'input_schema'        => AbilitySchemas::update_seo_input(),
+				'output_schema'       => AbilitySchemas::update_seo_output(),
+				'permission_callback' => array( $this, 'can_update_seo' ),
+				'execute_callback'    => array( $this, 'execute_update_seo' ),
+				'meta'                => self::write_meta( true ),
+			)
+		);
 	}
 
 	/**
@@ -115,6 +133,26 @@ final readonly class MutationAbilities {
 	 */
 	public function can_update( mixed $input = null ): bool {
 		if ( ! current_user_can( 'wpcb_edit_content' ) ) {
+			return false;
+		}
+
+		$raw_post_id = is_array( $input ) ? ( $input['post_id'] ?? 0 ) : 0;
+		$post_id     = is_numeric( $raw_post_id ) ? (int) $raw_post_id : 0;
+		if ( 0 >= $post_id ) {
+			return false;
+		}
+
+		return current_user_can( 'edit_post', $post_id );
+	}
+
+	/**
+	 * Checks capability to write SEO on the targeted post.
+	 *
+	 * @param mixed $input Candidate ability input.
+	 * @return bool
+	 */
+	public function can_update_seo( mixed $input = null ): bool {
+		if ( ! current_user_can( 'wpcb_manage_seo' ) ) {
 			return false;
 		}
 
@@ -164,6 +202,24 @@ final readonly class MutationAbilities {
 	}
 
 	/**
+	 * Executes an SEO update.
+	 *
+	 * @param array<string, mixed> $input Ability input.
+	 * @return array<string, mixed>|WP_Error
+	 */
+	public function execute_update_seo( array $input ): array|WP_Error {
+		if ( ! $this->can_update_seo( $input ) ) {
+			return self::forbidden();
+		}
+
+		try {
+			return $this->update_seo->execute( $input, get_current_user_id() )->to_array();
+		} catch ( Throwable $error ) {
+			return $this->to_error( $error );
+		}
+	}
+
+	/**
 	 * Maps a thrown failure to a stable WP_Error.
 	 *
 	 * @param Throwable $error The failure that ended the attempt.
@@ -180,6 +236,7 @@ final readonly class MutationAbilities {
 			|| $error instanceof InvalidBlockMarkup
 			|| $error instanceof MutationForbidden
 			|| $error instanceof MutationWriteFailed
+			|| $error instanceof SeoFieldUnsupported
 		) {
 			return new WP_Error( $error->error_code(), $error->getMessage() );
 		}
