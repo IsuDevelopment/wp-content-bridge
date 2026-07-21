@@ -142,27 +142,86 @@ It reports versions and availability, not secrets, database details, paths, user
 
 Annotations: read-only, non-destructive, idempotent.
 
-## Post-MVP write abilities
+## Write abilities
+
+`create-draft` and `update-content` are **implemented and reachable** (Milestone
+5 Plan 2), registered only when `get_option( Installer::WRITES_ENABLED_OPTION )`
+(`wpcb_writes_enabled`) is truthy — an ability that is not registered is
+invisible to Abilities discovery and to any MCP projection. Both additionally
+require the plugin capability `wpcb_edit_content`, the native WordPress
+type/object capability, and per-post-type Create/Update policy
+(`ContentAccessManager`) — three independently-enforced gates. Neither ability
+can ever set post status to `publish`, `future`, or `pending`.
+
+Stable error codes shared by both: `wpcb_invalid_input`, `wpcb_conflict`,
+`wpcb_invalid_blocks`, `wpcb_forbidden`, `wpcb_content_unavailable`,
+`wpcb_write_failed`, `wpcb_internal_error`.
+
+**Not yet visible to any MCP client:** the site-infrastructure MCP glue
+(`wpcb-mcp-server.php` mu-plugin, and the ChatGPT-facing miniOrange OAuth
+scope) still hardcode an explicit five-read-ability allowlist that has not
+been updated to include these two — see `docs/setup/MCP_ADAPTER.md`.
 
 ### `wp-content-bridge/create-draft`
 
-Creates a draft only. It may accept title, content, excerpt, slug, supported taxonomy assignments, featured-media ID, and optional supported SEO configuration. It never publishes as a side effect.
+Creates a new post/page/registered custom post type. Always writes status
+`draft` — there is no status input field, so it can never publish as a side
+effect.
 
-Annotations: not read-only, non-destructive, not idempotent unless a client-supplied idempotency key is implemented.
+Inputs:
+
+- `post_type: string` (required) — target post type slug.
+- `title: string` (required, 1–500 chars).
+- `block_markup?: string` — Gutenberg block markup for the body; validated by
+  a registered-block-type + parse round-trip check (`wpcb_invalid_blocks` on
+  failure); default empty.
+- `excerpt?: string|null`.
+- `taxonomies?: [{ taxonomy, term_ids }]|null` — bounded assignment (mirrors
+  `search-content`'s taxonomy-filter shape).
+- `idempotency_key?: string|null` — when supplied, a repeated call with the
+  same key (per acting user, 24h TTL) replays the same result instead of
+  creating a second post; `created` is `false` on replay.
+
+Output (`schema_version, post_id, post_type, status, version_token,
+changed_fields, created, provenance`): `status` is always `draft`;
+`version_token` is the optimistic-concurrency token to pass to
+`update-content`; `changed_fields` lists field names only, never values.
+
+Annotations: `readonly: false`, `destructive: false`, `idempotent: false` (the
+annotation is conservative — idempotent replay is functionally supported via
+`idempotency_key` but not asserted in the ability's own metadata).
 
 ### `wp-content-bridge/update-content`
 
-Updates one existing object. Requires `post_id`, `expected_version`, and an explicit changes object. Preserves revisions and rejects stale versions with `wpcb_conflict`.
+Updates title/content/excerpt/taxonomies of one existing post. Never includes
+`post_status` in its write — status is untouched by this ability under any
+input.
 
-Annotations: not read-only, destructive because existing state is modified, idempotent only when the same expected version and changes can safely replay; default false.
+Inputs:
 
-### `wp-content-bridge/update-seo`
+- `post_id: integer` (required).
+- `version_token: string` (required) — from a prior `get-content` call's
+  `version_token` field; a stale token is rejected with `wpcb_conflict` and
+  the post is never overwritten.
+- `title?`, `block_markup?`, `excerpt?: string|null` — any subset may be
+  supplied; `block_markup` is validated the same way as `create-draft`.
+- `taxonomies?: [{ taxonomy, term_ids }]|null`.
+
+Output: same shape as `create-draft`'s (`created` is always `false`).
+`update-content` creates a WordPress revision on every successful write.
+
+Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
+
+The following two write abilities are **not yet built** (Milestone 5 Plans 3–4)
+— the descriptions below are the planned contract, not a delivered one.
+
+### `wp-content-bridge/update-seo` (planned — Plan 3)
 
 Updates only an allowlisted normalized SEO field set through the active provider. It does not update post body/title or publish.
 
 Annotations: not read-only, destructive, usually idempotent.
 
-### `wp-content-bridge/publish-content`
+### `wp-content-bridge/publish-content` (planned — Plan 4)
 
 Transitions a supported object to publish. Requires dedicated capability, feature flag, expected version, and approval-compatible request metadata. Disabled by default.
 

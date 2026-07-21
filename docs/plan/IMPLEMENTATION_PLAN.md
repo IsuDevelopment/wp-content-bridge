@@ -274,13 +274,15 @@ Exit gate:
 
 ## Milestone 5 — writes (draft mutations, SEO writes, controlled publication)
 
-Status: **in progress.** During brainstorming (2026-07-20) the write scope
-originally spread across Milestones 5–7 was folded into a single Milestone 5,
-executed as four sequential, independently shippable plans. Publication stays
-gated behind its own separate feature flag and capability (the M7 guardrails,
-pulled forward). Architecture is **Approach A**: a new `src/*/Mutation/`
-vertical slice mirroring the read layers; the read surface is untouched except
-for one additive `version_token` field on `get-content`.
+Status: **in progress (Plans 1–2 of 4 complete).** During brainstorming
+(2026-07-20) the write scope originally spread across Milestones 5–7 was
+folded into a single Milestone 5, executed as four sequential, independently
+shippable plans. Publication stays gated behind its own separate feature flag
+and capability (the M7 guardrails, pulled forward). Architecture is
+**Approach A**: a new `src/*/Mutation/` vertical slice mirroring the read
+layers; the read surface is untouched except for one additive `version_token`
+field on `get-content`. Plan 2 shipped the plugin's first live, reachable
+write surface (`create-draft` + `update-content`), still off by default.
 
 Design spec: `docs/superpowers/specs/2026-07-20-milestone-5-writes-design.md`.
 
@@ -304,31 +306,59 @@ Reviewed clean (0 Critical/Important); `composer check` green
 (85 tests / 211 assertions); the `wp eval` runtime verifier
 (`tests/Integration/writes-foundation-verification.php`) passes.
 
-### Plan 2 — `create-draft` + `update-content` (in progress — Tasks 1–8 of 13 done)
+### Plan 2 — `create-draft` + `update-content` — **complete (merged `28818ab`, 2026-07-21)**
 
-In progress on branch `feat/m5-create-draft-update-content` (unmerged) via
-subagent-driven development. Plan:
-`docs/superpowers/plans/2026-07-20-m5-create-draft-update-content.md`. Tasks 1–8
-(the write-cap allowlist, all four Domain DTOs, both use cases + ports/failures,
-the block-markup validator, and the WordPress mutation repository) are complete
-and review-clean (latest commit `33e5d6d`; suite 117/302, static clean, `wp eval`
-smokes pass). Remaining: Task 9 idempotency store, Task 10 additive `version_token`
-on `get-content`, Task 11 `MutationAbilities` + schemas, Task 12 `Plugin.php`
-flag-gated wiring + settings checkbox, Task 13 runtime verifier, then final review.
-See `.continue-here.md` for the resume point and SDD runbook.
+Executed on branch `feat/m5-create-draft-update-content` via subagent-driven
+development (13 tasks + final whole-branch review), then merged to `main` and
+pushed. Plan:
+`docs/superpowers/plans/2026-07-20-m5-create-draft-update-content.md`. Delivered:
 
-- **First step (carried from Plan 1 review):** extend `phpcs.xml.dist`
-  `WordPress.WP.Capabilities` `custom_capabilities` with `wpcb_edit_content`,
-  `wpcb_manage_seo`, `wpcb_publish_content` before the permission callbacks land.
-  *(Done — Task 1.)*
-- `DraftInput` / `ContentUpdate` DTOs; `ContentMutationRepository` port +
-  `WordPressContentMutationRepository` (`wp_insert_post` / `wp_update_post`,
-  revisions);
-- `PhpBlockMarkupValidator` (parse round-trip + registered-type check);
-- idempotency store for draft creation;
-- add the read-only `version_token` field to `get-content` output;
-- `CreateDraft` / `UpdateContent` use cases; `MutationAbilities` registered only
-  when `wpcb_writes_enabled` is on; write authorization-matrix verifier.
+- extended `phpcs.xml.dist` `WordPress.WP.Capabilities` `custom_capabilities`
+  with `wpcb_edit_content`, `wpcb_manage_seo`, `wpcb_publish_content` (carried
+  from the Plan 1 review);
+- `TaxonomyAssignment` / `DraftInput` / `ContentUpdate` / `MutationResult`
+  Domain DTOs;
+- `ContentMutationRepository` / `IdempotencyStore` Application ports,
+  `MutationForbidden` / `MutationWriteFailed` typed failures, and the
+  `CreateDraft` / `UpdateContent` use cases — validate input, enforce
+  per-post-type policy, validate block markup, perform the write, and record
+  exactly one audit row per attempt;
+- `PhpBlockMarkupValidator` (parse round-trip + registered-type check),
+  `WordPressContentMutationRepository` (`wp_insert_post` / `wp_update_post` +
+  revisions; never sets `publish`/`future`/`pending`), and
+  `WordPressTransientIdempotencyStore` (per-user, 24h transient) in
+  Infrastructure;
+- the additive `version_token` field on `get-content` output (`ContentDetail`,
+  `WordPressContentRepository::get()`, `AbilitySchemas::get_output()`) — the
+  one permitted read-ability touch;
+- `MutationAbilities` (Adapter) — registers both abilities, with capability +
+  native-object permission callbacks and stable `WP_Error` mapping, only when
+  `wpcb_writes_enabled` is on;
+- `Plugin.php` wiring behind the flag, and the settings-page global "Enable
+  content writes" checkbox;
+- the runtime write verifier
+  (`tests/Integration/writes-mutation-verification.php`): authorization
+  matrix (plugin cap, native cap, and policy independently required), the
+  no-publish invariant, stale-version-conflict rejection, revision creation,
+  block round-trip, idempotent create, and audit redaction.
+
+The final whole-branch review (opus) found and fixed one Important issue:
+`CreateDraft`/`UpdateContent` shared a `try` block between the success-audit
+call and the failure `catch`, so a throw from the audit sink itself (reachable
+via the `wpcb_mutation` public action hook, now wired to the concrete
+`WordPressAuditLog` in production) could record a second (failure) audit row
+for an attempt that had already succeeded. Fixed (`bc47f8a`) by moving the
+success-audit call outside the `try`/`catch` in both use cases, with two new
+regression tests. `composer check` green on merged `main` (120 tests / 309
+assertions, PHPCS 0, PHPStan 0).
+
+**Known gap (not a Plan 2 deliverable):** the site-infrastructure MCP glue
+(`wpcb-mcp-server.php` mu-plugin, and the ChatGPT-facing miniOrange OAuth
+scope) still hardcode an explicit allowlist of only the five original read
+abilities. `create-draft`/`update-content` are reachable directly (Abilities
+API, REST) once the flag is on, but are not yet visible to any MCP client
+until that site-infra allowlist is updated separately — see
+`docs/setup/MCP_ADAPTER.md`.
 
 ### Plan 3 — `update-seo`
 

@@ -1,0 +1,78 @@
+name: Build & Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'wp-content-bridge.php'
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and release plugin
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version from plugin header
+        id: version
+        run: |
+          VERSION=$(grep -m1 'Version:' wp-content-bridge.php | awk '{print $NF}' | tr -d '[:space:]')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check if tag already exists
+        id: tag_check
+        run: |
+          if git rev-parse "refs/tags/v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create and push tag
+        if: steps.tag_check.outputs.exists == 'false' && github.ref_type == 'branch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v${{ steps.version.outputs.version }}"
+          git push origin "v${{ steps.version.outputs.version }}"
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          tools: composer:v2
+
+      - name: Install Composer dependencies
+        run: composer install --no-dev --optimize-autoloader
+
+      - name: Build plugin zip
+        run: |
+          mkdir -p build/wp-content-bridge
+          rsync -a --exclude-from=- ./ build/wp-content-bridge/ <<'EOF'
+          .git
+          .github
+          build
+          tests
+          node_modules
+          *.zip
+          .gitignore
+          EOF
+          cd build && zip -r ../wp-content-bridge.zip wp-content-bridge
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          files: wp-content-bridge.zip
+          generate_release_notes: true

@@ -2,17 +2,31 @@
 
 ## Current phase
 
-Milestone 5 (writes) — **in progress.** Executed as four sequential plans;
+Milestone 5 (writes) — **in progress.** Executed as four sequential plans.
 **Plan 1 (writes foundation) is complete and merged** to `main` (merge commit
-`ab4805f`, pushed to origin). Plan 1 delivered write-phase primitives only —
-`VersionToken` concurrency, typed mutation failures, mutation ports, Installer
-grant of the three write capabilities + two off-by-default master flags + the
-capped `wpcb_audit` table, and the redacting `WordPressAuditLog` adapter. **No
-write ability is registered or reachable yet.** Reviewed clean (0
-Critical/Important); `composer check` green (85 tests / 211 assertions);
-runtime `writes-foundation-verification.php` passes. Next is **Plan 2**
-(`create-draft` + `update-content`); its first step is extending the
-`phpcs.xml.dist` `custom_capabilities` list with the three write caps.
+`ab4805f`). **Plan 2 (`create-draft` + `update-content`) is complete and
+merged** to `main` (merge commit `28818ab`, pushed to origin). The plugin now
+has its **first live, reachable write surface** — `wp-content-bridge/create-draft`
+and `wp-content-bridge/update-content` — still **off by default** behind
+`wpcb_writes_enabled` (an administrator must enable the flag, and per-post-type
+Create/Update policy, before either ability is reachable at all; see
+`docs/architecture/ABILITIES.md` for the delivered contract). 13 tasks executed
+via subagent-driven development plus a final whole-branch review (opus) that
+found and fixed one Important issue: `CreateDraft`/`UpdateContent` recorded a
+second (failure) audit row if the audit sink itself threw after a success row
+was already committed — fixed by moving the success-audit call outside the
+`try`/`catch` (commit `bc47f8a`), with regression tests. `composer check` green
+on merged `main` (120 tests / 309 assertions, PHPCS 0, PHPStan 0); the runtime
+write verifier (`tests/Integration/writes-mutation-verification.php`) passes
+the full authorization matrix, no-publish invariant, stale-version conflict,
+revision-on-update, block round-trip, idempotent create, and audit-redaction
+checks. **Known gap:** the site-infrastructure MCP glue (`wpcb-mcp-server.php`
+mu-plugin and the ChatGPT-facing miniOrange OAuth config) still hardcode an
+explicit allowlist of only the five original read abilities — the two new write
+abilities are reachable directly (PHP/Abilities API, REST via the Abilities
+REST routes) but are **not yet visible to any MCP client** until that
+site-infra allowlist is updated separately (outside this plugin repo). Next is
+**Plan 3** (`update-seo`).
 
 Milestone 4 Phase 1 — **complete** (ChatGPT-primary, read-only, Approach A per
 ADR 0010). ChatGPT completed the five-ability read scenario live through the
@@ -183,6 +197,30 @@ verified.
   ability is registered — abilities appear only when their master flag is on.
 - Quality baseline after M5 Plan 1: PHPCS 0 errors, PHPStan 0 errors, PHPUnit
   85 tests with 211 assertions; `writes-foundation-verification.php` PASS.
+- Milestone 5 Plan 2 (`create-draft` + `update-content`), merged `28818ab`: the
+  plugin's first live write surface. `TaxonomyAssignment`/`DraftInput`/
+  `ContentUpdate`/`MutationResult` DTOs (Domain); `ContentMutationRepository`/
+  `IdempotencyStore` ports, `MutationForbidden`/`MutationWriteFailed` typed
+  failures, `CreateDraft`/`UpdateContent` use cases (Application) — each
+  validates input, enforces per-post-type policy, checks block markup,
+  performs the write, and records exactly one audit row per attempt (fixed to
+  hold even if the audit sink itself throws, `bc47f8a`); `PhpBlockMarkupValidator`,
+  `WordPressContentMutationRepository` (`wp_insert_post`/`wp_update_post` +
+  revisions, never sets `publish`/`future`/`pending`), and
+  `WordPressTransientIdempotencyStore` (per-user 24h transient) (Infrastructure);
+  `MutationAbilities` (Adapter) registers both abilities — with capability +
+  native-object permission callbacks and stable `WP_Error` mapping — only when
+  `wpcb_writes_enabled` is on. Additive `version_token` field added to
+  `get-content` output (`ContentDetail`, `WordPressContentRepository::get()`,
+  `AbilitySchemas::get_output()`) — the one permitted read-ability touch.
+  `Plugin.php` wires the write services behind the flag; the settings page
+  gained the global "Enable content writes" checkbox. Runtime write verifier
+  (`tests/Integration/writes-mutation-verification.php`) proves the
+  authorization matrix (plugin cap, native cap, and policy independently
+  required), the no-publish invariant, stale-version-conflict rejection,
+  revision creation, block round-trip (valid survives, unregistered block
+  rejected), idempotent create, and audit redaction. Quality baseline: PHPCS 0
+  errors, PHPStan 0 errors, PHPUnit 120 tests with 309 assertions.
 
 ## Not implemented
 
@@ -195,23 +233,39 @@ verified.
 - Strict least-privilege re-consent as `wpcb-bridge-reader` (Task 6's live
   ChatGPT consent was done as admin `dev` for exploration; re-run on staging
   with a real certificate).
-- Live write operations (create-draft, update-content, update-seo,
-  publish-content) and their abilities — the M5 Plan 1 foundation exists but no
-  ability is registered. `list-block-patterns` and the Settings-page flag
-  toggles are not built. (Audit persistence IS now implemented, Plan 1.)
+- Live SEO writes (`update-seo`) and controlled publication
+  (`publish-content`) and their abilities — M5 Plan 1 foundation exists (the
+  `SeoFieldUnsupported` failure type and `wpcb_manage_seo`/
+  `wpcb_publish_content` capabilities/flags) but no ability is registered yet.
+  `list-block-patterns` is not built. (`create-draft`/`update-content` ARE now
+  implemented and reachable, Plan 2; the `wpcb_writes_enabled` Settings-page
+  checkbox IS built, Plan 2 — the still-missing toggle is `wpcb_publish_enabled`,
+  which is Plan 4's job.)
+- MCP exposure of the two new write abilities: the site-infrastructure MCP glue
+  (`wpcb-mcp-server.php` mu-plugin and the ChatGPT-facing miniOrange OAuth
+  scope) still hardcode an explicit five-read-ability allowlist and have not
+  been updated to add `create-draft`/`update-content` — this is a site-config
+  change outside the plugin repo, not a plugin-code gap.
 - Role-management UI beyond the capability grant.
 - Agents API integration.
 
 ## Next action
 
-Milestone 5 **Plan 2** — `create-draft` + `update-content`. First extend
-`phpcs.xml.dist` `WordPress.WP.Capabilities` `custom_capabilities` with
-`wpcb_edit_content`/`wpcb_manage_seo`/`wpcb_publish_content` (deferred from Plan
-1 review), then write Plan 2 just-in-time (superpowers `writing-plans`) and
-execute via subagent-driven development, mirroring Plan 1. Design spec:
-`docs/superpowers/specs/2026-07-20-milestone-5-writes-design.md`; four-plan
-split: `docs/plan/IMPLEMENTATION_PLAN.md` (Milestone 5). Writes stay behind the
-off-by-default master flags until each plan's exit gate passes.
+Milestone 5 **Plan 3** — `update-seo`: `SeoUpdate` DTO, `SeoWriter` port +
+`YoastFreeSeoWriter` (Yoast Free core allowlist only, via Yoast's documented
+write path, re-read after write), `UpdateSeo` use case, ability, schema, and a
+SEO write/re-read runtime verifier. Write Plan 3 just-in-time (superpowers
+`writing-plans`) and execute via subagent-driven development, mirroring Plans
+1–2. Design spec: `docs/superpowers/specs/2026-07-20-milestone-5-writes-design.md`;
+four-plan split: `docs/plan/IMPLEMENTATION_PLAN.md` (Milestone 5). Writes stay
+behind the off-by-default master flags until each plan's exit gate passes.
+
+Separately (not blocking Plan 3, but needed before any external MCP client can
+exercise the two Plan 2 write abilities): update the site-infrastructure MCP
+glue (`content/mu-plugins/wpcb-mcp-server.php` and the miniOrange
+ChatGPT-facing OAuth scope) to add `wp-content-bridge/create-draft` and
+`wp-content-bridge/update-content` to their currently read-only allowlists —
+see `docs/setup/MCP_ADAPTER.md`.
 
 Independent open thread (M4): stabilize on staging with a real TLS certificate
 (replacing the local cloudflared quick tunnel) and re-run the strict

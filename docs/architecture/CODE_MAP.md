@@ -167,6 +167,108 @@ get-editorial-context Ability
   schema/annotation checks, policy and role matrix, HTTPS execution, Local
   projection, and leakage assertions.
 
+## Write (mutation) feature
+
+```text
+create-draft / update-content Ability
+  -> plugin capability (`wpcb_edit_content`) + native object capability
+     (`create_posts`/`edit_posts` or `edit_post`) — MutationAbilities
+     permission callback
+  -> CreateDraft or UpdateContent application use case
+     -> ContentAccessManager per-post-type CREATE/UPDATE operation policy
+     -> BlockMarkupValidator (registered block-type + parse round-trip)
+     -> ContentMutationRepository port
+     -> WordPressContentMutationRepository
+        -> wp_insert_post (always `draft`) / wp_update_post (status untouched)
+        -> WordPress revisions
+     -> AuditLog: exactly one redacted row per attempt (success or failure)
+  -> MutationResult DTO -> Ability output schema validation
+```
+
+Rules for this flow:
+
+- Registered only when `get_option( Installer::WRITES_ENABLED_OPTION )` is
+  truthy (`Plugin.php`); an unregistered ability is invisible to Abilities
+  discovery and to any MCP projection.
+- `MutationAbilities` owns WordPress callbacks, `WP_Error` mapping, and
+  capability gates only — no per-post-type policy decisions.
+- `CreateDraft`/`UpdateContent` own use-case ordering, policy, idempotency
+  (create only), block validation, and audit — and record the success-audit
+  call only after the write has genuinely completed, so a throw from the
+  audit sink itself is never misclassified as a write failure.
+- `create-draft` never accepts or sets a status; the repository hardcodes
+  `draft`. `update-content` never includes `post_status` in its write args.
+- Domain DTOs (`TaxonomyAssignment`, `DraftInput`, `ContentUpdate`,
+  `MutationResult`) do not call WordPress or know about MCP.
+- `get-content`'s output additionally carries a `version_token` (built from
+  `VersionToken::for_content()`) that `update-content` consumes for optimistic
+  concurrency — the only touch to the read flow.
+
+Files:
+
+- `src/Domain/Mutation/TaxonomyAssignment.php` — validated taxonomy + term-ID
+  write input.
+- `src/Domain/Mutation/DraftInput.php` — validated new-post input; status is
+  always draft (no status field exists).
+- `src/Domain/Mutation/ContentUpdate.php` — validated existing-post update; no
+  status field.
+- `src/Domain/Mutation/MutationResult.php` — outcome DTO returned to the
+  adapter (`post_id`, `post_type`, `status`, `version`, `changed_fields`,
+  `created`).
+- `src/Domain/Mutation/VersionToken.php` — optimistic-concurrency primitive
+  (`{content_hash}:{modified_gmt}`), from Plan 1.
+- `src/Application/Mutation/ContentMutationRepository.php` — write port
+  (`post_type`/`current_version`/`create`/`update`/`result_for`).
+- `src/Application/Mutation/IdempotencyStore.php` — port
+  (`find`/`remember`) for create-draft's idempotency-key replay.
+- `src/Application/Mutation/MutationForbidden.php` and `MutationWriteFailed.php`
+  — typed failures (`wpcb_forbidden`, `wpcb_write_failed`); `MutationConflict`
+  / `InvalidBlockMarkup` / `SeoFieldUnsupported` are from Plan 1.
+- `src/Application/Mutation/AuditEvent.php` / `AuditLog.php` (Plan 1 ports) —
+  pre-redacted event (field names only, never values) and the sink port.
+- `src/Application/Mutation/CreateDraft.php` — validate, authorize (policy),
+  idempotency replay, block validation, write, audit; exactly one
+  `record_success()`/`record_failure()` call per attempt, placed after the
+  `try`/`catch` so a throwing audit sink cannot double-record.
+- `src/Application/Mutation/UpdateContent.php` — validate, resolve target,
+  authorize (policy), optimistic-concurrency check (`wpcb_conflict` on
+  mismatch), block validation, write, audit; same exactly-once-audit
+  structure as `CreateDraft`.
+- `src/Infrastructure/WordPress/PhpBlockMarkupValidator.php` — `parse_blocks`
+  round-trip + registered-block-type check, bounded reason list.
+- `src/Infrastructure/WordPress/WordPressContentMutationRepository.php` —
+  `wp_insert_post`/`wp_update_post`, revisions, and `result_for()` replay
+  lookup; the only place `post_status` is written, and it is never
+  `publish`/`future`/`pending`.
+- `src/Infrastructure/WordPress/WordPressTransientIdempotencyStore.php` —
+  per-user (`wpcb_idem_{user_id}_{md5(key)}`), 24h-TTL transient; recovers
+  both a real int (persistent object-cache backends) and a stringified
+  numeric value (default DB-backed transient storage).
+- `src/Adapter/Abilities/MutationAbilities.php` — registers `create-draft`/
+  `update-content` only when `wpcb_writes_enabled` is on; permission callbacks
+  enforce `wpcb_edit_content` + the native type/object capability; maps
+  thrown failures to stable `WP_Error` codes (`wpcb_invalid_input`,
+  `wpcb_conflict`, `wpcb_invalid_blocks`, `wpcb_forbidden`,
+  `wpcb_content_unavailable`, `wpcb_write_failed`, `wpcb_internal_error`).
+- `src/Adapter/Abilities/AbilitySchemas.php` — adds
+  `create_draft_input/output`, `update_content_input/output`, and the
+  additive `version_token` property on `get_output()`.
+- `src/Adapter/Admin/ContentAccessSettingsPage.php` — adds the global "Enable
+  content writes" checkbox bound to `Installer::WRITES_ENABLED_OPTION`.
+- `tests/Unit/Domain/Mutation/` and `tests/Unit/Application/Mutation/` —
+  DTO validation and use-case contract coverage, including audit-sink-throws
+  regression tests for both use cases.
+- `tests/Integration/writes-mutation-verification.php` — runtime
+  authorization matrix, no-publish invariant, stale-version conflict,
+  revision-on-update, block round-trip, idempotent create, and audit
+  redaction (scans every real column value for secret markers, not just
+  column presence).
+
+**Not yet wired to any MCP client:** the site-infrastructure MCP glue
+(`content/mu-plugins/wpcb-mcp-server.php`, outside this repo) hardcodes an
+explicit five-read-ability allowlist and has not been updated to add
+`create-draft`/`update-content` — see `docs/setup/MCP_ADAPTER.md`.
+
 ## Specification routes
 
 - Product behavior: `docs/spec/REQUIREMENTS.md`.
@@ -183,13 +285,23 @@ get-editorial-context Ability
 
 ## Expected next feature path
 
-Milestones 1–3 are complete, including the licensed Local multiple-location
-runtime matrix (ADR 0009). The next path is:
+Milestones 1–4 are complete. Milestone 5 (writes) Plans 1–2 are complete and
+merged — `create-draft`/`update-content` are the plugin's first live write
+surface, off by default. The next path is:
 
-1. Begin Milestone 4 with official MCP Adapter/client smoke tests (at least
-   Codex and Gemini running the same read scenario).
-2. Make an ADR-backed decision on private principal-bound token/OAuth handling.
+1. Milestone 5 **Plan 3** — `update-seo`: `SeoUpdate` DTO, `SeoWriter` port +
+   `YoastFreeSeoWriter`, `UpdateSeo` use case/ability/schema, and a SEO
+   write/re-read runtime verifier. Mirror the `src/*/Mutation/` vertical
+   slice's layering.
+2. Milestone 5 **Plan 4** — `publish-content` (its own `wpcb_publish_enabled`
+   flag/capability) + `list-block-patterns`, and the final cross-plan
+   integration exit gate.
+3. Separately: update the site-infrastructure MCP glue
+   (`wpcb-mcp-server.php`) to add the two Plan 2 write abilities to its
+   allowlist so an external MCP client can reach them (not blocking Plan 3/4).
 
-Do not start write abilities until the Milestones 1–3 security gates are
-closed. Existing and new content reads continue to consume
-`ContentAccessManager`; none may call `get_option()` directly.
+Existing and new content reads continue to consume `ContentAccessManager`;
+none may call `get_option()` directly. New writes continue to consume
+`ContentAccessManager` for per-post-type policy, and must record exactly one
+audit row per attempt (success or failure) outside any `try` block whose
+`catch` could also record one.
