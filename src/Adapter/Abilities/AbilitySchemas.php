@@ -572,6 +572,93 @@ final class AbilitySchemas {
 	}
 
 	/**
+	 * Returns the update-seo input schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_seo_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'post_id', 'version_token' ),
+			'properties'           => array(
+				'post_id'             => array(
+					'description' => 'Target post ID.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+				),
+				'version_token'       => array(
+					'description' => 'Optimistic-concurrency token from get-content.',
+					'type'        => 'string',
+					'minLength'   => 18,
+					'maxLength'   => 191,
+				),
+				'seo_title'           => array(
+					'description' => 'Yoast SEO title override.',
+					'type'        => array( 'string', 'null' ),
+					'maxLength'   => 500,
+				),
+				'meta_description'    => array(
+					'description' => 'Yoast meta description override.',
+					'type'        => array( 'string', 'null' ),
+					'maxLength'   => 320,
+				),
+				'focus_keyphrase'     => array(
+					'description' => 'Yoast focus keyphrase override.',
+					'type'        => array( 'string', 'null' ),
+					'maxLength'   => 200,
+				),
+				'canonical'           => array(
+					'description' => 'Yoast canonical URL override.',
+					'type'        => array( 'string', 'null' ),
+					'maxLength'   => 2048,
+				),
+				'robots_index'        => array(
+					'description' => 'True forces index; false forces noindex.',
+					'type'        => array( 'boolean', 'null' ),
+				),
+				'robots_follow'       => array(
+					'description' => 'True forces follow; false forces nofollow.',
+					'type'        => array( 'boolean', 'null' ),
+				),
+				'og_title'            => array(
+					'description' => 'Yoast Open Graph title override.',
+					'type'        => array( 'string', 'null' ),
+					'maxLength'   => 500,
+				),
+				'og_description'      => array(
+					'description' => 'Yoast Open Graph description override.',
+					'type'        => array( 'string', 'null' ),
+					'maxLength'   => 500,
+				),
+				'twitter_title'       => array(
+					'description' => 'Yoast Twitter title override.',
+					'type'        => array( 'string', 'null' ),
+					'maxLength'   => 500,
+				),
+				'twitter_description' => array(
+					'description' => 'Yoast Twitter description override.',
+					'type'        => array( 'string', 'null' ),
+					'maxLength'   => 500,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the update-seo output schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_seo_output(): array {
+		$schema                                = self::mutation_output();
+		$schema['required'][]                  = 'effective_seo';
+		$schema['properties']['effective_seo'] = self::seo_output();
+
+		return $schema;
+	}
+
+	/**
 	 * Returns the compact content schema.
 	 *
 	 * @return array<string, mixed>
@@ -778,6 +865,7 @@ final class AbilitySchemas {
 	 * Returns the shared create-draft/update-content output schema.
 	 *
 	 * @return array<string, mixed>
+	 * @phpstan-return array{type: string, required: array<int, string>, properties: array<string, mixed>, additionalProperties: bool}
 	 */
 	private static function mutation_output(): array {
 		return array(

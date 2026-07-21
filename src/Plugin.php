@@ -19,6 +19,7 @@ use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessManager;
 use IsuDev\WPContentBridge\Application\Editorial\GetEditorialContext;
 use IsuDev\WPContentBridge\Application\Mutation\CreateDraft;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateContent;
+use IsuDev\WPContentBridge\Application\Mutation\UpdateSeo;
 use IsuDev\WPContentBridge\Application\Seo\NullSeoProvider;
 use IsuDev\WPContentBridge\Application\Seo\GetSeo;
 use IsuDev\WPContentBridge\Application\Seo\SameSiteSeoTargetFactory;
@@ -36,6 +37,7 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressRenderedSchemaReade
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressTaxonomyCatalog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoTargetAccess;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressTransientIdempotencyStore;
+use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastFreeSeoWriter;
 use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastSeoProvider;
 
 /**
@@ -108,10 +110,12 @@ final class Plugin {
 			$block_validator     = new PhpBlockMarkupValidator();
 			$idempotency         = new WordPressTransientIdempotencyStore();
 			$audit_log           = new WordPressAuditLog();
+			$seo_writer          = new YoastFreeSeoWriter( $seo_providers->active() );
 
 			( new MutationAbilities(
 				new CreateDraft( $manager, $block_validator, $mutation_repository, $idempotency, $audit_log ),
-				new UpdateContent( $manager, $block_validator, $mutation_repository, $audit_log )
+				new UpdateContent( $manager, $block_validator, $mutation_repository, $audit_log ),
+				new UpdateSeo( $manager, $mutation_repository, $seo_writer, $audit_log )
 			) )->register_hooks();
 		}
 

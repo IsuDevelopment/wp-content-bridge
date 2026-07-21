@@ -144,23 +144,29 @@ Annotations: read-only, non-destructive, idempotent.
 
 ## Write abilities
 
-`create-draft` and `update-content` are **implemented and reachable** (Milestone
-5 Plan 2), registered only when `get_option( Installer::WRITES_ENABLED_OPTION )`
-(`wpcb_writes_enabled`) is truthy — an ability that is not registered is
-invisible to Abilities discovery and to any MCP projection. Both additionally
-require the plugin capability `wpcb_edit_content`, the native WordPress
-type/object capability, and per-post-type Create/Update policy
-(`ContentAccessManager`) — three independently-enforced gates. Neither ability
-can ever set post status to `publish`, `future`, or `pending`.
+`create-draft`, `update-content`, and `update-seo` are **implemented and
+reachable** (Milestone 5 Plans 2–3), registered only when
+`get_option( Installer::WRITES_ENABLED_OPTION )` (`wpcb_writes_enabled`) is
+truthy — an ability that is not registered is invisible to Abilities
+discovery and to any MCP projection. All three additionally require a plugin
+capability (`wpcb_edit_content` for the first two, `wpcb_manage_seo` for
+`update-seo`), the native WordPress type/object capability, and a
+per-post-type policy (`ContentAccessManager`) — three independently-enforced
+gates. None of the three can ever set post status to `publish`, `future`, or
+`pending`.
 
-Stable error codes shared by both: `wpcb_invalid_input`, `wpcb_conflict`,
-`wpcb_invalid_blocks`, `wpcb_forbidden`, `wpcb_content_unavailable`,
-`wpcb_write_failed`, `wpcb_internal_error`.
+Stable error codes shared by `create-draft`/`update-content`:
+`wpcb_invalid_input`, `wpcb_conflict`, `wpcb_invalid_blocks`, `wpcb_forbidden`,
+`wpcb_content_unavailable`, `wpcb_write_failed`, `wpcb_internal_error`.
+`update-seo` shares the same set except `wpcb_invalid_blocks`, and adds
+`wpcb_seo_field_unsupported` (a field outside the writable allowlist rejects
+the whole request).
 
 **Not yet visible to any MCP client:** the site-infrastructure MCP glue
 (`wpcb-mcp-server.php` mu-plugin, and the ChatGPT-facing miniOrange OAuth
 scope) still hardcode an explicit five-read-ability allowlist that has not
-been updated to include these two — see `docs/setup/MCP_ADAPTER.md`.
+been updated to include any of the three write abilities — see
+`docs/setup/MCP_ADAPTER.md`.
 
 ### `wp-content-bridge/create-draft`
 
@@ -212,14 +218,34 @@ Output: same shape as `create-draft`'s (`created` is always `false`).
 
 Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
 
-The following two write abilities are **not yet built** (Milestone 5 Plans 3–4)
-— the descriptions below are the planned contract, not a delivered one.
+### `wp-content-bridge/update-seo`
 
-### `wp-content-bridge/update-seo` (planned — Plan 3)
+Writes a fixed Yoast Free core-field SEO allowlist on one existing post
+through the active `SeoWriter` (`YoastFreeSeoWriter`, version-gated to Yoast
+Free 28.x exactly like the read-side `YoastSeoProvider`). It never touches
+post title/body/status and never publishes.
 
-Updates only an allowlisted normalized SEO field set through the active provider. It does not update post body/title or publish.
+Inputs:
 
-Annotations: not read-only, destructive, usually idempotent.
+- `post_id: integer` (required).
+- `version_token: string` (required) — from a prior `get-content` call's
+  `version_token` field; a stale token is rejected with `wpcb_conflict` and
+  no SEO meta is written.
+- Any subset of: `seo_title?`, `meta_description?`, `focus_keyphrase?`,
+  `canonical?`, `og_title?`, `og_description?`, `twitter_title?`,
+  `twitter_description?: string|null`, `robots_index?`, `robots_follow?:
+  bool|null`. A key outside this allowlist (e.g. Premium/Local-only fields
+  such as `schema_type`) rejects the **whole** request with
+  `wpcb_seo_field_unsupported` naming the offending keys — there is no
+  field-level partial application.
+
+Output: same envelope shape as `create-draft`/`update-content`
+(`schema_version, post_id, post_type, status, version_token, changed_fields,
+created, provenance`) plus `effective_seo` — the same resolved SEO shape as
+`get-url-seo`, re-read via `YoastSeoProvider` immediately after the write so
+callers can confirm what actually landed.
+
+Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
 
 ### `wp-content-bridge/publish-content` (planned — Plan 4)
 

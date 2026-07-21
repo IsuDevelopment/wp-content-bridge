@@ -42,4 +42,34 @@ final class MutationResultTest extends TestCase {
 			$array['provenance']
 		);
 	}
+
+	/**
+	 * The wire representation includes effective_seo when present.
+	 */
+	public function test_to_array_includes_effective_seo_when_present(): void {
+		$version = new VersionToken( 'abcdef0123456789', '2026-07-20 12:30:00' );
+		$result  = new MutationResult(
+			42,
+			'post',
+			'publish',
+			$version,
+			array( 'seo_title' ),
+			false,
+			array( 'schema_version' => '1.1' )
+		);
+
+		$array = $result->to_array();
+
+		self::assertSame( array( 'schema_version' => '1.1' ), $array['effective_seo'] );
+	}
+
+	/**
+	 * The wire representation omits effective_seo when absent.
+	 */
+	public function test_to_array_omits_effective_seo_when_absent(): void {
+		$version = new VersionToken( 'abcdef0123456789', '2026-07-20 12:30:00' );
+		$result  = new MutationResult( 42, 'post', 'draft', $version, array( 'title' ), true );
+
+		self::assertArrayNotHasKey( 'effective_seo', $result->to_array() );
+	}
 }

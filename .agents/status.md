@@ -25,8 +25,27 @@ mu-plugin and the ChatGPT-facing miniOrange OAuth config) still hardcode an
 explicit allowlist of only the five original read abilities — the two new write
 abilities are reachable directly (PHP/Abilities API, REST via the Abilities
 REST routes) but are **not yet visible to any MCP client** until that
-site-infra allowlist is updated separately (outside this plugin repo). Next is
-**Plan 3** (`update-seo`).
+site-infra allowlist is updated separately (outside this plugin repo).
+
+**Plan 3 (`update-seo`) is code-complete on branch `feat/m5-update-seo`** (not
+yet merged). Adds `wp-content-bridge/update-seo`, writing the fixed Yoast Free
+core-field allowlist (title, meta description, focus keyphrase, canonical,
+robots index/follow, OG title/description, Twitter title/description) on an
+existing post, gated by `wpcb_writes_enabled` + `wpcb_manage_seo` capability +
+native `edit_post` + the `update_seo` per-post-type policy, reusing the
+existing optimistic-concurrency (`VersionToken`) and audit invariants. All 8
+plan tasks are committed: `MutationResult.effective_seo` (`5bd865a`),
+`SeoUpdate` DTO (`103f959`), `SeoWriter` port + `UpdateSeo` use case
+(`217be9f`), `YoastFreeSeoWriter` infrastructure adapter (`7d91878`), ability
+schemas (`b71f123`), `MutationAbilities` registration (`1b8dd1f`), `Plugin.php`
+wiring (`7ec6870`), and the runtime verifier
+`tests/Integration/writes-seo-verification.php` (`1bb27c2`). `composer check`
+is green (136 tests / 341 assertions, PHPCS 0, PHPStan 0). **Known gap:** the
+runtime `wp eval` verification against a live Yoast Free 28.x install has not
+been executed yet — the plugin is not currently symlinked/active on the local
+Kormas WP install, so this step needs manual setup before Plan 3 can be
+considered fully sign-off verified. Once that runs clean, next is merging Plan
+3 and updating the site-infra MCP allowlist for all three write abilities.
 
 Milestone 4 Phase 1 — **complete** (ChatGPT-primary, read-only, Approach A per
 ADR 0010). ChatGPT completed the five-ability read scenario live through the
@@ -44,6 +63,9 @@ verified.
 
 ## Completed
 
+- Fixed the GitHub release workflow to build with the project's minimum
+  supported PHP version (8.2), so production-only Composer installation honors
+  the root platform constraint without changing the lock file.
 - Standalone repository scaffold.
 - Composer autoloading and quality-tool configuration.
 - Minimal activatable WordPress plugin bootstrap.

@@ -17,12 +17,13 @@ final readonly class MutationResult {
 	/**
 	 * Creates a mutation result.
 	 *
-	 * @param int                $post_id        The post ID.
-	 * @param string             $post_type      The post type.
-	 * @param string             $status         The post status.
-	 * @param VersionToken       $version        The version token.
-	 * @param array<int, string> $changed_fields Field names that changed (never values).
-	 * @param bool               $created        Whether the post was created.
+	 * @param int                       $post_id        The post ID.
+	 * @param string                    $post_type      The post type.
+	 * @param string                    $status         The post status.
+	 * @param VersionToken              $version        The version token.
+	 * @param array<int, string>        $changed_fields Field names that changed (never values).
+	 * @param bool                      $created        Whether the post was created.
+	 * @param array<string, mixed>|null $effective_seo Re-read normalized SEO document, SEO writes only.
 	 */
 	public function __construct(
 		public int $post_id,
@@ -31,6 +32,7 @@ final readonly class MutationResult {
 		public VersionToken $version,
 		public array $changed_fields,
 		public bool $created,
+		public ?array $effective_seo = null,
 	) {}
 
 	/**
@@ -39,7 +41,7 @@ final readonly class MutationResult {
 	 * @return array<string, mixed>
 	 */
 	public function to_array(): array {
-		return array(
+		$array = array(
 			'schema_version' => '1.0',
 			'post_id'        => $this->post_id,
 			'post_type'      => $this->post_type,
@@ -52,5 +54,11 @@ final readonly class MutationResult {
 				'untrusted' => true,
 			),
 		);
+
+		if ( null !== $this->effective_seo ) {
+			$array['effective_seo'] = $this->effective_seo;
+		}
+
+		return $array;
 	}
 }
