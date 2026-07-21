@@ -40,7 +40,7 @@ final class SeoUpdateTest extends TestCase {
 	}
 
 	/**
-	 * All ten allowlisted fields, including booleans, build a valid update.
+	 * All allowlisted fields, including Premium lists and booleans, build a valid update.
 	 */
 	public function test_from_input_builds_full_update_including_booleans(): void {
 		$update = SeoUpdate::from_input(
@@ -50,6 +50,8 @@ final class SeoUpdateTest extends TestCase {
 				'seo_title'           => 'T',
 				'meta_description'    => 'D',
 				'focus_keyphrase'     => 'kp',
+				'keyphrase_synonyms'  => array( 'synonym one', 'synonym two' ),
+				'related_keyphrases'  => array( 'related one', 'related two' ),
 				'canonical'           => 'https://example.com/post',
 				'robots_index'        => false,
 				'robots_follow'       => true,
@@ -65,6 +67,8 @@ final class SeoUpdateTest extends TestCase {
 				'seo_title',
 				'meta_description',
 				'focus_keyphrase',
+				'keyphrase_synonyms',
+				'related_keyphrases',
 				'canonical',
 				'robots_index',
 				'robots_follow',
@@ -77,6 +81,61 @@ final class SeoUpdateTest extends TestCase {
 		);
 		self::assertFalse( $update->writable_fields()['robots_index'] );
 		self::assertTrue( $update->writable_fields()['robots_follow'] );
+		self::assertSame( array( 'synonym one', 'synonym two' ), $update->writable_fields()['keyphrase_synonyms'] );
+		self::assertSame( array( 'related one', 'related two' ), $update->writable_fields()['related_keyphrases'] );
+	}
+
+	/**
+	 * Empty Premium lists are meaningful clear operations.
+	 */
+	public function test_empty_premium_lists_are_present_fields(): void {
+		$update = SeoUpdate::from_input(
+			array(
+				'post_id'            => 7,
+				'version_token'      => self::TOKEN,
+				'keyphrase_synonyms' => array(),
+				'related_keyphrases' => array(),
+			)
+		);
+
+		self::assertSame(
+			array(
+				'keyphrase_synonyms' => array(),
+				'related_keyphrases' => array(),
+			),
+			$update->writable_fields()
+		);
+	}
+
+	/**
+	 * Commas are rejected in normalized synonyms because Yoast uses commas as
+	 * its storage delimiter.
+	 */
+	public function test_synonyms_reject_ambiguous_commas(): void {
+		$this->expectException( InvalidArgumentException::class );
+
+		SeoUpdate::from_input(
+			array(
+				'post_id'            => 7,
+				'version_token'      => self::TOKEN,
+				'keyphrase_synonyms' => array( 'one, two' ),
+			)
+		);
+	}
+
+	/**
+	 * Premium lists reject duplicates instead of creating ambiguous positional data.
+	 */
+	public function test_related_keyphrases_reject_duplicates(): void {
+		$this->expectException( InvalidArgumentException::class );
+
+		SeoUpdate::from_input(
+			array(
+				'post_id'            => 7,
+				'version_token'      => self::TOKEN,
+				'related_keyphrases' => array( 'same', 'same' ),
+			)
+		);
 	}
 
 	/**

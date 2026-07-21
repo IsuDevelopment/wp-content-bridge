@@ -14,6 +14,10 @@
 - Error mapping and audit redaction.
 - Editorial-context selection/default normalization, section bounds, exact
   requested type/taxonomy behavior, and provider degradation.
+- Media selector exclusivity, strict object envelopes, deterministic identity,
+  policy ordering, and featured-image ID+URL pair invariants.
+- Pattern query bounds, metadata-only defaults, strict item/envelope shapes,
+  content byte accounting, and feature/native-access ordering.
 
 ### WordPress integration
 
@@ -32,6 +36,19 @@
 - Yoast adapter integration where fixtures are available.
 - Editorial taxonomy/term vocabulary, observed-author projection, configured
   READ+SEARCH denial, and published/readable recent inventory.
+- Media registration flag, dedicated capability, native per-attachment denial,
+  exact ID/URL/filename lookup, normalized fields, and featured-image identity.
+- Pattern registration flag, dedicated capability, native editor-level denial,
+  deterministic filters/pagination, content opt-in, and remote/path leakage
+  rejection.
+
+Repeatable Kormas local media verification:
+
+```bash
+cd "/Users/lukaszbiedron/Local Sites/kormas-isu/app"
+wp eval 'require "/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/Integration/media-read-verification.php";'
+wp eval 'require "/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/Integration/block-patterns-verification.php";'
+```
 
 ### Contract
 
@@ -132,7 +149,13 @@ The repeatable local commands are:
 wp eval 'require "/absolute/path/to/wp-content-bridge/tests/Integration/authorization-matrix.php";'
 wp eval 'require "/absolute/path/to/wp-content-bridge/tests/Integration/abilities-runtime-verification.php";'
 wp eval 'require "/absolute/path/to/wp-content-bridge/tests/Integration/integration-access-verification.php";'
+wp eval 'require "/absolute/path/to/wp-content-bridge/tests/Integration/cache-invalidation-verification.php";'
 ```
+
+The cache verifier creates one disposable draft, proves a successful mutation
+dispatches only post-scoped WordPress/LiteSpeed invalidation, proves a denied
+event does not purge, contains a synthetic adapter exception, and deletes the
+fixture.
 
 The 2026-07-17 WordPress 7.0.1 run measured a 500-block fixture at 47,000 raw,
 39,000 rendered, and 13,500 plain-text bytes (99,500 combined; 103,898 bytes for
@@ -147,8 +170,9 @@ Include examples for:
 - custom canonical and robots;
 - social overrides and images;
 - focus keyphrase and missing analysis;
-- Premium primary/additional keyphrase roles, bounded scores, malformed JSON,
-  duplicate removal, and arbitrary-member leakage;
+- Premium primary/additional keyphrase roles, bounded scores, normalized
+  primary/related synonyms, malformed JSON, duplicate removal, and
+  arbitrary-member leakage;
 - indexable missing/stale;
 - Schema Article/WebPage/Organization;
 - LocalBusiness, location page, address references, multiple-location branch
@@ -158,6 +182,7 @@ Repeatable Yoast Free/Premium 28.0 + Local 15.8 verification commands on Kormas:
 
 ```bash
 wp eval 'require "/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/Integration/yoast-configured-runtime-verification.php";'
+wp eval 'require "/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/Integration/writes-seo-verification.php";'
 
 WPCB_SITE_URL=https://kormas-isu.local \
 WPCB_WP_ROOT="/Users/lukaszbiedron/Local Sites/kormas-isu/app/public" \

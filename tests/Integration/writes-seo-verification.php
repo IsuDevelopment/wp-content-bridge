@@ -23,7 +23,7 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressAuditLog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentAccessSettingsRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentMutationRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentTypeCatalog;
-use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastFreeSeoWriter;
+use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastSeoWriter;
 use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastSeoProvider;
 
 // phpcs:disable Squiz.Commenting.FunctionCommentThrowTag.Missing -- assertion helpers intentionally fail the runtime harness fast.
@@ -79,13 +79,14 @@ final class WPCB_Seo_Write_Verification {
 			$this->verify_stale_version_conflict();
 			$this->verify_unsupported_field_rejected();
 			$this->verify_write_and_reread_parity();
+			$this->verify_premium_keyphrase_write_and_reread();
 			$this->verify_audit_redaction();
 		} finally {
 			$this->cleanup();
 		}
 
 		if ( array() === $this->failures ) {
-			echo "PASS: update-seo (authorization matrix, conflict, unsupported field, write/re-read parity, audit redaction)\n";
+			echo "PASS: update-seo (authorization matrix, conflict, Free/Premium write/re-read parity, audit redaction)\n";
 			exit( 0 );
 		}
 
@@ -161,7 +162,7 @@ final class WPCB_Seo_Write_Verification {
 	 * @return UpdateSeo
 	 */
 	private function use_case(): UpdateSeo {
-		$writer = new YoastFreeSeoWriter( new YoastSeoProvider() );
+		$writer = new YoastSeoWriter( new YoastSeoProvider() );
 
 		return new UpdateSeo(
 			new ContentAccessManager(
@@ -303,7 +304,7 @@ final class WPCB_Seo_Write_Verification {
 		$post_id = $this->fixture_post();
 		$token   = $this->current_token( $post_id );
 
-		$writer = new YoastFreeSeoWriter( new YoastSeoProvider() );
+		$writer = new YoastSeoWriter( new YoastSeoProvider() );
 		if ( ! $writer->is_available() ) {
 			echo "WARN: no compatible Yoast Free install active; skipping write/re-read parity check.\n";
 			return;
@@ -335,6 +336,61 @@ final class WPCB_Seo_Write_Verification {
 	}
 
 	/**
+	 * Premium synonyms and related keyphrases round-trip through Yoast's
+	 * positional JSON without losing retained scores or synonyms.
+	 *
+	 * @return void
+	 */
+	private function verify_premium_keyphrase_write_and_reread(): void {
+		if ( ! defined( 'WPSEO_PREMIUM_VERSION' ) || ! str_starts_with( (string) WPSEO_PREMIUM_VERSION, '28.' ) ) {
+			echo "WARN: no compatible Yoast Premium install active; skipping Premium keyphrase parity check.\n";
+			return;
+		}
+
+		$post_id = $this->fixture_post();
+		$token   = $this->current_token( $post_id );
+		update_post_meta( $post_id, '_yoast_wpseo_focuskw', 'primary phrase' );
+		update_post_meta( $post_id, '_yoast_wpseo_focuskeywords', '[{"keyword":"retained phrase","score":87},{"keyword":"removed phrase","score":55}]' );
+		update_post_meta( $post_id, '_yoast_wpseo_keywordsynonyms', '["old primary","retained synonym","removed synonym"]' );
+
+		$result = $this->use_case()->execute(
+			array(
+				'post_id'            => $post_id,
+				'version_token'      => $token,
+				'keyphrase_synonyms' => array( 'primary "quoted" synonym', 'second \\ synonym' ),
+				'related_keyphrases' => array( 'retained phrase', 'new phrase' ),
+			),
+			1
+		);
+
+		$this->assert_true(
+			array(
+				array(
+					'keyword' => 'retained phrase',
+					'score'   => 87,
+				),
+				array(
+					'keyword' => 'new phrase',
+					'score'   => 0,
+				),
+			) === json_decode( (string) get_post_meta( $post_id, '_yoast_wpseo_focuskeywords', true ), true ),
+			'Premium related keyphrases did not preserve the retained score'
+		);
+		$this->assert_true(
+			array( 'primary "quoted" synonym, second \\ synonym', 'retained synonym', '' ) === json_decode( (string) get_post_meta( $post_id, '_yoast_wpseo_keywordsynonyms', true ), true ),
+			'Premium positional synonyms were not synchronized'
+		);
+		$this->assert_true(
+			array( 'primary "quoted" synonym', 'second \\ synonym' ) === ( $result->effective_seo['configured']['keyphrase_synonyms']['value'] ?? null ),
+			'Premium primary synonyms were not present in the normalized re-read'
+		);
+		$this->assert_true(
+			'retained phrase' === ( $result->effective_seo['configured']['related_keyphrases']['value'][0]['keyphrase'] ?? null ),
+			'Premium related keyphrases were not present in the normalized re-read'
+		);
+	}
+
+	/**
 	 * A mutation writes exactly one redacted audit row (no SEO values leaked).
 	 *
 	 * @return void
@@ -345,7 +401,7 @@ final class WPCB_Seo_Write_Verification {
 		$post_id = $this->fixture_post();
 		$token   = $this->current_token( $post_id );
 
-		$writer = new YoastFreeSeoWriter( new YoastSeoProvider() );
+		$writer = new YoastSeoWriter( new YoastSeoProvider() );
 		if ( ! $writer->is_available() ) {
 			echo "WARN: no compatible Yoast Free install active; skipping audit redaction check.\n";
 			return;

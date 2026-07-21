@@ -13,6 +13,8 @@ SeoDocument
 │   ├── description
 │   ├── focus_keyphrases
 │   ├── keyphrase_details
+│   ├── keyphrase_synonyms
+│   ├── related_keyphrases
 │   ├── canonical
 │   ├── robots
 │   ├── social
@@ -78,11 +80,18 @@ narrow post-meta allowlist: title, description, canonical, primary focus
 keyphrase, robots, social overrides, Schema page/article types, and cornerstone.
 Absent keys are represented as inherited, not as an explicit empty value.
 
-When Premium 28.x is detected, its tested additional-keyphrase JSON is parsed
-through a bounded allowlist. `focus_keyphrases` remains the simple ordered list;
-`keyphrase_details` adds `primary`/`additional` roles and an optional score in
-the 0–100 range. Unknown JSON members and malformed items are discarded. No
-synonym format is assumed until a stable contract is proven.
+When Premium 28.x is detected, its tested additional-keyphrase and positional
+synonym JSON are parsed through a bounded allowlist. `focus_keyphrases` remains
+the simple ordered list; `keyphrase_details` adds `primary`/`additional` roles
+and an optional score in the 0–100 range. `keyphrase_synonyms` returns the
+normalized primary synonyms, while `related_keyphrases` returns each related
+phrase with its bounded synonyms and optional score. Unknown JSON members and
+malformed items are discarded.
+
+The write adapter exposes only normalized `keyphrase_synonyms` and
+`related_keyphrases` lists, never the positional provider JSON. It is gated to
+the tested Premium 28.x envelope and preserves scores/synonyms for retained
+related phrases (ADR 0014).
 
 Schema is capped at 200 nodes and 1 MiB after normalization. Warnings are capped
 at 50. Arbitrary Yoast meta, WordPress options, indexables rows, provider objects,
@@ -101,7 +110,9 @@ Initial compatibility target:
 
 ## Yoast Premium
 
-Premium capability is feature-detected. Additional keyphrases, synonyms, redirects, and internal-link suggestions are separate concerns. MVP only includes additional keyphrase configuration if a stable, licensed-version-tested adapter can provide it.
+Premium capability is feature-detected. Additional keyphrases and primary
+synonyms are available through the licensed-version-tested read/write adapter.
+Redirects and internal-link suggestions remain separate concerns.
 
 The tested compatibility envelope is Free 28.0 + Premium 28.0. Provider status
 reports safe module slugs and versions. It never reports licensing, update
@@ -144,4 +155,4 @@ SEO writes are postponed until read compatibility is proven. A write adapter:
 
 Each response includes provider name/version, detected modules, safe
 `module_versions`, supported features, completeness, warnings, and normalization
-schema version 1.1. Claims remain scoped to the exact licensed fixtures tested.
+schema version 1.2. Claims remain scoped to the exact licensed fixtures tested.

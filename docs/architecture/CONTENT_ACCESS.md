@@ -23,6 +23,11 @@ All gates are enforced at execution time. Hiding a checkbox, menu item, REST rou
 - Unsaved `post` and `page`: `get_content` and `search_content` enabled.
 - Eligible custom post types: all operations disabled until opt-in.
 - `attachment`, non-UI types, non-public/non-REST types, and `wp_*` internal types: not listed.
+
+Attachments remain excluded from this matrix. ADR 0011 defines a separate,
+disabled-by-default media-read policy using `wpcb_media_reads_enabled`, the
+dedicated `wpcb_read_media` capability, and native per-attachment `read_post`.
+Enabling content READ never enables the media library.
 - Saved policies for temporarily unavailable post types are retained.
 
 Eligibility controls panel noise, not capability. A future requirement to support an excluded type must change the catalog deliberately and add security/integration tests.

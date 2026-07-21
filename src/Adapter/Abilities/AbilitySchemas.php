@@ -246,6 +246,232 @@ final class AbilitySchemas {
 	}
 
 	/**
+	 * Returns the bounded media search input schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function media_search_input(): array {
+		return array(
+			'type'                 => 'object',
+			'properties'           => array(
+				'id'       => array(
+					'description' => 'Optional exact WordPress attachment ID. Mutually exclusive with url, filename, and query.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+				),
+				'url'      => array(
+					'description' => 'Optional exact same-site original attachment URL. Mutually exclusive with other selectors.',
+					'type'        => 'string',
+					'format'      => 'uri',
+					'maxLength'   => 2048,
+				),
+				'filename' => array(
+					'description' => 'Optional exact attachment basename, including extension. Mutually exclusive with other selectors.',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 255,
+					'pattern'     => '^[^/\\\\]+$',
+				),
+				'query'    => array(
+					'description' => 'Optional WordPress attachment title, caption, or description search. Mutually exclusive with exact selectors.',
+					'type'        => 'string',
+					'maxLength'   => 500,
+					'default'     => '',
+				),
+				'page'     => array(
+					'type'    => 'integer',
+					'minimum' => 1,
+					'default' => 1,
+				),
+				'per_page' => array(
+					'type'    => 'integer',
+					'minimum' => 1,
+					'maximum' => 100,
+					'default' => 20,
+				),
+			),
+			'additionalProperties' => false,
+			'default'              => (object) array(),
+		);
+	}
+
+	/**
+	 * Returns the deterministic media-by-ID input schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function media_by_id_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'id' ),
+			'properties'           => array(
+				'id' => array(
+					'description' => 'WordPress attachment ID.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the media search object-envelope schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function media_search_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'schema_version', 'items', 'pagination', 'provenance' ),
+			'properties'           => array(
+				'schema_version' => array( 'type' => 'string' ),
+				'items'          => array(
+					'type'     => 'array',
+					'maxItems' => 100,
+					'items'    => self::media_item(),
+				),
+				'pagination'     => array(
+					'type'                 => 'object',
+					'required'             => array( 'page', 'per_page', 'total_items', 'total_pages', 'total_is_exact', 'has_more', 'candidate_scan_limit' ),
+					'properties'           => array(
+						'page'                 => array( 'type' => 'integer' ),
+						'per_page'             => array( 'type' => 'integer' ),
+						'total_items'          => array( 'type' => 'integer' ),
+						'total_pages'          => array( 'type' => 'integer' ),
+						'total_is_exact'       => array( 'type' => 'boolean' ),
+						'has_more'             => array( 'type' => 'boolean' ),
+						'candidate_scan_limit' => array( 'type' => 'integer' ),
+					),
+					'additionalProperties' => false,
+				),
+				'provenance'     => self::provenance(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the one-media object-envelope schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function media_by_id_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'schema_version', 'item', 'provenance' ),
+			'properties'           => array(
+				'schema_version' => array( 'type' => 'string' ),
+				'item'           => self::media_item(),
+				'provenance'     => self::provenance(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the bounded block-pattern listing input schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function pattern_list_input(): array {
+		return array(
+			'type'                 => 'object',
+			'properties'           => array(
+				'query'           => array(
+					'description' => 'Optional text search across pattern name, title, description, and keywords.',
+					'type'        => 'string',
+					'maxLength'   => 200,
+					'default'     => '',
+				),
+				'namespace'       => array(
+					'description' => 'Optional exact pattern namespace before the slash.',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 100,
+					'pattern'     => '^[A-Za-z0-9][A-Za-z0-9._-]*$',
+				),
+				'category'        => array(
+					'description' => 'Optional exact registered pattern category slug.',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 100,
+					'pattern'     => '^[A-Za-z0-9][A-Za-z0-9._-]*$',
+				),
+				'post_type'       => array(
+					'description' => 'Optional exact post type; global patterns and patterns supporting this type match.',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 20,
+					'pattern'     => '^[A-Za-z0-9][A-Za-z0-9._-]*$',
+				),
+				'include_content' => array(
+					'description' => 'Whether to include complete block markup within the combined response limit.',
+					'type'        => 'boolean',
+					'default'     => false,
+				),
+				'page'            => array(
+					'type'    => 'integer',
+					'minimum' => 1,
+					'default' => 1,
+				),
+				'per_page'        => array(
+					'type'    => 'integer',
+					'minimum' => 1,
+					'maximum' => 50,
+					'default' => 20,
+				),
+			),
+			'additionalProperties' => false,
+			'default'              => (object) array(),
+		);
+	}
+
+	/**
+	 * Returns the strict block-pattern result envelope schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function pattern_list_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'schema_version', 'items', 'pagination', 'limits', 'provenance' ),
+			'properties'           => array(
+				'schema_version' => array( 'type' => 'string' ),
+				'items'          => array(
+					'type'     => 'array',
+					'maxItems' => 50,
+					'items'    => self::pattern_item(),
+				),
+				'pagination'     => array(
+					'type'                 => 'object',
+					'required'             => array( 'page', 'per_page', 'total_items', 'total_pages', 'total_is_exact', 'has_more', 'candidate_scan_limit' ),
+					'properties'           => array(
+						'page'                 => array( 'type' => 'integer' ),
+						'per_page'             => array( 'type' => 'integer' ),
+						'total_items'          => array( 'type' => 'integer' ),
+						'total_pages'          => array( 'type' => 'integer' ),
+						'total_is_exact'       => array( 'type' => 'boolean' ),
+						'has_more'             => array( 'type' => 'boolean' ),
+						'candidate_scan_limit' => array( 'type' => 'integer' ),
+					),
+					'additionalProperties' => false,
+				),
+				'limits'         => array(
+					'type'                 => 'object',
+					'required'             => array( 'content_response_bytes' ),
+					'properties'           => array(
+						'content_response_bytes' => array( 'type' => 'integer' ),
+					),
+					'additionalProperties' => false,
+				),
+				'provenance'     => self::provenance(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
 	 * Returns the bounded editorial-context selector schema.
 	 *
 	 * @return array<string, mixed>
@@ -404,7 +630,7 @@ final class AbilitySchemas {
 			'required'             => array( 'schema_version', 'configured', 'resolved', 'analysis', 'schema_graph', 'provenance', 'warnings' ),
 			'properties'           => array(
 				'schema_version' => array( 'type' => 'string' ),
-				'configured'     => self::seo_field_section( array( 'title', 'description', 'focus_keyphrases', 'keyphrase_details', 'canonical', 'robots', 'social', 'schema_types', 'cornerstone' ) ),
+				'configured'     => self::seo_field_section( array( 'title', 'description', 'focus_keyphrases', 'keyphrase_details', 'keyphrase_synonyms', 'related_keyphrases', 'canonical', 'robots', 'social', 'schema_types', 'cornerstone' ) ),
 				'resolved'       => self::seo_field_section( array( 'title', 'description', 'canonical', 'robots', 'open_graph', 'twitter', 'other_public_meta', 'local_businesses' ) ),
 				'analysis'       => self::seo_field_section( array( 'seo', 'readability', 'inclusive_language' ) ),
 				'schema_graph'   => array(
@@ -607,6 +833,29 @@ final class AbilitySchemas {
 					'type'        => array( 'string', 'null' ),
 					'maxLength'   => 200,
 				),
+				'keyphrase_synonyms'  => array(
+					'description' => 'Yoast Premium synonyms for the primary keyphrase. Empty array clears; null leaves unchanged.',
+					'type'        => array( 'array', 'null' ),
+					'maxItems'    => 20,
+					'uniqueItems' => true,
+					'items'       => array(
+						'type'      => 'string',
+						'minLength' => 1,
+						'maxLength' => 191,
+						'pattern'   => '^[^,]+$',
+					),
+				),
+				'related_keyphrases'  => array(
+					'description' => 'Yoast Premium related keyphrases. Empty array clears; null leaves unchanged.',
+					'type'        => array( 'array', 'null' ),
+					'maxItems'    => 20,
+					'uniqueItems' => true,
+					'items'       => array(
+						'type'      => 'string',
+						'minLength' => 1,
+						'maxLength' => 191,
+					),
+				),
 				'canonical'           => array(
 					'description' => 'Yoast canonical URL override.',
 					'type'        => array( 'string', 'null' ),
@@ -666,21 +915,118 @@ final class AbilitySchemas {
 	private static function summary(): array {
 		return array(
 			'type'                 => 'object',
-			'required'             => array( 'id', 'post_type', 'status', 'title', 'slug', 'url', 'excerpt', 'author_id', 'published_at', 'modified_at', 'untrusted' ),
+			'required'             => array( 'id', 'post_type', 'status', 'title', 'slug', 'url', 'excerpt', 'author_id', 'published_at', 'modified_at', 'featured_image_id', 'featured_image_url', 'untrusted' ),
 			'properties'           => array(
-				'id'           => array( 'type' => 'integer' ),
-				'post_type'    => array( 'type' => 'string' ),
-				'status'       => array( 'type' => 'string' ),
-				'title'        => array( 'type' => 'string' ),
-				'slug'         => array( 'type' => 'string' ),
-				'url'          => array( 'type' => array( 'string', 'null' ) ),
-				'excerpt'      => array( 'type' => 'string' ),
-				'author_id'    => array( 'type' => 'integer' ),
-				'published_at' => array( 'type' => array( 'string', 'null' ) ),
-				'modified_at'  => array( 'type' => 'string' ),
-				'untrusted'    => array( 'type' => 'boolean' ),
+				'id'                 => array( 'type' => 'integer' ),
+				'post_type'          => array( 'type' => 'string' ),
+				'status'             => array( 'type' => 'string' ),
+				'title'              => array( 'type' => 'string' ),
+				'slug'               => array( 'type' => 'string' ),
+				'url'                => array( 'type' => array( 'string', 'null' ) ),
+				'excerpt'            => array( 'type' => 'string' ),
+				'author_id'          => array( 'type' => 'integer' ),
+				'published_at'       => array( 'type' => array( 'string', 'null' ) ),
+				'modified_at'        => array( 'type' => 'string' ),
+				'featured_image_id'  => array( 'type' => array( 'integer', 'null' ) ),
+				'featured_image_url' => array( 'type' => array( 'string', 'null' ) ),
+				'untrusted'          => array( 'type' => 'boolean' ),
 			),
 			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the strict normalized media item schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function media_item(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'id', 'title', 'filename', 'url', 'alt_text', 'caption', 'description', 'mime_type' ),
+			'properties'           => array(
+				'id'          => array( 'type' => 'integer' ),
+				'title'       => array( 'type' => 'string' ),
+				'filename'    => array( 'type' => 'string' ),
+				'url'         => array( 'type' => 'string' ),
+				'alt_text'    => array( 'type' => 'string' ),
+				'caption'     => array( 'type' => 'string' ),
+				'description' => array( 'type' => 'string' ),
+				'mime_type'   => array( 'type' => 'string' ),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns one allowlisted block-pattern item schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function pattern_item(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'name', 'namespace', 'title', 'description', 'source', 'viewport_width', 'inserter', 'categories', 'keywords', 'block_types', 'post_types', 'template_types', 'content', 'content_bytes', 'untrusted' ),
+			'properties'           => array(
+				'name'           => array(
+					'type'      => 'string',
+					'maxLength' => 200,
+				),
+				'namespace'      => array(
+					'type'      => 'string',
+					'maxLength' => 100,
+				),
+				'title'          => array(
+					'type'      => 'string',
+					'maxLength' => 1000,
+				),
+				'description'    => array(
+					'type'      => 'string',
+					'maxLength' => 1000,
+				),
+				'source'         => array(
+					'type'      => array( 'string', 'null' ),
+					'maxLength' => 100,
+				),
+				'viewport_width' => array(
+					'type'    => array( 'integer', 'null' ),
+					'minimum' => 0,
+				),
+				'inserter'       => array( 'type' => 'boolean' ),
+				'categories'     => self::pattern_string_array(),
+				'keywords'       => self::pattern_string_array(),
+				'block_types'    => self::pattern_string_array(),
+				'post_types'     => self::pattern_string_array(),
+				'template_types' => self::pattern_string_array(),
+				'content'        => array(
+					'type'      => array( 'string', 'null' ),
+					'maxLength' => 2097152,
+				),
+				'content_bytes'  => array(
+					'type'    => 'integer',
+					'minimum' => 0,
+					'maximum' => 2097152,
+				),
+				'untrusted'      => array( 'type' => 'boolean' ),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the strict bounded string-list schema used by pattern metadata.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function pattern_string_array(): array {
+		return array(
+			'type'        => 'array',
+			'uniqueItems' => true,
+			'maxItems'    => 20,
+			'items'       => array(
+				'type'      => 'string',
+				'maxLength' => 200,
+			),
 		);
 	}
 

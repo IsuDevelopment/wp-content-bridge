@@ -103,6 +103,26 @@ final class IntegrationAccessManagerTest extends TestCase {
 	}
 
 	/**
+	 * Media reads are part of the closed operational capability vocabulary.
+	 */
+	public function test_allows_dedicated_media_read_capability(): void {
+		$manager = new IntegrationAccessManager( $this->repository( true ) );
+		$result  = $manager->update( 7, array( IntegrationCapability::READ_MEDIA->value ) );
+
+		self::assertSame( array( IntegrationCapability::READ_MEDIA ), $result->capabilities );
+	}
+
+	/**
+	 * Pattern reads are part of the closed operational capability vocabulary.
+	 */
+	public function test_allows_dedicated_pattern_read_capability(): void {
+		$manager = new IntegrationAccessManager( $this->repository( true ) );
+		$result  = $manager->update( 7, array( IntegrationCapability::READ_PATTERNS->value ) );
+
+		self::assertSame( array( IntegrationCapability::READ_PATTERNS ), $result->capabilities );
+	}
+
+	/**
 	 * Creates an in-memory repository around one principal.
 	 *
 	 * @param bool $has_native_read Native WordPress read state.

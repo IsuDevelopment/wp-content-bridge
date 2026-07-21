@@ -27,6 +27,8 @@ or OAuth grant must be bound to that WordPress principal as specified by ADR
 Plugin capabilities:
 
 - `wpcb_read_content`
+- `wpcb_read_media`
+- `wpcb_read_patterns`
 - `wpcb_edit_content`
 - `wpcb_manage_seo`
 - `wpcb_publish_content`
@@ -35,7 +37,7 @@ Plugin capabilities:
 An ability requires both its plugin capability and the native object capability.
 Administrators receive management capabilities on activation. On single-site
 installations, an administrator with `wpcb_manage_settings`, `promote_users`,
-and per-target `edit_user` may explicitly manage the four operational WPCB
+and per-target `edit_user` may explicitly manage the six operational WPCB
 capabilities for one dedicated, non-administrator integration user from the
 plugin settings page. The surface never grants native WordPress capabilities or
 `wpcb_manage_settings`, rejects unknown capability tokens, requires native
@@ -48,6 +50,16 @@ support is claimed.
 ### Excessive data disclosure
 
 Mitigations: deny-by-default custom post-type policy, object-level filtering, bounded fields, no arbitrary meta/options, explicit representations, secret denylist, safe diagnostics, private-content tests.
+
+Media uses a separate off-by-default policy and capability. Search filters
+native `read_post` before pagination, returns only a fixed attachment field
+allowlist, never exposes disk paths or arbitrary attachment meta, and accepts
+only same-site URLs without performing a remote fetch (ADR 0011).
+
+Block-pattern reads use their own off-by-default policy and capability plus the
+same native editor-level gate as WordPress core. Metadata is allowlisted,
+content is opt-in and capped, filesystem paths are discarded, and listing does
+not trigger WordPress.org remote pattern downloads (ADR 0013).
 
 ### Privilege escalation
 
@@ -102,6 +114,20 @@ revocation, rate-limit failures, and never retain legacy plaintext tokens.
 ### SEO-provider internal leakage
 
 Mitigations: normalized allowlist, resolved public output first, no raw option dump, no indexables-table dump, version compatibility tests.
+
+Premium keyphrase writes accept bounded string lists only. The adapter owns the
+version-tested positional JSON mapping, rejects Premium fields before any write
+when compatible Premium is absent, preserves only allowlisted scores/synonyms,
+and never accepts raw provider JSON or caller-supplied analysis scores (ADR
+0014).
+
+### Cache invalidation abuse or stale public output
+
+Mitigations: invalidation is triggered only by a successful internal mutation
+event and derives one post ID from the authoritative result. Callers cannot
+provide cache keys, action names, paths, URLs, or full-purge commands. Core and
+supported cache adapters receive only that post ID; failures are contained and
+reported through a redacted infrastructure event after the write has committed.
 
 ## Audit events
 

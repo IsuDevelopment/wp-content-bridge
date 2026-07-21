@@ -27,7 +27,7 @@ interface SeoWriter {
 	 *
 	 * @param int   $post_id Target post ID.
 	 * @param array $fields  Present allowlisted field name to value.
-	 * @phpstan-param array<string, string|bool> $fields
+	 * @phpstan-param array<string, string|bool|list<string>> $fields
 	 * @return array<string, mixed> Re-read normalized SEO document.
 	 * @throws SeoFieldUnsupported When no compatible writer is available.
 	 * @throws MutationWriteFailed When the underlying write fails.

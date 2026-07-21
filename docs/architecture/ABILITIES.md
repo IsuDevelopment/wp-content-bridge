@@ -142,6 +142,75 @@ It reports versions and availability, not secrets, database details, paths, user
 
 Annotations: read-only, non-destructive, idempotent.
 
+## Media read abilities
+
+Media abilities are registered only when `wpcb_media_reads_enabled` is true.
+Both require `wpcb_read_media` and native `read_post` for every attachment.
+Attachments remain outside the content-type matrix (ADR 0011).
+
+### `wp-content-bridge/get-media`
+
+Purpose: search the authorized media library without guessing attachment IDs.
+
+Inputs accept at most one selector: exact positive `id`, exact same-site
+original `url`, exact `filename`, or bounded text `query`; `page` defaults to 1
+and `per_page` defaults to 20 with a maximum of 100. With no selector, newest
+attachments are returned. Candidate inspection is capped at 1,000 and native
+authorization is applied before pagination.
+
+Output is an object envelope containing `schema_version`, `items`, `pagination`,
+and `provenance`. Each item contains exactly `id`, `title`, `filename`, `url`,
+`alt_text`, `caption`, `description`, and `mime_type`.
+
+Annotations: read-only, non-destructive, idempotent.
+
+### `wp-content-bridge/get-media-by-id`
+
+Purpose: retrieve one exact authorized attachment. Missing and denied objects
+both return `wpcb_media_unavailable`.
+
+Input: positive integer `id`. Output: an object envelope with
+`schema_version`, one normalized `item`, and `provenance`.
+
+Annotations: read-only, non-destructive, idempotent.
+
+`search-content` and `get-content` summaries add the required nullable pair
+`featured_image_id` and `featured_image_url`; both are populated together only
+when the attachment is readable. The optional
+`relationships.featured_media` projection remains available.
+
+## Block-pattern read ability
+
+`wp-content-bridge/list-block-patterns` is registered only when
+`wpcb_pattern_reads_enabled` is true. It requires the dedicated
+`wpcb_read_patterns` capability and native editor access equivalent to the core
+block-pattern REST controller (`edit_posts`, or the mapped `edit_posts`
+capability for at least one REST-visible post type). Patterns remain outside the
+content-type matrix (ADR 0013).
+
+Inputs:
+
+- optional text `query`, maximum 200 bytes;
+- optional exact `namespace`, `category`, and `post_type` filters;
+- `include_content`, default false;
+- `page`, default 1, and `per_page`, default 20, maximum 50.
+
+The output is a strict schema `1.0` object envelope with `items`, `pagination`,
+`limits`, and `provenance`. Items expose only namespaced identity, plain-text
+title/description, source, viewport/inserter metadata, bounded category,
+keyword, block-type, post-type and template-type arrays, optional complete
+content, its byte count, and `untrusted: true`. Filesystem paths and unknown
+registry properties are never returned.
+
+Content is omitted by default. When requested, the combined page markup is
+capped at 2 MiB and fails atomically with
+`wpcb_pattern_content_too_large`; valid Gutenberg markup is never truncated.
+Candidate scanning is capped at 1,000 and inexact totals are explicit. The
+ability reads only the current registry and never invokes WordPress.org remote
+pattern loaders.
+
+Annotations: read-only, non-destructive, idempotent.
+
 ## Write abilities
 
 `create-draft`, `update-content`, and `update-seo` are **implemented and
@@ -165,7 +234,7 @@ the whole request).
 **Not yet visible to any MCP client:** the site-infrastructure MCP glue
 (`wpcb-mcp-server.php` mu-plugin, and the ChatGPT-facing miniOrange OAuth
 scope) still hardcode an explicit five-read-ability allowlist that has not
-been updated to include any of the three write abilities — see
+been updated to include pattern/media reads or any of the three write abilities — see
 `docs/setup/MCP_ADAPTER.md`.
 
 ### `wp-content-bridge/create-draft`
@@ -220,10 +289,10 @@ Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
 
 ### `wp-content-bridge/update-seo`
 
-Writes a fixed Yoast Free core-field SEO allowlist on one existing post
-through the active `SeoWriter` (`YoastFreeSeoWriter`, version-gated to Yoast
-Free 28.x exactly like the read-side `YoastSeoProvider`). It never touches
-post title/body/status and never publishes.
+Writes a fixed, version-tested Yoast editor-field allowlist on one existing post
+through the active `SeoWriter` (`YoastSeoWriter`). Core fields require Yoast
+Free 28.x; Premium keyphrase fields additionally require Premium 28.x. It never
+touches post title/body/status and never publishes.
 
 Inputs:
 
@@ -232,10 +301,12 @@ Inputs:
   `version_token` field; a stale token is rejected with `wpcb_conflict` and
   no SEO meta is written.
 - Any subset of: `seo_title?`, `meta_description?`, `focus_keyphrase?`,
+  `keyphrase_synonyms?: string[]|null`, `related_keyphrases?: string[]|null`,
   `canonical?`, `og_title?`, `og_description?`, `twitter_title?`,
   `twitter_description?: string|null`, `robots_index?`, `robots_follow?:
-  bool|null`. A key outside this allowlist (e.g. Premium/Local-only fields
-  such as `schema_type`) rejects the **whole** request with
+  bool|null`. Premium lists contain at most 20 unique, non-empty values of at
+  most 191 characters; `[]` clears and null/omission leaves unchanged. A key
+  outside this allowlist (e.g. Local-only `schema_type`) rejects the **whole** request with
   `wpcb_seo_field_unsupported` naming the offending keys — there is no
   field-level partial application.
 
@@ -244,6 +315,11 @@ Output: same envelope shape as `create-draft`/`update-content`
 created, provenance`) plus `effective_seo` — the same resolved SEO shape as
 `get-url-seo`, re-read via `YoastSeoProvider` immediately after the write so
 callers can confirm what actually landed.
+
+For Premium fields, the re-read uses normalization schema 1.2 and includes
+`configured.keyphrase_synonyms` plus `configured.related_keyphrases`. The
+provider's raw positional JSON is never part of the Ability contract (ADR
+0014).
 
 Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
 
@@ -259,6 +335,7 @@ Annotations: not read-only, destructive, idempotent for an already-published unc
 - New required inputs, removed fields, semantic changes, or renamed ability IDs require a major contract version/ability migration.
 - Every response includes `schema_version` so clients can reject incompatible payloads.
 
-The current SEO normalization schema is `1.1`. It adds `module_versions`,
-`configured.keyphrase_details`, and `resolved.local_businesses`; no raw Yoast
+The current SEO normalization schema is `1.2`. It adds `module_versions`,
+`configured.keyphrase_details`, `configured.keyphrase_synonyms`,
+`configured.related_keyphrases`, and `resolved.local_businesses`; no raw Yoast
 Premium/Local options or licensing state are exposed.

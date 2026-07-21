@@ -75,6 +75,14 @@ Integration user access**. Native WordPress capabilities and this MCP server's
 tool allowlist remain independent gates; the settings surface never changes a
 user role or grants native object permissions.
 
+WP Content Bridge 0.1.3 also registers two media read abilities when the
+separate media-read setting is enabled. The example below deliberately keeps
+the original five-read-ability allowlist; add the media abilities only after
+granting `wpcb_read_media` and completing the local media runtime verifier.
+The same rule applies to `list-block-patterns`: grant `wpcb_read_patterns`,
+confirm native editor access, enable its master setting, and pass the dedicated
+runtime verifier before adding it to a site-level MCP allowlist.
+
 ```php
 <?php
 /**

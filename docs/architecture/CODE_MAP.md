@@ -145,6 +145,57 @@ Rules for this flow:
   branch-identity, bounds, and leakage verification of `get-url-seo` and
   `get-editorial-context` in multiple-location mode.
 
+## Media read feature
+
+```text
+get-media / get-media-by-id Ability
+  -> wpcb_media_reads_enabled master policy
+  -> wpcb_read_media capability
+  -> SearchMedia or GetMediaById
+  -> WordPressMediaRepository
+  -> native read_post per attachment before pagination/output
+  -> MediaSearchResult or MediaItem -> strict Ability schema
+```
+
+- `src/Domain/Media/` — bounded query, normalized item, and object-envelope DTOs.
+- `src/Application/Media/` — policy manager, repository port, and search/detail use cases.
+- `src/Infrastructure/WordPress/WordPressMediaRepository.php` — public Core API
+  adapter for exact ID/same-site URL/filename and text lookup.
+- `src/Adapter/Abilities/MediaAbilities.php` — capability-gated read projection.
+- `tests/Integration/media-read-verification.php` — disposable attachment/page
+  runtime matrix and featured-image identity verification.
+- ADR 0011 keeps attachments outside the content-type catalog and makes media
+  exposure a separate off-by-default decision.
+
+## Block-pattern read feature
+
+```text
+list-block-patterns Ability
+  -> wpcb_pattern_reads_enabled master policy
+  -> wpcb_read_patterns capability
+  -> PatternAccessManager
+     -> WordPressBlockPatternAccess (native editor-level gate)
+  -> ListBlockPatterns
+     -> BlockPatternCatalog port
+     -> WordPressBlockPatternCatalog (current registry only; no remote load)
+  -> PatternSearchResult -> strict Ability schema
+```
+
+- `src/Domain/Pattern/` — bounded query, allowlisted item, and result envelope.
+- `src/Application/Pattern/` — native-access/catalog ports, feature policy, and
+  listing use case.
+- `src/Infrastructure/WordPress/WordPressBlockPatternAccess.php` — mirrors the
+  core editor-level permission boundary.
+- `src/Infrastructure/WordPress/WordPressBlockPatternCatalog.php` — sorted,
+  filtered, paginated registry projection with a 1,000-candidate and 2 MiB
+  content bound; drops filesystem and unknown properties.
+- `src/Adapter/Abilities/PatternAbilities.php` — strict read-only Ability and
+  stable error mapping.
+- `tests/Integration/block-patterns-verification.php` — disposable local
+  pattern/principal fixture covering permissions, filters, payload selection,
+  and remote/path leakage guards.
+- ADR 0013 owns the dedicated opt-in editor policy.
+
 ## Editorial context feature
 
 ```text
@@ -196,6 +247,10 @@ create-draft / update-content Ability
         -> wp_insert_post (always `draft`) / wp_update_post (status untouched)
         -> WordPress revisions
      -> AuditLog: exactly one redacted row per attempt (success or failure)
+        -> successful `wpcb_mutation` event
+        -> WordPressPostCacheInvalidator
+           -> clean_post_cache(exact post ID)
+           -> optional litespeed_purge_post(exact post ID)
   -> MutationResult DTO -> Ability output schema validation
 ```
 
@@ -258,6 +313,15 @@ Files:
   per-user (`wpcb_idem_{user_id}_{md5(key)}`), 24h-TTL transient; recovers
   both a real int (persistent object-cache backends) and a stringified
   numeric value (default DB-backed transient storage).
+- `src/Infrastructure/WordPress/WordPressPostCacheInvalidator.php` —
+  best-effort, post-scoped invalidation after successful audited mutations;
+  always clears WordPress's post object cache and dispatches LiteSpeed Cache's
+  public post-purge hook only when it has a listener. Provider failures are
+  contained because the write has already committed (ADR 0012).
+- `src/Infrastructure/Yoast/YoastSeoWriter.php` — version-gated Yoast 28.x
+  editor-field writer. Free core fields remain available with Yoast Free;
+  normalized `keyphrase_synonyms` and `related_keyphrases` additionally require
+  Premium 28.x and are mapped to bounded positional JSON under ADR 0014.
 - `src/Adapter/Abilities/MutationAbilities.php` — registers `create-draft`/
   `update-content` only when `wpcb_writes_enabled` is on; permission callbacks
   enforce `wpcb_edit_content` + the native type/object capability; maps
@@ -277,6 +341,9 @@ Files:
   revision-on-update, block round-trip, idempotent create, and audit
   redaction (scans every real column value for secret markers, not just
   column presence).
+- `tests/Integration/cache-invalidation-verification.php` — runtime proof that
+  successful events purge one post, failed events do nothing, and cache-adapter
+  exceptions cannot change the completed write outcome.
 
 **Not yet wired to any MCP client:** the site-infrastructure MCP glue
 (`content/mu-plugins/wpcb-mcp-server.php`, outside this repo) hardcodes an
@@ -294,22 +361,24 @@ explicit five-read-ability allowlist and has not been updated to add
 - Private credential decision: `docs/adr/0007-private-credentials-are-principal-bound.md`.
 - Content/SEO composition decision: `docs/adr/0008-compose-seo-instead-of-embedding.md`.
 - Rendered-schema capture decision: `docs/adr/0009-capture-rendered-schema-for-local-multilocation.md`.
+- Post-scoped cache invalidation decision:
+  `docs/adr/0012-cache-invalidation-is-post-scoped-and-event-driven.md`.
+- Block-pattern policy decision:
+  `docs/adr/0013-block-pattern-reads-use-a-dedicated-editor-policy.md`.
+- Premium keyphrase write decision:
+  `docs/adr/0014-premium-keyphrases-use-a-normalized-versioned-write-contract.md`.
 - Agent procedures: `.agents/instructions/`.
 - Milestone 1B evidence: `docs/verification/ABILITIES_VERIFICATION.md`.
 
 ## Expected next feature path
 
-Milestones 1–4 are complete. Milestone 5 (writes) Plans 1–2 are complete and
-merged — `create-draft`/`update-content` are the plugin's first live write
-surface, off by default. The next path is:
+Milestones 1–4 are complete. Milestone 5 Plans 1–3 are merged. Media P0, cache
+invalidation, and Plan 4a `list-block-patterns` are code-complete in the current
+worktree and await the stopped Kormas Local runtime gate. The next path is:
 
-1. Milestone 5 **Plan 3** — `update-seo`: `SeoUpdate` DTO, `SeoWriter` port +
-   `YoastFreeSeoWriter`, `UpdateSeo` use case/ability/schema, and a SEO
-   write/re-read runtime verifier. Mirror the `src/*/Mutation/` vertical
-   slice's layering.
-2. Milestone 5 **Plan 4** — `publish-content` (its own `wpcb_publish_enabled`
-   flag/capability) + `list-block-patterns`, and the final cross-plan
-   integration exit gate.
+1. Run every pending local verifier and release 0.1.3.
+2. Milestone 5 **Plan 4b** — `publish-content` with its own
+   `wpcb_publish_enabled` flag/capability and final integration exit gate.
 3. Separately: update the site-infrastructure MCP glue
    (`wpcb-mcp-server.php`) to add the two Plan 2 write abilities to its
    allowlist so an external MCP client can reach them (not blocking Plan 3/4).

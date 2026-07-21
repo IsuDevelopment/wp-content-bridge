@@ -61,6 +61,7 @@ final class WPCB_Yoast_Configured_Runtime_Verification {
 			update_post_meta( $post_id, '_yoast_wpseo_title', 'Explicit %%title%%' );
 			update_post_meta( $post_id, '_yoast_wpseo_focuskw', 'fixture keyphrase' );
 			update_post_meta( $post_id, '_yoast_wpseo_focuskeywords', '[{"keyword":"additional fixture","score":87,"private":"must-not-leak"}]' );
+			update_post_meta( $post_id, '_yoast_wpseo_keywordsynonyms', '["primary synonym, second synonym","additional synonym"]' );
 			update_post_meta( $post_id, '_wpcb_fixture_secret', 'must-not-leak' );
 
 			$result = $ability->execute( array( 'post_id' => $post_id ) );
@@ -76,6 +77,9 @@ final class WPCB_Yoast_Configured_Runtime_Verification {
 			$this->assert_same( array( 'fixture keyphrase', 'additional fixture' ), $result['configured']['focus_keyphrases']['value'] ?? null, 'Focus keyphrase normalization drifted.' );
 			$this->assert_same( 'additional', $result['configured']['keyphrase_details']['value'][1]['role'] ?? null, 'Premium keyphrase role drifted.' );
 			$this->assert_same( 87, $result['configured']['keyphrase_details']['value'][1]['score'] ?? null, 'Premium keyphrase score drifted.' );
+			$this->assert_same( array( 'primary synonym', 'second synonym' ), $result['configured']['keyphrase_synonyms']['value'] ?? null, 'Premium primary synonyms drifted.' );
+			$this->assert_same( 'additional fixture', $result['configured']['related_keyphrases']['value'][0]['keyphrase'] ?? null, 'Premium related keyphrase drifted.' );
+			$this->assert_same( array( 'additional synonym' ), $result['configured']['related_keyphrases']['value'][0]['synonyms'] ?? null, 'Premium related synonyms drifted.' );
 			$this->assert_same( '28.0', $result['provenance']['provider']['module_versions']['premium'] ?? null, 'Premium module version drifted.' );
 			$this->assert_same( '15.8', $result['provenance']['provider']['module_versions']['local'] ?? null, 'Local module version drifted.' );
 

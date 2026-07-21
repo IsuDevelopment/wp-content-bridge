@@ -19,6 +19,8 @@
             <property name="custom_capabilities" type="array">
                 <element value="wpcb_manage_settings" />
                 <element value="wpcb_read_content" />
+				<element value="wpcb_read_media" />
+				<element value="wpcb_read_patterns" />
                 <element value="wpcb_edit_content" />
                 <element value="wpcb_manage_seo" />
                 <element value="wpcb_publish_content" />

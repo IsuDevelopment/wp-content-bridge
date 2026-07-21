@@ -71,7 +71,7 @@ final class SeoDocumentTest extends TestCase {
 					'module_versions' => array( 'local' => '15.8' ),
 					'capabilities'    => array( 'analysis', 'schema' ),
 				),
-				'normalization_schema_version' => '1.1',
+				'normalization_schema_version' => '1.2',
 				'completeness'                 => 'partial',
 			),
 			$output['provenance']

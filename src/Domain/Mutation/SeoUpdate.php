@@ -1,6 +1,6 @@
 <?php
 /**
- * Validated input for writing the Yoast Free core SEO allowlist.
+ * Validated input for writing the Yoast SEO editor allowlist.
  *
  * @package IsuDev\WPContentBridge
  */
@@ -12,14 +12,16 @@ namespace IsuDev\WPContentBridge\Domain\Mutation;
 use InvalidArgumentException;
 
 /**
- * Immutable, validated SEO-write input. At least one of the ten allowlisted
- * fields must be present. Any wire key outside ALLOWED_KEYS is rejected.
+ * Immutable, validated SEO-write input. At least one allowlisted field must
+ * be present. Any wire key outside ALLOWED_KEYS is rejected.
  */
 final readonly class SeoUpdate {
 
 	private const MAX_TITLE         = 500;
 	private const MAX_DESCRIPTION   = 320;
 	private const MAX_KEYPHRASE     = 200;
+	private const MAX_PREMIUM_ITEMS = 20;
+	private const MAX_PREMIUM_TERM  = 191;
 	private const MAX_CANONICAL     = 2048;
 	private const CANONICAL_PATTERN = '/^https?:\/\//i';
 
@@ -35,6 +37,8 @@ final readonly class SeoUpdate {
 		'seo_title',
 		'meta_description',
 		'focus_keyphrase',
+		'keyphrase_synonyms',
+		'related_keyphrases',
 		'canonical',
 		'robots_index',
 		'robots_follow',
@@ -52,6 +56,8 @@ final readonly class SeoUpdate {
 	 * @param string|null  $seo_title           Yoast SEO title override.
 	 * @param string|null  $meta_description    Yoast meta description override.
 	 * @param string|null  $focus_keyphrase     Yoast focus keyphrase override.
+	 * @param array|null   $keyphrase_synonyms  Yoast Premium synonyms for the primary keyphrase.
+	 * @param array|null   $related_keyphrases  Yoast Premium related keyphrases.
 	 * @param string|null  $canonical           Yoast canonical URL override.
 	 * @param bool|null    $robots_index        True: force index. False: force noindex. Null: unchanged.
 	 * @param bool|null    $robots_follow       True: force follow. False: force nofollow. Null: unchanged.
@@ -59,6 +65,8 @@ final readonly class SeoUpdate {
 	 * @param string|null  $og_description      Yoast Open Graph description override.
 	 * @param string|null  $twitter_title       Yoast Twitter title override.
 	 * @param string|null  $twitter_description Yoast Twitter description override.
+	 * @phpstan-param list<string>|null $keyphrase_synonyms
+	 * @phpstan-param list<string>|null $related_keyphrases
 	 */
 	public function __construct(
 		public int $post_id,
@@ -66,6 +74,8 @@ final readonly class SeoUpdate {
 		public ?string $seo_title,
 		public ?string $meta_description,
 		public ?string $focus_keyphrase,
+		public ?array $keyphrase_synonyms,
+		public ?array $related_keyphrases,
 		public ?string $canonical,
 		public ?bool $robots_index,
 		public ?bool $robots_follow,
@@ -102,6 +112,8 @@ final readonly class SeoUpdate {
 		$seo_title           = self::optional_string( $input, 'seo_title', self::MAX_TITLE );
 		$meta_description    = self::optional_string( $input, 'meta_description', self::MAX_DESCRIPTION );
 		$focus_keyphrase     = self::optional_string( $input, 'focus_keyphrase', self::MAX_KEYPHRASE );
+		$keyphrase_synonyms  = self::optional_string_list( $input, 'keyphrase_synonyms', true );
+		$related_keyphrases  = self::optional_string_list( $input, 'related_keyphrases', false );
 		$canonical           = self::optional_canonical( $input );
 		$robots_index        = self::optional_bool( $input, 'robots_index' );
 		$robots_follow       = self::optional_bool( $input, 'robots_follow' );
@@ -111,6 +123,7 @@ final readonly class SeoUpdate {
 		$twitter_description = self::optional_string( $input, 'twitter_description', self::MAX_DESCRIPTION );
 
 		if ( null === $seo_title && null === $meta_description && null === $focus_keyphrase
+			&& null === $keyphrase_synonyms && null === $related_keyphrases
 			&& null === $canonical && null === $robots_index && null === $robots_follow
 			&& null === $og_title && null === $og_description && null === $twitter_title
 			&& null === $twitter_description
@@ -124,6 +137,8 @@ final readonly class SeoUpdate {
 			$seo_title,
 			$meta_description,
 			$focus_keyphrase,
+			$keyphrase_synonyms,
+			$related_keyphrases,
 			$canonical,
 			$robots_index,
 			$robots_follow,
@@ -146,7 +161,7 @@ final readonly class SeoUpdate {
 	/**
 	 * Present field name to value, for the SeoWriter port.
 	 *
-	 * @return array<string, string|bool>
+	 * @return array<string, string|bool|list<string>>
 	 */
 	public function writable_fields(): array {
 		return $this->present_fields();
@@ -155,7 +170,7 @@ final readonly class SeoUpdate {
 	/**
 	 * Collects the present (non-null) allowlisted fields in stable order.
 	 *
-	 * @return array<string, string|bool>
+	 * @return array<string, string|bool|list<string>>
 	 */
 	private function present_fields(): array {
 		$fields = array();
@@ -167,6 +182,12 @@ final readonly class SeoUpdate {
 		}
 		if ( null !== $this->focus_keyphrase ) {
 			$fields['focus_keyphrase'] = $this->focus_keyphrase;
+		}
+		if ( null !== $this->keyphrase_synonyms ) {
+			$fields['keyphrase_synonyms'] = $this->keyphrase_synonyms;
+		}
+		if ( null !== $this->related_keyphrases ) {
+			$fields['related_keyphrases'] = $this->related_keyphrases;
 		}
 		if ( null !== $this->canonical ) {
 			$fields['canonical'] = $this->canonical;
@@ -211,6 +232,45 @@ final readonly class SeoUpdate {
 		}
 
 		return $value;
+	}
+
+	/**
+	 * Validates an optional bounded list of Premium keyphrase strings.
+	 *
+	 * Empty arrays intentionally clear the corresponding Yoast Premium field;
+	 * null or an omitted key leaves it unchanged.
+	 *
+	 * @param array<string, mixed> $input         Raw input.
+	 * @param string               $key           Field key.
+	 * @param bool                 $reject_commas Whether commas are reserved as Yoast's synonym delimiter.
+	 * @return list<string>|null
+	 * @throws InvalidArgumentException When the list is malformed or ambiguous.
+	 */
+	private static function optional_string_list( array $input, string $key, bool $reject_commas ): ?array {
+		if ( ! array_key_exists( $key, $input ) || null === $input[ $key ] ) {
+			return null;
+		}
+		$value = $input[ $key ];
+		if ( ! is_array( $value ) || ! array_is_list( $value ) || self::MAX_PREMIUM_ITEMS < count( $value ) ) {
+			throw new InvalidArgumentException( 'A Premium keyphrase field is invalid.' );
+		}
+
+		$normalized = array();
+		foreach ( $value as $item ) {
+			if ( ! is_string( $item ) ) {
+				throw new InvalidArgumentException( 'A Premium keyphrase field is invalid.' );
+			}
+			$item = trim( $item );
+			if ( '' === $item || self::MAX_PREMIUM_TERM < mb_strlen( $item ) || ( $reject_commas && str_contains( $item, ',' ) ) ) {
+				throw new InvalidArgumentException( 'A Premium keyphrase field is invalid.' );
+			}
+			if ( in_array( $item, $normalized, true ) ) {
+				throw new InvalidArgumentException( 'A Premium keyphrase field contains duplicates.' );
+			}
+			$normalized[] = $item;
+		}
+
+		return $normalized;
 	}
 
 	/**

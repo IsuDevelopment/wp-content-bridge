@@ -75,6 +75,8 @@ final class AbilitySchemasTest extends TestCase {
 		self::assertFalse( $output['additionalProperties'] );
 		self::assertFalse( $output['properties']['provenance']['additionalProperties'] );
 		self::assertSame( 200, $output['properties']['schema_graph']['maxItems'] );
+		self::assertArrayHasKey( 'keyphrase_synonyms', $output['properties']['configured']['properties'] );
+		self::assertArrayHasKey( 'related_keyphrases', $output['properties']['configured']['properties'] );
 	}
 
 	/**
@@ -91,5 +93,54 @@ final class AbilitySchemasTest extends TestCase {
 		self::assertFalse( $output['properties']['context']['additionalProperties'] );
 		self::assertSame( 50, $output['properties']['context']['properties']['recent_content']['maxItems'] );
 		self::assertFalse( $output['properties']['context']['properties']['local_businesses']['additionalProperties'] );
+	}
+
+	/**
+	 * Media reads use strict object envelopes and deterministic item identity.
+	 */
+	public function test_media_contract_is_strict_and_bounded(): void {
+		$input  = AbilitySchemas::media_search_input();
+		$output = AbilitySchemas::media_search_output();
+		$detail = AbilitySchemas::media_by_id_output();
+
+		self::assertFalse( $input['additionalProperties'] );
+		self::assertSame( 100, $input['properties']['per_page']['maximum'] );
+		self::assertSame( 'object', $output['type'] );
+		self::assertContains( 'items', $output['required'] );
+		self::assertFalse( $output['properties']['items']['items']['additionalProperties'] );
+		self::assertContains( 'filename', $output['properties']['items']['items']['required'] );
+		self::assertContains( 'item', $detail['required'] );
+	}
+
+	/**
+	 * Pattern discovery is metadata-first, strict, and payload bounded.
+	 */
+	public function test_pattern_contract_is_strict_and_bounded(): void {
+		$input  = AbilitySchemas::pattern_list_input();
+		$output = AbilitySchemas::pattern_list_output();
+
+		self::assertFalse( $input['additionalProperties'] );
+		self::assertFalse( $input['properties']['include_content']['default'] );
+		self::assertSame( 50, $input['properties']['per_page']['maximum'] );
+		self::assertSame( 50, $output['properties']['items']['maxItems'] );
+		self::assertFalse( $output['properties']['items']['items']['additionalProperties'] );
+		self::assertContains( 'content_bytes', $output['properties']['items']['items']['required'] );
+		self::assertContains( 'candidate_scan_limit', $output['properties']['pagination']['required'] );
+		self::assertFalse( $output['properties']['limits']['additionalProperties'] );
+	}
+
+	/**
+	 * Premium keyphrase writes are explicit, bounded arrays rather than raw
+	 * provider JSON.
+	 */
+	public function test_update_seo_premium_keyphrases_are_strict_and_bounded(): void {
+		$input = AbilitySchemas::update_seo_input();
+
+		self::assertFalse( $input['additionalProperties'] );
+		self::assertSame( 20, $input['properties']['keyphrase_synonyms']['maxItems'] );
+		self::assertSame( 191, $input['properties']['keyphrase_synonyms']['items']['maxLength'] );
+		self::assertSame( '^[^,]+$', $input['properties']['keyphrase_synonyms']['items']['pattern'] );
+		self::assertSame( 20, $input['properties']['related_keyphrases']['maxItems'] );
+		self::assertSame( 191, $input['properties']['related_keyphrases']['items']['maxLength'] );
 	}
 }

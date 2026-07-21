@@ -11,7 +11,9 @@ namespace IsuDev\WPContentBridge;
 
 use IsuDev\WPContentBridge\Adapter\Admin\ContentAccessSettingsPage;
 use IsuDev\WPContentBridge\Adapter\Abilities\ContentAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\MediaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\MutationAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\PatternAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\SeoAbilities;
 use IsuDev\WPContentBridge\Application\Access\IntegrationAccessManager;
 use IsuDev\WPContentBridge\Application\Content\GetContent;
@@ -21,6 +23,11 @@ use IsuDev\WPContentBridge\Application\Editorial\GetEditorialContext;
 use IsuDev\WPContentBridge\Application\Mutation\CreateDraft;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateContent;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateSeo;
+use IsuDev\WPContentBridge\Application\Pattern\ListBlockPatterns;
+use IsuDev\WPContentBridge\Application\Pattern\PatternAccessManager;
+use IsuDev\WPContentBridge\Application\Media\GetMediaById;
+use IsuDev\WPContentBridge\Application\Media\MediaAccessManager;
+use IsuDev\WPContentBridge\Application\Media\SearchMedia;
 use IsuDev\WPContentBridge\Application\Seo\NullSeoProvider;
 use IsuDev\WPContentBridge\Application\Seo\GetSeo;
 use IsuDev\WPContentBridge\Application\Seo\SameSiteSeoTargetFactory;
@@ -29,17 +36,21 @@ use IsuDev\WPContentBridge\Application\Seo\SeoProviderRegistry;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\Installer;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\PhpBlockMarkupValidator;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressAuditLog;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressBlockPatternAccess;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressBlockPatternCatalog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentAccessSettingsRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentMutationRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentTypeCatalog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressEditorialContextRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressIntegrationAccessRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressMediaRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressPostCacheInvalidator;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressRenderedSchemaReader;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressTaxonomyCatalog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoTargetAccess;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressTransientIdempotencyStore;
-use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastFreeSeoWriter;
+use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastSeoWriter;
 use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastSeoProvider;
 
 /**
@@ -110,12 +121,33 @@ final class Plugin {
 			new SameSiteSeoTargetFactory( home_url( '/' ) )
 		) )->register_hooks();
 
+		$media_access = new MediaAccessManager( (bool) get_option( Installer::MEDIA_READS_ENABLED_OPTION ) );
+		if ( $media_access->reads_enabled ) {
+			$media_repository = new WordPressMediaRepository();
+			( new MediaAbilities(
+				new SearchMedia( $media_access, $media_repository ),
+				new GetMediaById( $media_access, $media_repository )
+			) )->register_hooks();
+		}
+
+		$pattern_access = new PatternAccessManager(
+			(bool) get_option( Installer::PATTERN_READS_ENABLED_OPTION ),
+			new WordPressBlockPatternAccess()
+		);
+		if ( $pattern_access->reads_enabled ) {
+			( new PatternAbilities(
+				$pattern_access,
+				new ListBlockPatterns( $pattern_access, new WordPressBlockPatternCatalog() )
+			) )->register_hooks();
+		}
+
 		if ( get_option( Installer::WRITES_ENABLED_OPTION ) ) {
 			$mutation_repository = new WordPressContentMutationRepository();
 			$block_validator     = new PhpBlockMarkupValidator();
 			$idempotency         = new WordPressTransientIdempotencyStore();
 			$audit_log           = new WordPressAuditLog();
-			$seo_writer          = new YoastFreeSeoWriter( $seo_providers->active() );
+			$seo_writer          = new YoastSeoWriter( $seo_providers->active() );
+			( new WordPressPostCacheInvalidator() )->register_hooks();
 
 			( new MutationAbilities(
 				new CreateDraft( $manager, $block_validator, $mutation_repository, $idempotency, $audit_log ),

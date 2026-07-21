@@ -36,6 +36,36 @@ native WordPress object-access checks.
 Content and SEO stay **composable, not embedded** (ADR 0008): an SEO-provider
 failure can never break an authoritative content read.
 
+### Media reads (0.1.3 — off by default)
+
+Two dedicated read abilities are registered only after an administrator enables
+the `wpcb_media_reads_enabled` setting. They require `wpcb_read_media` plus
+native `read_post` permission for every returned attachment:
+
+| Ability | What it does |
+|---|---|
+| `wp-content-bridge/get-media` | Returns a strict object envelope and bounded pagination. Supports exact attachment ID, exact same-site original URL, exact filename, or text search. |
+| `wp-content-bridge/get-media-by-id` | Deterministically returns one authorized attachment without revealing whether a missing result was absent or denied. |
+
+Every media item contains ID, title, filename, URL, ALT, caption, description,
+and MIME type. Content summaries also return `featured_image_id` and
+`featured_image_url` together, or both as null.
+
+Successful bridge mutations also invalidate the affected WordPress post cache.
+When LiteSpeed Cache is active, its public post-scoped purge hook is dispatched
+for the same ID, including metadata-only SEO updates that may not trigger its
+normal post lifecycle integration. WP Content Bridge never performs a global
+cache flush (ADR 0012).
+
+### Block-pattern reads (0.1.3 — off by default)
+
+`wp-content-bridge/list-block-patterns` is registered only after enabling
+`wpcb_pattern_reads_enabled`. It requires `wpcb_read_patterns` plus native
+editor-level permission. The ability returns deterministic, bounded pattern
+metadata by default and optional complete block markup under a combined 2 MiB
+limit. It never exposes pattern file paths or triggers remote WordPress.org
+pattern loading (ADR 0013).
+
 ### SEO (read)
 
 A provider-neutral SEO model (`src/Domain/Seo`) with a Yoast adapter
@@ -68,7 +98,7 @@ deployment. Enter an existing, dedicated non-administrator WordPress user's
 login or email and assign only the required Content Bridge capabilities. The
 user must already have native WordPress `read` through its role; object-level
 permissions, content-type policy, feature flags, and connector grants remain
-independent gates. Selecting a different managed user revokes the four managed
+independent gates. Selecting a different managed user revokes the six managed
 WPCB operational capabilities from the previous account.
 
 ### Write abilities (Milestone 5 Plans 2–3, complete — off by default)
@@ -81,7 +111,7 @@ per-post-type policy:
 |---|---|
 | `wp-content-bridge/create-draft` | Creates a new post/page/CPT, always as `draft` — no status input, so it can never publish as a side effect. Supports an idempotency key for safe replay. |
 | `wp-content-bridge/update-content` | Updates title/content/excerpt/taxonomies on an existing post via optimistic concurrency (`version_token`); creates a WordPress revision on every write; never touches `post_status`. |
-| `wp-content-bridge/update-seo` | Writes a fixed Yoast Free core-field SEO allowlist (title, meta description, focus keyphrase, canonical, robots index/follow, Open Graph, Twitter) on an existing post, then re-reads and returns the resolved `effective_seo`. A field outside the allowlist rejects the whole request (`wpcb_seo_field_unsupported`). |
+| `wp-content-bridge/update-seo` | Writes the version-tested Yoast Free core-field allowlist plus normalized Premium 28.x primary synonyms and related keyphrases, then re-reads `effective_seo`. Raw Premium JSON and fields outside the allowlist are rejected. |
 
 Shared invariants across all three:
 
@@ -97,7 +127,8 @@ Shared invariants across all three:
 
 **Not yet visible to any MCP client:** the site-infrastructure MCP glue still
 hardcodes an explicit five-read-ability allowlist that has not been updated to
-include any of the three write abilities — see `docs/setup/MCP_ADAPTER.md`.
+include pattern/media reads or any of the three write abilities — see
+`docs/setup/MCP_ADAPTER.md`.
 
 `publish-content` (Plan 4) remains planned; see the roadmap below.
 
@@ -161,7 +192,7 @@ vendor/bin/phpunit --colors=never
 Runtime (WordPress-touching) verifiers run inside the symlinked Local install:
 
 ```bash
-cd "/Users/lukaszbiedron/Local Sites/kormas-isu/app/public"
+cd "/Users/lukaszbiedron/Local Sites/kormas-isu/app"
 wp eval 'require "<repo>/tests/Integration/abilities-runtime-verification.php";'
 wp eval 'require "<repo>/tests/Integration/authorization-matrix.php";'
 wp eval 'require "<repo>/tests/Integration/writes-foundation-verification.php";'
@@ -169,8 +200,9 @@ wp eval 'require "<repo>/tests/Integration/writes-mutation-verification.php";'
 wp eval 'require "<repo>/tests/Integration/writes-seo-verification.php";'
 ```
 
-**Current baseline:** PHPCS clean · PHPStan 0 errors · PHPUnit 136 tests /
-341 assertions · all runtime verifiers pass on WordPress 7.0.1.
+**Current baseline:** PHPCS clean · PHPStan 0 errors · PHPUnit 155 tests /
+380 assertions. Media, integration-access, update-SEO, and cache runtime
+verification on WordPress 7.0.2 is pending while Kormas Local is stopped.
 
 Read [AGENTS.md](AGENTS.md) before making changes, and `.continue-here.md` for
 the current continuation point.
@@ -186,8 +218,11 @@ the current continuation point.
 | **M5 writes** — executed as 4 plans | 🚧 Plans 1–3 done |
 | ↳ Plan 1 — writes foundation | ✅ complete |
 | ↳ Plan 2 — `create-draft` + `update-content` | ✅ complete |
-| ↳ Plan 3 — `update-seo` (Yoast Free allowlist) | ✅ complete |
-| ↳ Plan 4 — `publish-content` (gated) + `list-block-patterns` | ⏭ next |
+| ↳ Plan 3 — `update-seo` (Free + bounded Premium keyphrases) | 🧪 code complete; local runtime pending |
+| Media P0 — deterministic reads + featured-image identity | 🧪 code complete; local runtime pending |
+| Post-scoped cache invalidation (WordPress + optional LiteSpeed) | 🧪 code complete; local runtime pending |
+| ↳ Plan 4a — `list-block-patterns` | 🧪 code complete; local runtime pending |
+| ↳ Plan 4b — `publish-content` (separately gated) | planned after security review |
 | M8 — optional Agents API integration | deferred (needs ADR reassessment) |
 
 Details: [docs/plan/IMPLEMENTATION_PLAN.md](docs/plan/IMPLEMENTATION_PLAN.md).

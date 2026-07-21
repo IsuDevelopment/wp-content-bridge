@@ -246,6 +246,7 @@ final class WordPressContentRepository implements ContentRepository {
 		$url          = get_permalink( $post );
 		$modified_at  = get_post_modified_time( DATE_ATOM, true, $post );
 		$published_at = get_post_time( DATE_ATOM, true, $post );
+		$featured     = $this->featured_media( $post );
 
 		return new ContentSummary(
 			$post->ID,
@@ -258,6 +259,8 @@ final class WordPressContentRepository implements ContentRepository {
 			(int) $post->post_author,
 			'0000-00-00 00:00:00' === $post->post_date_gmt ? null : self::date_string( $published_at ),
 			self::date_string( $modified_at ),
+			null !== $featured ? $featured['id'] : null,
+			null !== $featured ? $featured['url'] : null,
 		);
 	}
 
@@ -300,7 +303,7 @@ final class WordPressContentRepository implements ContentRepository {
 	 * Returns a safe author projection.
 	 *
 	 * @param WP_Post $post Content object.
-	 * @return array<string, mixed>|null
+	 * @return array{id: int, display_name: string}|null
 	 */
 	private function author( WP_Post $post ): ?array {
 		$author = get_userdata( (int) $post->post_author );
@@ -344,7 +347,7 @@ final class WordPressContentRepository implements ContentRepository {
 	 * Returns a safe featured-media projection.
 	 *
 	 * @param WP_Post $post Content object.
-	 * @return array<string, mixed>|null
+	 * @return array{id: int, url: string, alt_text: string}|null
 	 */
 	private function featured_media( WP_Post $post ): ?array {
 		$attachment_id = get_post_thumbnail_id( $post );
@@ -353,11 +356,14 @@ final class WordPressContentRepository implements ContentRepository {
 		}
 
 		$url = wp_get_attachment_url( $attachment_id );
+		if ( ! is_string( $url ) || '' === $url ) {
+			return null;
+		}
 		$alt = get_post_meta( $attachment_id, '_wp_attachment_image_alt', true );
 
 		return array(
 			'id'       => $attachment_id,
-			'url'      => is_string( $url ) ? $url : null,
+			'url'      => $url,
 			'alt_text' => is_string( $alt ) ? $alt : '',
 		);
 	}

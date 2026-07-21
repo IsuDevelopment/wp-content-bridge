@@ -18,7 +18,7 @@ use IsuDev\WPContentBridge\Domain\Mutation\SeoUpdate;
 use Throwable;
 
 /**
- * Orchestrates a Yoast Free core-field SEO write with optimistic concurrency.
+ * Orchestrates a version-tested Yoast editor-field write with optimistic concurrency.
  * Never changes post title/content/status/taxonomies. Records exactly one
  * audit row per attempt.
  */

@@ -48,7 +48,9 @@ Then restore the local site to its prior single-location configuration.
 - No change to public ability IDs or schemas (no ADR triggered).
 - No Kormas-specific brand data in fixtures — generic neutral data only, per
   AGENTS.md ("plugin must remain reusable; never add Kormas-specific data").
-- No Premium synonyms, no per-target analysis scores (still out of scope).
+- Premium synonyms were out of scope for this historical runtime fixture; ADR
+  0014 later adds their separate normalized read/write contract. Per-target
+  analysis scores remain out of scope.
 
 ## Approach
 

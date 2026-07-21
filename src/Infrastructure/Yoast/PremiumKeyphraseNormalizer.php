@@ -16,19 +16,23 @@ final class PremiumKeyphraseNormalizer {
 
 	private const MAX_KEYPHRASES = 20;
 	private const MAX_LENGTH     = 200;
+	private const MAX_SYNONYMS   = 20;
 
 	/**
 	 * Normalizes primary and additional keyphrases.
 	 *
 	 * @param string $primary         Primary focus keyphrase.
 	 * @param string $additional_json Premium additional-keyphrase JSON.
+	 * @param string $synonyms_json   Premium positional synonym JSON.
 	 * @return array<string, array>
-	 * @phpstan-return array{phrases: list<string>, details: list<array{keyphrase: string, role: string, score: int|null}>}
+	 * @phpstan-return array{phrases: list<string>, details: list<array{keyphrase: string, role: string, score: int|null}>, keyphrase_synonyms: list<string>, related_keyphrases: list<array{keyphrase: string, synonyms: list<string>, score: int|null}>}
 	 */
-	public function normalize( string $primary, string $additional_json ): array {
-		$phrases = array();
-		$details = array();
-		$primary = $this->normalize_phrase( $primary );
+	public function normalize( string $primary, string $additional_json, string $synonyms_json = '' ): array {
+		$phrases  = array();
+		$details  = array();
+		$related  = array();
+		$synonyms = $this->decode_synonyms( $synonyms_json );
+		$primary  = $this->normalize_phrase( $primary );
 		if ( null !== $primary ) {
 			$phrases[] = $primary;
 			$details[] = array(
@@ -41,12 +45,14 @@ final class PremiumKeyphraseNormalizer {
 		$decoded = json_decode( $additional_json, true );
 		if ( ! is_array( $decoded ) ) {
 			return array(
-				'phrases' => $phrases,
-				'details' => $details,
+				'phrases'            => $phrases,
+				'details'            => $details,
+				'keyphrase_synonyms' => $synonyms[0] ?? array(),
+				'related_keyphrases' => $related,
 			);
 		}
 
-		foreach ( array_slice( $decoded, 0, self::MAX_KEYPHRASES ) as $item ) {
+		foreach ( array_slice( $decoded, 0, self::MAX_KEYPHRASES ) as $index => $item ) {
 			if ( ! is_array( $item ) || ! isset( $item['keyword'] ) || ! is_string( $item['keyword'] ) ) {
 				continue;
 			}
@@ -62,12 +68,51 @@ final class PremiumKeyphraseNormalizer {
 				'role'      => 'additional',
 				'score'     => $score,
 			);
+			$related[] = array(
+				'keyphrase' => $keyphrase,
+				'synonyms'  => $synonyms[ $index + 1 ] ?? array(),
+				'score'     => $score,
+			);
 		}
 
 		return array(
-			'phrases' => $phrases,
-			'details' => $details,
+			'phrases'            => $phrases,
+			'details'            => $details,
+			'keyphrase_synonyms' => $synonyms[0] ?? array(),
+			'related_keyphrases' => $related,
 		);
+	}
+
+	/**
+	 * Decodes Yoast's positional array of comma-delimited synonym strings.
+	 *
+	 * @param string $synonyms_json Stored JSON.
+	 * @return list<list<string>>
+	 */
+	private function decode_synonyms( string $synonyms_json ): array {
+		$decoded = json_decode( $synonyms_json, true );
+		if ( ! is_array( $decoded ) ) {
+			return array();
+		}
+
+		$groups = array();
+		foreach ( array_slice( $decoded, 0, self::MAX_KEYPHRASES + 1 ) as $group ) {
+			if ( ! is_string( $group ) ) {
+				$groups[] = array();
+				continue;
+			}
+
+			$items = array();
+			foreach ( array_slice( explode( ',', $group ), 0, self::MAX_SYNONYMS ) as $synonym ) {
+				$synonym = $this->normalize_phrase( $synonym );
+				if ( null !== $synonym && ! in_array( $synonym, $items, true ) ) {
+					$items[] = $synonym;
+				}
+			}
+			$groups[] = $items;
+		}
+
+		return $groups;
 	}
 
 	/**

@@ -384,20 +384,23 @@ final readonly class YoastSeoProvider implements SeoProvider {
 		$focus      = $this->configured_meta_field( $post_id, '_yoast_wpseo_focuskw' );
 		$primary    = is_string( $focus->value ) ? $focus->value : '';
 		$additional = '';
+		$synonyms   = '';
 		if ( defined( 'WPSEO_PREMIUM_VERSION' ) ) {
 			$raw_additional = get_post_meta( $post_id, '_yoast_wpseo_focuskeywords', true );
 			$additional     = is_string( $raw_additional ) ? $raw_additional : '';
+			$raw_synonyms   = get_post_meta( $post_id, '_yoast_wpseo_keywordsynonyms', true );
+			$synonyms       = is_string( $raw_synonyms ) ? $raw_synonyms : '';
 		}
-		$keyphrases                      = ( new PremiumKeyphraseNormalizer() )->normalize( $primary, $additional );
-		$has_explicit_keyphrases         = SeoValueState::EXPLICIT === $focus->state
+		$keyphrases                       = ( new PremiumKeyphraseNormalizer() )->normalize( $primary, $additional, $synonyms );
+		$has_explicit_keyphrases          = SeoValueState::EXPLICIT === $focus->state
 			|| metadata_exists( 'post', $post_id, '_yoast_wpseo_focuskeywords' );
-		$configured['focus_keyphrases']  = new SeoField(
+		$configured['focus_keyphrases']   = new SeoField(
 			$keyphrases['phrases'],
 			$has_explicit_keyphrases ? SeoValueState::EXPLICIT : SeoValueState::INHERITED,
 			defined( 'WPSEO_PREMIUM_VERSION' ) ? 'yoast.post_meta.v28-premium' : $focus->source,
 			$has_explicit_keyphrases ? null : $focus->reason
 		);
-		$configured['keyphrase_details'] = defined( 'WPSEO_PREMIUM_VERSION' )
+		$configured['keyphrase_details']  = defined( 'WPSEO_PREMIUM_VERSION' )
 			? new SeoField(
 				$keyphrases['details'],
 				$has_explicit_keyphrases ? SeoValueState::EXPLICIT : SeoValueState::INHERITED,
@@ -405,14 +408,30 @@ final readonly class YoastSeoProvider implements SeoProvider {
 				$has_explicit_keyphrases ? null : 'No explicit Premium keyphrase value is stored.'
 			)
 			: new SeoField( null, SeoValueState::UNSUPPORTED, 'yoast.premium', 'Yoast Premium is not active.' );
-		$configured['robots']            = $this->configured_group_field(
+		$configured['keyphrase_synonyms'] = defined( 'WPSEO_PREMIUM_VERSION' )
+			? new SeoField(
+				$keyphrases['keyphrase_synonyms'],
+				metadata_exists( 'post', $post_id, '_yoast_wpseo_keywordsynonyms' ) ? SeoValueState::EXPLICIT : SeoValueState::INHERITED,
+				'yoast.post_meta.v28-premium',
+				metadata_exists( 'post', $post_id, '_yoast_wpseo_keywordsynonyms' ) ? null : 'No explicit Premium synonym value is stored.'
+			)
+			: new SeoField( null, SeoValueState::UNSUPPORTED, 'yoast.premium', 'Yoast Premium is not active.' );
+		$configured['related_keyphrases'] = defined( 'WPSEO_PREMIUM_VERSION' )
+			? new SeoField(
+				$keyphrases['related_keyphrases'],
+				metadata_exists( 'post', $post_id, '_yoast_wpseo_focuskeywords' ) ? SeoValueState::EXPLICIT : SeoValueState::INHERITED,
+				'yoast.post_meta.v28-premium',
+				metadata_exists( 'post', $post_id, '_yoast_wpseo_focuskeywords' ) ? null : 'No explicit Premium related-keyphrase value is stored.'
+			)
+			: new SeoField( null, SeoValueState::UNSUPPORTED, 'yoast.premium', 'Yoast Premium is not active.' );
+		$configured['robots']             = $this->configured_group_field(
 			$post_id,
 			array(
 				'noindex'  => '_yoast_wpseo_meta-robots-noindex',
 				'nofollow' => '_yoast_wpseo_meta-robots-nofollow',
 			)
 		);
-		$configured['social']            = $this->configured_group_field(
+		$configured['social']             = $this->configured_group_field(
 			$post_id,
 			array(
 				'open_graph_title'       => '_yoast_wpseo_opengraph-title',
@@ -423,15 +442,15 @@ final readonly class YoastSeoProvider implements SeoProvider {
 				'twitter_image'          => '_yoast_wpseo_twitter-image',
 			)
 		);
-		$configured['schema_types']      = $this->configured_group_field(
+		$configured['schema_types']       = $this->configured_group_field(
 			$post_id,
 			array(
 				'page'    => '_yoast_wpseo_schema_page_type',
 				'article' => '_yoast_wpseo_schema_article_type',
 			)
 		);
-		$cornerstone                     = $this->configured_meta_field( $post_id, '_yoast_wpseo_is_cornerstone' );
-		$configured['cornerstone']       = new SeoField(
+		$cornerstone                      = $this->configured_meta_field( $post_id, '_yoast_wpseo_is_cornerstone' );
+		$configured['cornerstone']        = new SeoField(
 			SeoValueState::EXPLICIT === $cornerstone->state ? '1' === $cornerstone->value : null,
 			$cornerstone->state,
 			$cornerstone->source,

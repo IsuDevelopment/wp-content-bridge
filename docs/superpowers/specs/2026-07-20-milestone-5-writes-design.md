@@ -42,9 +42,9 @@ read-discovery), all disabled by default:
 |---|---|---|
 | `wp-content-bridge/create-draft` | write | Create a new post/page/CPT in `draft` status only. |
 | `wp-content-bridge/update-content` | write | Update title/content/excerpt/taxonomies of an existing post. |
-| `wp-content-bridge/update-seo` | write | Write the Yoast Free core-field allowlist for a post. |
+| `wp-content-bridge/update-seo` | write | Write the version-tested Yoast Free core and Premium keyphrase allowlist for a post. |
 | `wp-content-bridge/publish-content` | write | Transition an existing draft to `publish`. Behind its own flag + capability. |
-| `wp-content-bridge/list-block-patterns` | read | Expose site block patterns + curated block-type allowlist so an LLM composes valid markup. |
+| `wp-content-bridge/list-block-patterns` | read | Expose bounded registered site-pattern metadata and optional complete markup so an LLM composes valid blocks. |
 
 ### In scope
 - Block content accepted as **raw Gutenberg block markup**, validated by a basic
@@ -52,8 +52,7 @@ read-discovery), all disabled by default:
 - Optimistic concurrency via a version token.
 - Idempotent `create-draft`.
 - WordPress revisions on update.
-- SEO writes limited to a Yoast Free core-field allowlist, written through
-  Yoast's own documented write path.
+- SEO writes limited to a version-tested Yoast editor-field allowlist.
 - Append-only capped audit table + `do_action` hook.
 - Two independent master feature flags (writes; publish).
 
@@ -61,8 +60,8 @@ read-discovery), all disabled by default:
 - Targeted `target_text` find/replace edits (future; note it, don't build it).
 - HTML→block auto-conversion.
 - Per-attribute block introspection ("far off" per the maintainer).
-- Premium/Local SEO writes (their storage contract is unproven — same reason
-  Premium synonyms were never even read).
+- Premium/Local SEO writes beyond the two Premium keyphrase fields accepted by
+  ADR 0014.
 - Scheduled publishing.
 - Structural block-tree operations (block-mcp style ops).
 
@@ -96,7 +95,7 @@ Toggling: add checkboxes to the existing Settings page
 | `update-content` | `wpcb_edit_content` | `edit_post` on the target ID |
 | `update-seo` | `wpcb_manage_seo` | `edit_post` on the target ID |
 | `publish-content` | `wpcb_publish_content` | `publish_post` on the target ID (fallback `publish_posts`) |
-| `list-block-patterns` | `wpcb_read_content` (existing) | none (site-level catalog) |
+| `list-block-patterns` | `wpcb_read_patterns` | editor-level native capability described in ADR 0013 |
 
 Rules:
 - An ability's permission callback requires **both** the plugin capability and
@@ -158,7 +157,7 @@ src/Infrastructure/WordPress/
   WordPressBlockPatternCatalog.php         registered patterns + block-type allowlist.
 
 src/Infrastructure/Yoast/
-  YoastFreeSeoWriter.php                   writes allowlist via Yoast documented path.
+  YoastSeoWriter.php                       writes the versioned Free/Premium allowlist.
 
 src/Adapter/Abilities/
   MutationAbilities.php     Registers + projects the 4 write abilities.
@@ -282,25 +281,27 @@ Writable allowlist ONLY (reject anything else):
 
 | Field | Yoast storage |
 |---|---|
-| `seoTitle` | post SEO title (Yoast title meta) |
-| `metaDescription` | Yoast meta description |
-| `focusKeyphrase` | Yoast focus keyphrase |
+| `seo_title` | post SEO title (Yoast title meta) |
+| `meta_description` | Yoast meta description |
+| `focus_keyphrase` | Yoast focus keyphrase |
+| `keyphrase_synonyms` | normalized Premium primary-keyphrase synonym list |
+| `related_keyphrases` | normalized Premium related-keyphrase list |
 | `canonical` | Yoast canonical |
-| `robotsIndex` / `robotsFollow` | Yoast robots noindex/nofollow booleans |
-| `ogTitle` / `ogDescription` | Yoast Open Graph title/description |
-| `twitterTitle` / `twitterDescription` | Yoast Twitter title/description |
+| `robots_index` / `robots_follow` | Yoast robots noindex/nofollow booleans |
+| `og_title` / `og_description` | Yoast Open Graph title/description |
+| `twitter_title` / `twitter_description` | Yoast Twitter title/description |
 
-`YoastFreeSeoWriter implements SeoWriter`:
-- Write through **Yoast's documented write path** (its meta API / registered
-  meta), never `update_post_meta` on raw internal keys. Confirm the exact
-  documented write surface for Yoast 28.x before coding; if a field lacks a
-  proven stable write path, treat it as unsupported (`wpcb_seo_field_unsupported`)
-  rather than guessing.
+`YoastSeoWriter implements SeoWriter`:
+- Write only the explicit Yoast 28.x editor-meta allowlist verified against the
+  installed editor implementation, through `WPSEO_Meta::set_value()`; never
+  write indexables tables or arbitrary provider meta. ADR 0014 owns the Premium
+  JSON normalization.
 - Version-gate exactly like the read adapter (`YoastSeoProvider`).
 - After writing, **re-read** effective SEO via the existing `YoastSeoProvider`
   and return it in `MutationResult.effectiveSeo` so the caller sees the resolved
   result (per plan exit gate "effective SEO is re-read after mutation").
-- Premium/Local fields: not writable. If requested → `wpcb_seo_field_unsupported`.
+- Other Premium/Local fields are not writable. If requested →
+  `wpcb_seo_field_unsupported`.
 
 ---
 
@@ -338,17 +339,21 @@ Writable allowlist ONLY (reject anything else):
 
 ## 12. `list-block-patterns` (read-only)
 
+This section is refined and superseded by ADR 0013. In particular, pattern
+reads have a dedicated off-by-default setting and capability because the
+registry is editor/site metadata, not configured content-type access.
+
 `WordPressBlockPatternCatalog implements BlockPatternCatalog`:
 - Return registered block patterns via
   `WP_Block_Patterns_Registry::get_instance()->get_all_registered()`:
-  `name`, `title`, `categories`, and `content` (example block markup).
-- Also return a curated **block-type allowlist**: the block types actually used
-  on the site (derive from registered patterns + a bounded scan, or a
-  configurable allowlist option) with each type's name and title.
-- Bounds (same discipline as editorial-context): cap number of patterns
-  (e.g. 100), cap per-pattern `content` bytes, and mark truncation explicitly in
-  the output.
-- Requires `wpcb_read_content`. No writes, no per-attribute introspection.
+  allowlisted metadata by default and complete `content` only when explicitly
+  requested.
+- Filter and paginate a deterministic scan of at most 1,000 candidates, with a
+  maximum page size of 50.
+- Fail atomically if selected complete content exceeds the combined 2 MiB
+  response limit; never truncate block markup.
+- Require `wpcb_read_patterns` plus a native editor-level capability. Never
+  expose filesystem fields or trigger remote pattern loading.
 
 ---
 
@@ -460,7 +465,8 @@ Mirror the existing test suites (`tests/Unit/*`, `tests/Integration/*`).
 - Every new public method needs a unit test before it is wired into an ability.
 - If a Yoast write path is not clearly documented for 28.x, STOP and mark that
   field unsupported — do not reverse-engineer storage (this is a hard project
-  rule; it's why Premium synonyms were never implemented).
+  rule; Premium keyphrase synonyms are now the narrow, version-tested exception
+  defined by ADR 0014).
 - Do not commit or push. Leave the working tree for the maintainer to review.
 - When unsure whether something is in scope, check §1 "Out of scope" — if it's
   there, don't build it.

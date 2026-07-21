@@ -93,6 +93,28 @@ final readonly class ContentAccessSettingsPage {
 				'show_in_rest'      => false,
 			)
 		);
+
+		register_setting(
+			self::OPTION_GROUP,
+			Installer::MEDIA_READS_ENABLED_OPTION,
+			array(
+				'type'              => 'boolean',
+				'default'           => false,
+				'sanitize_callback' => static fn ( mixed $value ): bool => (bool) $value,
+				'show_in_rest'      => false,
+			)
+		);
+
+		register_setting(
+			self::OPTION_GROUP,
+			Installer::PATTERN_READS_ENABLED_OPTION,
+			array(
+				'type'              => 'boolean',
+				'default'           => false,
+				'sanitize_callback' => static fn ( mixed $value ): bool => (bool) $value,
+				'show_in_rest'      => false,
+			)
+		);
 	}
 
 	/**
@@ -165,6 +187,40 @@ final readonly class ContentAccessSettingsPage {
 					</tbody>
 				</table>
 				<p id="wpcb-content-access-help" class="description"><?php echo esc_html__( 'Search and every write operation require Read. Invalid combinations are disabled when settings are saved.', 'wp-content-bridge' ); ?></p>
+
+				<h2><?php echo esc_html__( 'Media reads', 'wp-content-bridge' ); ?></h2>
+				<table class="widefat striped" aria-describedby="wpcb-media-reads-enabled-help">
+					<tbody>
+						<tr>
+							<th scope="row"><?php echo esc_html__( 'Media library reads', 'wp-content-bridge' ); ?></th>
+							<td>
+								<input type="hidden" name="<?php echo esc_attr( Installer::MEDIA_READS_ENABLED_OPTION ); ?>" value="0">
+								<label>
+									<input type="checkbox" name="<?php echo esc_attr( Installer::MEDIA_READS_ENABLED_OPTION ); ?>" value="1" <?php checked( (bool) get_option( Installer::MEDIA_READS_ENABLED_OPTION ) ); ?>>
+									<?php echo esc_html__( 'Enable get-media and get-media-by-id abilities (master switch, off by default).', 'wp-content-bridge' ); ?>
+								</label>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+				<p id="wpcb-media-reads-enabled-help" class="description"><?php echo esc_html__( 'The integration principal also needs Read media, and WordPress read_post permission is checked for every attachment.', 'wp-content-bridge' ); ?></p>
+
+				<h2><?php echo esc_html__( 'Block-pattern reads', 'wp-content-bridge' ); ?></h2>
+				<table class="widefat striped" aria-describedby="wpcb-pattern-reads-enabled-help">
+					<tbody>
+						<tr>
+							<th scope="row"><?php echo esc_html__( 'Registered block patterns', 'wp-content-bridge' ); ?></th>
+							<td>
+								<input type="hidden" name="<?php echo esc_attr( Installer::PATTERN_READS_ENABLED_OPTION ); ?>" value="0">
+								<label>
+									<input type="checkbox" name="<?php echo esc_attr( Installer::PATTERN_READS_ENABLED_OPTION ); ?>" value="1" <?php checked( (bool) get_option( Installer::PATTERN_READS_ENABLED_OPTION ) ); ?>>
+									<?php echo esc_html__( 'Enable list-block-patterns (master switch, off by default).', 'wp-content-bridge' ); ?>
+								</label>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+				<p id="wpcb-pattern-reads-enabled-help" class="description"><?php echo esc_html__( 'The integration principal also needs Read block patterns and native editor-level permission for at least one REST-visible content type.', 'wp-content-bridge' ); ?></p>
 
 				<h2><?php echo esc_html__( 'Content writes', 'wp-content-bridge' ); ?></h2>
 				<table class="widefat striped" aria-describedby="wpcb-writes-enabled-help">
@@ -367,6 +423,8 @@ final readonly class ContentAccessSettingsPage {
 	private function integration_capability_labels(): array {
 		return array(
 			IntegrationCapability::READ_CONTENT->value    => esc_html__( 'Read content, SEO, editorial context, and diagnostics', 'wp-content-bridge' ),
+			IntegrationCapability::READ_MEDIA->value      => esc_html__( 'Read the authorized media library', 'wp-content-bridge' ),
+			IntegrationCapability::READ_PATTERNS->value   => esc_html__( 'Read registered block patterns (also requires native editor access)', 'wp-content-bridge' ),
 			IntegrationCapability::EDIT_CONTENT->value    => esc_html__( 'Create drafts and update content', 'wp-content-bridge' ),
 			IntegrationCapability::MANAGE_SEO->value      => esc_html__( 'Update supported SEO fields', 'wp-content-bridge' ),
 			IntegrationCapability::PUBLISH_CONTENT->value => esc_html__( 'Publish content (still requires the publication feature flag and native permission)', 'wp-content-bridge' ),

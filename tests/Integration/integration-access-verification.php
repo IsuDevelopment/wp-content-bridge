@@ -62,10 +62,17 @@ try {
 	$manager = new IntegrationAccessManager( new WordPressIntegrationAccessRepository() );
 	$manager->update(
 		$first->ID,
-		array( IntegrationCapability::READ_CONTENT->value, IntegrationCapability::EDIT_CONTENT->value )
+		array(
+			IntegrationCapability::READ_CONTENT->value,
+			IntegrationCapability::READ_MEDIA->value,
+			IntegrationCapability::READ_PATTERNS->value,
+			IntegrationCapability::EDIT_CONTENT->value,
+		)
 	);
 
 	if ( ! user_can( $first, IntegrationCapability::READ_CONTENT->value )
+		|| ! user_can( $first, IntegrationCapability::READ_MEDIA->value )
+		|| ! user_can( $first, IntegrationCapability::READ_PATTERNS->value )
 		|| ! user_can( $first, IntegrationCapability::EDIT_CONTENT->value )
 	) {
 		$failures[] = 'first managed user did not receive the selected capabilities';
@@ -78,6 +85,8 @@ try {
 	}
 
 	if ( user_can( $first, IntegrationCapability::READ_CONTENT->value )
+		|| user_can( $first, IntegrationCapability::READ_MEDIA->value )
+		|| user_can( $first, IntegrationCapability::READ_PATTERNS->value )
 		|| user_can( $first, IntegrationCapability::EDIT_CONTENT->value )
 	) {
 		$failures[] = 'previously managed user retained WPCB capabilities';

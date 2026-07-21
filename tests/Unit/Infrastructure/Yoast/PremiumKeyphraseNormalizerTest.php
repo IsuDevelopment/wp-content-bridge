@@ -23,7 +23,8 @@ final class PremiumKeyphraseNormalizerTest extends TestCase {
 	public function test_normalizes_primary_and_additional_keyphrases(): void {
 		$result = ( new PremiumKeyphraseNormalizer() )->normalize(
 			'Primary phrase',
-			'[{"keyword":"Additional one","score":87},{"keyword":"Additional two","score":101}]'
+			'[{"keyword":"Additional one","score":87},{"keyword":"Additional two","score":101}]',
+			'["primary synonym, second primary","related synonym",""]'
 		);
 
 		self::assertSame( array( 'Primary phrase', 'Additional one', 'Additional two' ), $result['phrases'] );
@@ -47,6 +48,22 @@ final class PremiumKeyphraseNormalizerTest extends TestCase {
 			),
 			$result['details']
 		);
+		self::assertSame( array( 'primary synonym', 'second primary' ), $result['keyphrase_synonyms'] );
+		self::assertSame(
+			array(
+				array(
+					'keyphrase' => 'Additional one',
+					'synonyms'  => array( 'related synonym' ),
+					'score'     => 87,
+				),
+				array(
+					'keyphrase' => 'Additional two',
+					'synonyms'  => array(),
+					'score'     => null,
+				),
+			),
+			$result['related_keyphrases']
+		);
 	}
 
 	/**
@@ -60,5 +77,7 @@ final class PremiumKeyphraseNormalizerTest extends TestCase {
 
 		self::assertSame( array( 'Same' ), $result['phrases'] );
 		self::assertCount( 1, $result['details'] );
+		self::assertSame( array(), $result['keyphrase_synonyms'] );
+		self::assertSame( array(), $result['related_keyphrases'] );
 	}
 }

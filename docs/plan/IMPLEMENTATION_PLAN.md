@@ -169,7 +169,8 @@ licensed Local multiple-location runtime matrix (ADR 0009).
 Status: complete.
 
 - safe Premium/Local slug and public version reporting;
-- normalization schema 1.1 fields for detailed keyphrases and public local
+- normalization schema 1.2 fields for detailed keyphrases, Premium synonyms,
+  related keyphrases, and public local
   businesses;
 - strict schemas, bounds, provenance, and leakage tests.
 
@@ -197,7 +198,8 @@ Local 15.8, in both single-location and multiple-location modes.
 - multiple-location/branch projection: verified at runtime through rendered
   front-end schema capture (ADR 0009); the resolved meta surface alone omits
   Yoast's `parentOrganization` branch schema;
-- Premium synonyms: still pending (no stable contract proven).
+- Premium primary synonyms and related keyphrases: code-complete under the
+  bounded 28.x contract in ADR 0014; live write verification pending.
 
 Deliverables:
 
@@ -289,7 +291,7 @@ Exit gate:
 
 ## Milestone 5 — writes (draft mutations, SEO writes, controlled publication)
 
-Status: **in progress (Plans 1–2 of 4 complete).** During brainstorming
+Status: **in progress (Plans 1–3 complete; publication remains).** During brainstorming
 (2026-07-20) the write scope originally spread across Milestones 5–7 was
 folded into a single Milestone 5, executed as four sequential, independently
 shippable plans. Publication stays gated behind its own separate feature flag
@@ -375,18 +377,47 @@ API, REST) once the flag is on, but are not yet visible to any MCP client
 until that site-infra allowlist is updated separately — see
 `docs/setup/MCP_ADAPTER.md`.
 
-### Plan 3 — `update-seo`
+### Plan 3 — `update-seo` — **base merged `796e932`; Premium extension code-complete**
 
-- `SeoUpdate` DTO; `SeoWriter` port + `YoastFreeSeoWriter` (Yoast Free core
-  allowlist only, via Yoast's documented write path, re-read after write);
+- `SeoUpdate` DTO; `SeoWriter` port + `YoastSeoWriter` (Yoast Free core
+  allowlist plus the Premium 28.x normalized `keyphrase_synonyms` and
+  `related_keyphrases` lists, re-read after write);
 - `UpdateSeo` use case, ability, schema, and SEO write/re-read verifier.
 
-### Plan 4 — `publish-content` + `list-block-patterns`
+ADR 0014 replaces the original blanket Premium-write exclusion for these two
+fields only. Their installed Premium 28.0 storage shape is version-gated,
+scores/synonyms for retained related phrases are preserved, raw provider JSON
+and caller-supplied scores remain forbidden, and normalization schema 1.2
+returns both fields. Live Kormas verification remains required.
+The extended verifier was retried on 2026-07-21, but the stopped Local database
+prevented WordPress bootstrap; no fixture mutation ran.
+
+The implementation is merged to `main` and `composer check` passes. The
+repeatable live Yoast verifier exists at
+`tests/Integration/writes-seo-verification.php`; its Kormas local execution is
+still pending because the Local database was stopped during the 2026-07-21
+verification session.
+
+### Plan 4a — `list-block-patterns`
+
+Status: **code-complete for 0.1.3; Kormas local runtime verification pending.**
+The verifier was retried on 2026-07-21, but WordPress could not connect to the
+stopped Local database, so no fixture mutation ran.
+
+- read-only `BlockPatternCatalog`/`BlockPatternAccess` ports,
+  `WordPressBlockPatternCatalog`/`WordPressBlockPatternAccess`,
+  `PatternAccessManager`, `ListBlockPatterns`, and `PatternAbilities`;
+- dedicated off-by-default `wpcb_pattern_reads_enabled` option and
+  `wpcb_read_patterns` capability exposed in settings;
+- metadata-only default, optional complete markup capped at 2 MiB, 50-item
+  pages, 1,000-candidate scan, deterministic filters/order, no filesystem
+  fields, and no remote pattern loading;
+- ADR 0013, strict schemas/unit coverage, and disposable runtime fixture.
+
+### Plan 4b — `publish-content`
 
 - `PublishContent` use case (draft→publish only, approval-compatible contract,
   its own `wpcb_publish_enabled` flag + `wpcb_publish_content` capability);
-- read-only `BlockPatternCatalog` port + `WordPressBlockPatternCatalog` +
-  `PatternAbilities`;
 - Settings-page checkboxes for both master flags;
 - final exit-gate integration matrix (publish-blocked-when-flag-off;
   abilities invisible over MCP when the master flag is off).
@@ -427,7 +458,8 @@ Exit gate:
 - no direct write to provider-derived/indexables tables;
 - unsupported fields fail explicitly;
 - effective SEO is re-read after mutation;
-- Premium/Local writes remain out until separately specified.
+- Premium/Local writes beyond the two Premium keyphrase fields in ADR 0014
+  remain out until separately specified.
 
 ## Milestone 7 — controlled publication
 
@@ -474,18 +506,21 @@ provider is unavailable. Redirect writes require their own threat-model update,
 capability, disabled-by-default feature flag, schemas, and contract/runtime
 tests; they must never expose arbitrary rewrite rules or direct database access.
 
-## Future backlog — media abilities and featured-image identity
+## Media abilities and featured-image identity
+
+Status: **P0 code-complete for 0.1.3; Kormas local runtime verification
+pending.** ADR 0011 and
+`docs/superpowers/specs/2026-07-21-media-p0-design.md` define the accepted
+boundary. The third-party plugin comparison is recorded in
+`docs/research/ENABLE_ABILITIES_FOR_MCP_COMPARISON.md`.
 
 Design a dedicated, bounded media vertical slice rather than treating
 attachments as generic posts or exposing arbitrary post-meta writes. Use the
 publicly available implementation and documentation of the third-party
-**Enable Abilities for MCP** plugin as comparison material before planning, but
-verify its behavior and license independently. Reuse sound contract patterns,
-not provider-specific internals, and document where WP Content Bridge can offer
-safer or more deterministic semantics. The observations below about that plugin
-are user-reported and have not yet been verified in this repository.
+**Enable Abilities for MCP** plugin as comparison material. Reuse sound contract
+patterns, not provider-specific internals.
 
-### P0 — eliminate media identity and schema ambiguity
+### P0 — eliminate media identity and schema ambiguity — **code complete**
 
 - Add a stable `get-media` search ability whose output is an object envelope
   (for example `items`, `pagination`, and `provenance`), never a raw top-level
@@ -527,42 +562,45 @@ are user-reported and have not yet been verified in this repository.
   file-size/dimension limits, sanitized filenames, bounded metadata, attachment
   ownership checks, and post-write read-back. Remote import remains a distinct
   SSRF-reviewed design and must not be implied by upload support.
-- Evaluate an optional cache-invalidation port after media or featured-image
-  changes, following the cross-cutting cache-invalidation backlog below.
+- Reuse the post-scoped mutation invalidation boundary for future media and
+  featured-image writes (ADR 0012); do not add provider calls to their use cases.
 
-Before implementation, add a media access-policy decision and threat-model
-update because `attachment` is intentionally excluded from the current content
-type catalog. Define stable ability IDs, schemas, capability migration,
-optimistic concurrency, audit taxonomy, pagination limits, and WordPress/MCP
-runtime fixtures. The two first delivery priorities are the correct object
-envelope for `get-media` and guaranteed featured-image ID+URL identity.
+Delivered behind the off-by-default `wpcb_media_reads_enabled` policy with the
+dedicated `wpcb_read_media` capability and native `read_post` filtering. The
+public contracts are `wp-content-bridge/get-media` and
+`wp-content-bridge/get-media-by-id`; content summaries now include the required
+nullable `featured_image_id` + `featured_image_url` pair. Static/unit quality is
+green (155 tests / 380 assertions). Run
+`tests/Integration/media-read-verification.php` on Kormas local before release.
 
-## Future backlog — cache invalidation after agent mutations
+## Cross-cutting cache invalidation after agent mutations
+
+Status: **baseline code-complete for 0.1.3; Kormas local runtime verification
+pending.** ADR 0012 owns the accepted boundary. Kormas local has LiteSpeed Cache
+installed, and its public `litespeed_purge_post` hook was verified in the local
+plugin source.
 
 Ensure that every successful AI-initiated mutation becomes visible through the
 site's active cache stack without coupling application services to a concrete
 page-cache, object-cache, hosting-cache, or CDN plugin.
 
-- Add a provider-neutral `CacheInvalidator` application port and a registry of
-  feature-detected infrastructure adapters. Integrations must use documented
-  public APIs from supported cache providers; never delete cache files, mutate
-  cache tables directly, or accept arbitrary action names/cache keys from an
-  MCP caller.
-- First determine whether WordPress core and the detected cache plugin already
-  invalidate the affected object/page on standard APIs such as
-  `wp_update_post()`. Avoid duplicate purges and add an active adapter only when
-  the provider's normal hooks do not cover the mutation path reliably.
+- The delivered WordPress infrastructure subscriber consumes successful,
+  pre-redacted `wpcb_mutation` events and invalidates the authoritative post ID.
+  It calls `clean_post_cache()` and dispatches `litespeed_purge_post` only when
+  that hook has an active listener. This closes the metadata-only SEO-write gap
+  without coupling application services to LiteSpeed.
+- Integrations use public hooks only; never delete cache files, mutate cache
+  tables directly, or accept arbitrary action names/cache keys from an MCP
+  caller.
 - Build a bounded invalidation plan from authoritative mutation results, not
   caller-supplied URLs. Depending on the operation it may contain the exact
   canonical object URL, both old and new URLs after a slug/permalink change,
   relevant archive/home/feed/sitemap dependencies, attachment URLs, and
   provider-generated SEO/schema output. Every target must be same-site unless a
   separately configured CDN adapter owns it.
-- Run invalidation only after the write, concurrency checks, provider re-read,
-  and resulting canonical identity are known. A purge failure must not roll
-  back or misreport a committed content/SEO/media mutation; return an explicit
-  `cache_invalidation` result (`not_required`, `success`, `partial`,
-  `unsupported`, or `failed`) with bounded provider-safe warnings.
+- Invalidation runs only after the write and successful audit event. A purge
+  failure does not roll back or misreport a committed mutation; it emits the
+  redacted `wp_content_bridge_cache_invalidation_failed` infrastructure event.
 - Emit redacted audit/observability data containing provider identity, target
   count, outcome, and safe error code, never cache credentials, filesystem
   paths, raw provider configuration, or secret CDN tokens.
@@ -571,23 +609,24 @@ page-cache, object-cache, hosting-cache, or CDN plugin.
   triggering an unrestricted full-site purge. A manual full purge, if ever
   supported, must be a separate administrator-only operation and is not an MCP
   content ability.
-- Expose safe diagnostics showing whether a cache provider was detected,
-  whether an adapter is supported, and the last bounded invalidation outcome.
-  Provider-specific failures degrade explicitly and must never break content
-  reads.
+- Future provider expansion may expose safe diagnostics and an additive
+  `cache_invalidation` result only after its public contract is specified.
+  Provider-specific failures must never break content reads or rewrite a
+  committed mutation result.
 
-Apply this contract to `update-content`, `update-seo`, publication/status
+The delivered subscriber applies to `create-draft`, `update-content`, and
+`update-seo`. Apply the same event contract to publication/status
 transitions, slug changes, redirect writes, menu changes, revision restoration,
 featured-image/media changes, and deletions. Before implementation, research
 the public invalidation APIs and automatic-hook behavior of the cache plugins
 actually targeted by the compatibility matrix. Add no provider claim without a
 fixture or manual runtime test.
 
-Required tests: no cache plugin (safe no-op), automatically invalidating
-provider, explicitly supported purge adapter, unsupported provider, adapter
-exception/timeout, old+new URL invalidation after a slug change, bounded target
-deduplication, no arbitrary URL/action input, no full-site purge, and committed
-write success preserved when cache invalidation fails.
+Delivered runtime coverage: successful post-scoped WordPress/LiteSpeed
+invalidation, no purge for unsuccessful events, and contained adapter failure.
+Future mutation types still require old+new URL handling after slug changes,
+bounded target deduplication, unsupported-provider behavior, and explicit
+dependency coverage where one post affects archives or other public URLs.
 
 ## Future backlog — extended editorial operations
 

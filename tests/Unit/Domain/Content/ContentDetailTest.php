@@ -70,4 +70,15 @@ final class ContentDetailTest extends TestCase {
 
 		self::assertSame( 'abcdef0123456789:2026-07-20 00:00:00', $detail->to_array()['version_token'] );
 	}
+
+	/**
+	 * Featured-image identity is always emitted as an ID and URL pair.
+	 */
+	public function test_summary_emits_featured_image_identity_pair(): void {
+		$summary = new ContentSummary( 1, 'page', 'publish', 'Page', 'page', 'https://example.com/page', '', 2, null, '2026-07-21T00:00:00+00:00', 9, 'https://example.com/media/hero.jpg' );
+		$array   = $summary->to_array();
+
+		self::assertSame( 9, $array['featured_image_id'] );
+		self::assertSame( 'https://example.com/media/hero.jpg', $array['featured_image_url'] );
+	}
 }

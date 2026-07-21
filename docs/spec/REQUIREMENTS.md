@@ -35,6 +35,15 @@ Requirement identifiers are stable references for code, tests, ADRs, and release
 - **FR-DETAIL-002:** Return Gutenberg source (`raw`), rendered content, and normalized plain text as independently selectable representations.
 - **FR-DETAIL-003:** Include revision/concurrency information required for a later safe update.
 - **FR-DETAIL-004:** Include taxonomy terms, featured media, author summary, and public URL.
+- **FR-MEDIA-001:** Expose media through a dedicated, disabled-by-default read
+  policy rather than adding attachments to the general content-type catalog.
+- **FR-MEDIA-002:** Support bounded media lookup by exact ID, exact same-site
+  original URL, exact filename, and text query, with authorization before
+  pagination.
+- **FR-MEDIA-003:** Return stable object envelopes and an explicit media-field
+  allowlist: ID, title, filename, URL, ALT, caption, description, and MIME type.
+- **FR-MEDIA-004:** Content summaries return `featured_image_id` and
+  `featured_image_url` together, or return both as null when unavailable.
 - **FR-DETAIL-005:** Allow SEO inclusion without requiring a second call while keeping a standalone SEO ability for non-post URLs.
 
 ### SEO
@@ -64,6 +73,22 @@ Requirement identifiers are stable references for code, tests, ADRs, and release
 - **FR-WRITE-004:** Update SEO through a narrow provider-supported field set.
 - **FR-WRITE-005:** Publish through a separate ability, separate capability, explicit feature flag, and approval-compatible contract.
 - **FR-WRITE-006:** Emit an audit event for every attempted and completed mutation without logging secrets or full private content.
+- **FR-WRITE-007:** When compatible Yoast Premium is active, update primary
+  keyphrase synonyms and related keyphrases through bounded normalized lists;
+  never expose the provider's positional JSON contract.
+
+### Block patterns
+
+- **FR-PATTERN-001:** The plugin shall expose a separately enabled,
+  capability-gated read ability for registered block-pattern discovery.
+- **FR-PATTERN-002:** Pattern discovery shall require native editor-level
+  access equivalent to WordPress core and shall not trigger remote pattern
+  downloads.
+- **FR-PATTERN-003:** Pattern output shall use a strict object envelope,
+  deterministic filtering/pagination, fixed field allowlists, bounded arrays,
+  and no filesystem paths.
+- **FR-PATTERN-004:** Pattern content shall be omitted by default and returned
+  only when requested, complete and within a combined 2 MiB response limit.
 
 ### Diagnostics
 

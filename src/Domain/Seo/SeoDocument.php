@@ -17,7 +17,7 @@ use JsonException;
  */
 final readonly class SeoDocument {
 
-	public const SCHEMA_VERSION   = '1.1';
+	public const SCHEMA_VERSION   = '1.2';
 	public const MAX_SCHEMA_NODES = 200;
 	public const MAX_SCHEMA_BYTES = 1024 * 1024;
 	public const MAX_WARNINGS     = 50;
@@ -27,6 +27,8 @@ final readonly class SeoDocument {
 		'description',
 		'focus_keyphrases',
 		'keyphrase_details',
+		'keyphrase_synonyms',
+		'related_keyphrases',
 		'canonical',
 		'robots',
 		'social',

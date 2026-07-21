@@ -27,25 +27,36 @@ abilities are reachable directly (PHP/Abilities API, REST via the Abilities
 REST routes) but are **not yet visible to any MCP client** until that
 site-infra allowlist is updated separately (outside this plugin repo).
 
-**Plan 3 (`update-seo`) is code-complete on branch `feat/m5-update-seo`** (not
-yet merged). Adds `wp-content-bridge/update-seo`, writing the fixed Yoast Free
-core-field allowlist (title, meta description, focus keyphrase, canonical,
-robots index/follow, OG title/description, Twitter title/description) on an
-existing post, gated by `wpcb_writes_enabled` + `wpcb_manage_seo` capability +
-native `edit_post` + the `update_seo` per-post-type policy, reusing the
-existing optimistic-concurrency (`VersionToken`) and audit invariants. All 8
-plan tasks are committed: `MutationResult.effective_seo` (`5bd865a`),
-`SeoUpdate` DTO (`103f959`), `SeoWriter` port + `UpdateSeo` use case
-(`217be9f`), `YoastFreeSeoWriter` infrastructure adapter (`7d91878`), ability
-schemas (`b71f123`), `MutationAbilities` registration (`1b8dd1f`), `Plugin.php`
-wiring (`7ec6870`), and the runtime verifier
-`tests/Integration/writes-seo-verification.php` (`1bb27c2`). `composer check`
-is green (136 tests / 341 assertions, PHPCS 0, PHPStan 0). **Known gap:** the
-runtime `wp eval` verification against a live Yoast Free 28.x install has not
-been executed yet — the plugin is not currently symlinked/active on the local
-Kormas WP install, so this step needs manual setup before Plan 3 can be
-considered fully sign-off verified. Once that runs clean, next is merging Plan
-3 and updating the site-infra MCP allowlist for all three write abilities.
+**Plan 3 (`update-seo`) base is merged** to `main` (merge commit `796e932`).
+The current 0.1.3 worktree extends its fixed Yoast Free core-field allowlist
+with normalized `keyphrase_synonyms` and `related_keyphrases` for compatible
+Yoast Premium 28.x (ADR 0014), advances normalized SEO output to schema 1.2,
+and extends the repeatable verifier. `composer check` passes with 173 tests / 431
+assertions. The verifier was retried on 2026-07-21, but WordPress could not
+connect to the stopped Local database; no fixture mutation ran.
+
+**Media P0 and post-scoped cache invalidation for version 0.1.3 are
+code-complete in the current worktree.** Media adds
+off-by-default `get-media` and `get-media-by-id` abilities, the dedicated
+`wpcb_read_media` capability, native per-attachment authorization, deterministic
+ID/same-site URL/filename lookup, strict object envelopes, normalized media
+fields, and required nullable `featured_image_id` + `featured_image_url` content
+summary fields. ADR 0011 owns the separate media policy. The current combined
+worktree passes `composer check` (173 tests / 431 assertions); Kormas runtime
+verification is pending only because the Local site/database is stopped.
+Successful mutations now clear the
+affected WordPress post cache and, when active, dispatch LiteSpeed Cache's
+public post-scoped purge hook. Cache failures are contained after commit (ADR
+0012); its Kormas runtime verifier is pending for the same reason.
+
+**Plan 4a (`list-block-patterns`) is code-complete in the current 0.1.3
+worktree.** The ability is independently off by default, requires
+`wpcb_read_patterns` plus WordPress editor-level access, returns metadata by
+default, and exposes optional complete markup under a 2 MiB bound. It uses the
+current registry without remote loading and never exposes pattern filesystem
+paths (ADR 0013). Static/unit quality is green (173 tests / 431 assertions).
+The verifier was retried on 2026-07-21 and reached WordPress, but the stopped
+Local database socket prevented bootstrap; no fixture mutation ran.
 
 Milestone 4 Phase 1 — **complete** (ChatGPT-primary, read-only, Approach A per
 ADR 0010). ChatGPT completed the five-ability read scenario live through the
@@ -72,18 +83,25 @@ verified.
   PHPStan 0). The repeatable WordPress runtime verifier was added but could not
   be executed in this environment because the local WordPress database runtime
   was not running (`Error establishing a database connection`).
-- Captured a dedicated media-abilities backlog with P0 priorities for a stable
-  object-envelope `get-media` contract and guaranteed featured-image ID+URL,
-  plus deterministic lookup by ID/URL/filename, `get-media-by-id`, normalized
-  media fields, separate `update-media`, upload/assignment security gates, and
-  optional cache invalidation. The third-party Enable Abilities for MCP plugin
-  is recorded as unverified comparison material, not an implementation
-  dependency.
-- Captured cross-cutting cache invalidation after every agent mutation. The
-  future design uses a provider-neutral port with documented cache-plugin/CDN
-  adapters, derives bounded same-site targets from authoritative write results,
-  forbids caller-driven actions and unrestricted full purges, and reports
-  failure explicitly without rolling back or misreporting a committed write.
+- Media P0 code-complete for 0.1.3: dedicated off-by-default policy and
+  `wpcb_read_media`; strict object-envelope `get-media`; deterministic
+  `get-media-by-id`; exact ID/same-site URL/filename lookup; normalized ID,
+  title, filename, URL, ALT, caption, description, and MIME; and required
+  `featured_image_id` + `featured_image_url` content-summary fields. ADR 0011,
+  runtime verifier, settings UI, capability migration, contract tests, and the
+  verified third-party comparison are included. `composer check` passes (155
+  tests / 380 assertions); Kormas runtime remains pending while Local is stopped.
+- Implemented post-scoped cache invalidation after every successful bridge
+  mutation. The WordPress infrastructure subscriber clears the exact post's
+  object cache and uses LiteSpeed Cache's public `litespeed_purge_post` hook
+  only when present. It forbids caller-selected targets and full purges,
+  contains provider exceptions after commit, and exposes bounded success/failure
+  lifecycle hooks (ADR 0012).
+- Implemented Plan 4a `list-block-patterns`: dedicated settings flag and
+  integration capability, core-compatible native editor gate, transport-neutral
+  access/catalog ports, deterministic filters/pagination, metadata-only default,
+  optional bounded markup, strict schemas, unit coverage, and a disposable
+  Kormas runtime verifier (ADR 0013).
 - Captured provider-neutral redirect management as a future backlog item,
   including the required evaluation of Yoast Premium redirects versus a
   dedicated redirects plugin and the security gates for any write ability.
@@ -177,7 +195,7 @@ verified.
 - Single-location Kormas runtime verification passes with Yoast Free 28.0,
   Premium 28.0, and Local 15.8. A pure multi-location Schema contract test also
   passes, but a real multi-location fixture has not yet been exercised.
-- SEO normalization schema 1.1, module-version diagnostics, Premium/Local leak
+- SEO normalization schema 1.2, module-version diagnostics, Premium/Local leak
   tests, and updated Ability schemas.
 - Bounded `wp-content-bridge/get-editorial-context` Ability with selectable
   `post_types`, `taxonomies`, `terms`, `authors`, `recent_content`, and
@@ -274,7 +292,8 @@ verified.
 
 ## Not implemented
 
-- Premium synonyms (their stable public/storage contract has not been proven).
+- Premium fields beyond the normalized synonyms/related-keyphrase contract in
+  ADR 0014.
 - Per-target Yoast analysis scores. Yoast's documented score Abilities return
   recent-post lists without stable post IDs, so they cannot safely be joined to
   a requested object.
@@ -283,55 +302,31 @@ verified.
 - Strict least-privilege re-consent as `wpcb-bridge-reader` (Task 6's live
   ChatGPT consent was done as admin `dev` for exploration; re-run on staging
   with a real certificate).
-- Live SEO writes (`update-seo`) and controlled publication
-  (`publish-content`) and their abilities — M5 Plan 1 foundation exists (the
-  `SeoFieldUnsupported` failure type and `wpcb_manage_seo`/
-  `wpcb_publish_content` capabilities/flags) but no ability is registered yet.
-  `list-block-patterns` is not built. (`create-draft`/`update-content` ARE now
-  implemented and reachable, Plan 2; the `wpcb_writes_enabled` Settings-page
-  checkbox IS built, Plan 2 — the still-missing toggle is `wpcb_publish_enabled`,
-  which is Plan 4's job.)
-- MCP exposure of the two new write abilities: the site-infrastructure MCP glue
+- Controlled publication (`publish-content`) is not implemented.
+  `list-block-patterns`, `update-seo`, `create-draft`, and `update-content` are
+  implemented; pattern runtime sign-off is pending.
+- Media P1 writes are not implemented: `update-media`, upload, featured-image
+  assignment/removal, and remote import remain separately gated future work.
+- MCP exposure of the three write abilities, two media abilities, and pattern ability: the site-infrastructure MCP glue
   (`wpcb-mcp-server.php` mu-plugin and the ChatGPT-facing miniOrange OAuth
-  scope) still hardcode an explicit five-read-ability allowlist and have not
-  been updated to add `create-draft`/`update-content` — this is a site-config
+  scope) still hardcodes an explicit five-read-ability allowlist and has not
+  been updated for the new abilities — this is a site-config
   change outside the plugin repo, not a plugin-code gap.
 - Role-management UI beyond the capability grant.
 - Agents API integration.
 
 ## Next action
 
-Milestone 5 **Plan 3** — `update-seo`: `SeoUpdate` DTO, `SeoWriter` port +
-`YoastFreeSeoWriter` (Yoast Free core allowlist only, via Yoast's documented
-write path, re-read after write), `UpdateSeo` use case, ability, schema, and a
-SEO write/re-read runtime verifier. Write Plan 3 just-in-time (superpowers
-`writing-plans`) and execute via subagent-driven development, mirroring Plans
-1–2. Design spec: `docs/superpowers/specs/2026-07-20-milestone-5-writes-design.md`;
-four-plan split: `docs/plan/IMPLEMENTATION_PLAN.md` (Milestone 5). Writes stay
-behind the off-by-default master flags until each plan's exit gate passes.
+1. Start Kormas in Local and run the integration-access, update-seo, media, cache, and pattern
+   runtime verifiers recorded in `.continue-here.md`.
+2. Delete the now-inert `wpcb_public_base_url` option and uninstall the old
+   root-owned cloudflared service; the dev-only MU shim has already been removed.
+3. After runtime sign-off, ship 0.1.3.
+4. Start separately gated Plan 4b `publish-content`. Reuse ADR 0012's
+   invalidation event and specify old/new URL dependencies before slug changes.
 
-Separately (not blocking Plan 3, but needed before any external MCP client can
-exercise the two Plan 2 write abilities): update the site-infrastructure MCP
-glue (`content/mu-plugins/wpcb-mcp-server.php` and the miniOrange
-ChatGPT-facing OAuth scope) to add `wp-content-bridge/create-draft` and
-`wp-content-bridge/update-content` to their currently read-only allowlists —
-see `docs/setup/MCP_ADAPTER.md`.
-
-Independent open thread (M4): stabilize on staging with a real TLS certificate
-(replacing the local cloudflared quick tunnel) and re-run the strict
-least-privilege `wpcb-bridge-reader` consent. Re-run commands:
-
-```bash
-WPCB_SITE_URL=https://kormas-isu.local \
-WPCB_WP_ROOT="/Users/lukaszbiedron/Local Sites/kormas-isu/app/public" \
-WPCB_MCP_PATH="/wp-json/wpcb-mcp/mcp" \
-"/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/Integration/mcp-smoke-verification.sh"
-```
-
-ChatGPT connector self-test: see `docs/setup/CHATGPT_CONNECTOR.md`.
-
-For cross-agent/session continuation, read `.continue-here.md` before making
-changes. It contains verified commands, environment caveats, and decisions.
+External MCP allowlists remain site infrastructure and must be updated only
+when the new abilities are intentionally exposed to a specific principal.
 
 ## Guardrail
 

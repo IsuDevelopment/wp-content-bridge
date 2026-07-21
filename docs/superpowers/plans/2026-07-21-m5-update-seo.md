@@ -1,5 +1,12 @@
 # M5 Plan 3 — `update-seo` Implementation Plan
 
+> **2026-07-21 amendment:** ADR 0014 extends the delivered Free-only contract
+> with normalized `keyphrase_synonyms` and `related_keyphrases` for Yoast
+> Premium 28.x. References below to `YoastFreeSeoWriter`, an unchanged read
+> provider, schema 1.1, or blanket rejection of Premium writes describe the
+> original execution baseline and are superseded by ADR 0014 and the current
+> implementation plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship the plugin's third write ability, `wp-content-bridge/update-seo` — write a fixed Yoast Free core-field allowlist (title, meta description, focus keyphrase, canonical, robots index/follow, Open Graph title/description, Twitter title/description) on an existing post, behind the same off-by-default `wpcb_writes_enabled` flag, gated by `wpcb_manage_seo` + native `edit_post` + the already-existing per-post-type `update_seo` policy column, using the same optimistic-concurrency and exactly-one-audit-row invariants as `update-content`, and returning the re-read effective SEO document in the result.

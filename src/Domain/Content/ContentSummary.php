@@ -27,6 +27,9 @@ final readonly class ContentSummary {
 	 * @param int         $author_id    Author ID.
 	 * @param string|null $published_at Publication time.
 	 * @param string      $modified_at  Modification time.
+	 * @param int|null    $featured_image_id  Authorized featured attachment ID.
+	 * @param string|null $featured_image_url Authorized featured attachment URL.
+	 * @throws \InvalidArgumentException When only one featured-image identity member is populated.
 	 */
 	public function __construct(
 		public int $id,
@@ -39,7 +42,12 @@ final readonly class ContentSummary {
 		public int $author_id,
 		public ?string $published_at,
 		public string $modified_at,
+		public ?int $featured_image_id = null,
+		public ?string $featured_image_url = null,
 	) {
+		if ( ( null === $featured_image_id ) !== ( null === $featured_image_url ) ) {
+			throw new \InvalidArgumentException( 'Featured image ID and URL must be populated together.' );
+		}
 	}
 
 	/**
@@ -49,17 +57,19 @@ final readonly class ContentSummary {
 	 */
 	public function to_array(): array {
 		return array(
-			'id'           => $this->id,
-			'post_type'    => $this->post_type,
-			'status'       => $this->status,
-			'title'        => $this->title,
-			'slug'         => $this->slug,
-			'url'          => $this->url,
-			'excerpt'      => $this->excerpt,
-			'author_id'    => $this->author_id,
-			'published_at' => $this->published_at,
-			'modified_at'  => $this->modified_at,
-			'untrusted'    => true,
+			'id'                 => $this->id,
+			'post_type'          => $this->post_type,
+			'status'             => $this->status,
+			'title'              => $this->title,
+			'slug'               => $this->slug,
+			'url'                => $this->url,
+			'excerpt'            => $this->excerpt,
+			'author_id'          => $this->author_id,
+			'published_at'       => $this->published_at,
+			'modified_at'        => $this->modified_at,
+			'featured_image_id'  => $this->featured_image_id,
+			'featured_image_url' => $this->featured_image_url,
+			'untrusted'          => true,
 		);
 	}
 }
