@@ -321,6 +321,11 @@ The plugin registers domain abilities; it does not provide MCP transport or
 authentication. Install the official WordPress MCP Adapter separately and
 explicitly allow only the abilities required by a client.
 
+Version 0.2.0 defines a closed 12-ability projection profile covering every
+currently implemented ability. The reference site-level MCP server intersects
+that profile with the abilities registered in the current request, so disabled
+media, pattern, write, and trash features remain absent from discovery.
+
 An ability can be registered in WordPress but still hidden from a particular
 MCP client by the Adapter or OAuth allowlist. Those projection allowlists never
 grant authority beyond the bound WordPress user's WPCB and native capabilities.

@@ -64,24 +64,25 @@ wp eval 'require "/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/In
 - Schema version behavior.
 - MCP discovery and execution envelopes through the official adapter.
 - Client-agnostic MCP smoke check: session-based `initialize` →
-  `notifications/initialized` → `tools/list` (asserts exactly the five
-  hyphenated tool names) → `tools/call` for each of the five read abilities
-  with a minimal valid input, executed as the least-privilege bridge-reader
-  user via a disposable Application Password that is deleted on exit (even on
-  failure, via a shell trap). Repeatable command:
+  `notifications/initialized` → `tools/list` (asserts the profile supplied in
+  `WPCB_EXPECTED_TOOLS`) → `tools/call` for the five safe baseline reads with
+  minimal valid input. Write/destructive tools are discovery-tested but never
+  executed by this smoke script. Authentication uses a disposable Application
+  Password that is deleted on exit, including failure. Repeatable command:
 
 ```bash
 WPCB_SITE_URL=https://kormas-isu.local \
 WPCB_WP_ROOT="/Users/lukaszbiedron/Local Sites/kormas-isu/app/public" \
 WPCB_MCP_PATH="/wp-json/wpcb-mcp/mcp" \
+WPCB_EXPECTED_TOOLS=search-content,get-content,get-url-seo,get-editorial-context,get-diagnostics,get-media,get-media-by-id,list-block-patterns,create-draft,update-content,update-seo,trash-content \
 "/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/Integration/mcp-smoke-verification.sh"
 ```
 
   This targets the official `WordPress/mcp-adapter` App-Password endpoint
   (`docs/setup/MCP_ADAPTER.md`), not the miniOrange OAuth endpoint ChatGPT
   uses (`/wp-json/mosmcp/v1/mcp`, `docs/setup/CHATGPT_CONNECTOR.md`) — the two
-  endpoints project the same five abilities but are deliberately kept
-  distinct in setup and verification.
+  endpoints have separate projection/grant configuration and are deliberately
+  kept distinct in setup and verification.
 
 ### End-to-end
 

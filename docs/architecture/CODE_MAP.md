@@ -356,10 +356,11 @@ Files:
   successful events purge one post, failed events do nothing, and cache-adapter
   exceptions cannot change the completed write outcome.
 
-**Not yet wired to any MCP client:** the site-infrastructure MCP glue
-(`content/mu-plugins/wpcb-mcp-server.php`, outside this repo) hardcodes an
-explicit five-read-ability allowlist and has not been updated to add
-`create-draft`/`update-content` — see `docs/setup/MCP_ADAPTER.md`.
+**MCP projection:** version 0.2.0 documents a closed profile containing all 12
+implemented abilities. The reference Kormas site owns this boundary as a
+Composer-installed MU-plugin and passes only profile entries that are currently
+registered. OAuth grants remain a separate site configuration; see
+`docs/setup/MCP_ADAPTER.md`.
 
 ## Specification routes
 
@@ -389,14 +390,15 @@ Milestones 1–4 are complete. Milestone 5 Plans 1–3 are merged. Media P0, cac
 invalidation, and Plan 4a `list-block-patterns` are code-complete in the current
 worktree and await the stopped Kormas Local runtime gate. The next path is:
 
-1. Run every pending local verifier and release 0.1.4.
-2. Run the Plan 4b `trash-content` WordPress verifier.
+1. Start Kormas Local and run every pending WordPress runtime verifier.
+2. Verify the 0.2.0 MCP discovery profile through the official Adapter, then
+   configure and verify the matching miniOrange grants for the intended
+   principal.
 3. Milestone 5 **Plan 4c** — `transition-content-status`; public/scheduled
    targets add the `wpcb_publish_enabled` flag/capability and final integration
    exit gate.
-4. Separately: update the site-infrastructure MCP glue
-   (`wpcb-mcp-server.php`) to add the two Plan 2 write abilities to its
-   allowlist so an external MCP client can reach them (not blocking Plan 3/4).
+4. Continue Media P1 as a separate write surface (`update-media`, upload, and
+   featured-image assignment/removal), with its own threat model and gates.
 
 Existing and new content reads continue to consume `ContentAccessManager`;
 none may call `get_option()` directly. New writes continue to consume

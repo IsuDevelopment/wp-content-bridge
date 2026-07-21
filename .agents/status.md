@@ -2,14 +2,29 @@
 
 ## Current phase
 
+**Version 0.2.0 MCP exposure is statically complete on 2026-07-21.** The plugin version,
+readme changelog, official Adapter setup, and configurable MCP discovery smoke
+profile now describe a closed profile of all 12 implemented abilities. Kormas
+owns the official Adapter projection in a version-controlled Composer MU-plugin
+that intersects this profile with abilities registered under current feature
+flags. This does not alter authorization. The miniOrange OAuth endpoint has
+separate principal-to-ability grants that still require explicit runtime update
+and verification after the stopped Kormas Local database is available.
+The plugin passes the PHP 8.2 release gate: PHPCS clean, PHPStan 0 errors, and
+PHPUnit 197 tests / 474 assertions. The Kormas package passes PHP syntax and
+PHPCS, Composer resolves it as version 0.2.0, and the obsolete local root MCP
+file was removed to prevent duplicate server registration. Live discovery was
+attempted but WordPress could not connect to the stopped database.
+
 **The root README ability catalog was expanded on 2026-07-21.** It now gives a
 standalone, factual description of every implemented ability, including its
 registration gate, WPCB capability, main inputs and outputs, bounds, native
 authorization, mutation safeguards, cache behavior, settings, MCP boundary,
 and unsupported operations. Planned `transition-content-status` remains
-clearly separated from the 12 abilities available in version 0.1.4.
+clearly separated from the 12 abilities released in version 0.1.5 and projected
+by the version 0.2.0 site profile.
 
-**Version 0.1.4 trash slice and status-boundary decision are code-complete on
+**Version 0.1.5 trash slice and status-boundary decision are complete on
 2026-07-21.** ADR 0015 replaces the never-released `publish-content` plan with
 the future `transition-content-status` ability: an explicit transition graph,
 with public/scheduled transitions additionally gated by the publication flag,
@@ -46,12 +61,10 @@ on merged `main` (120 tests / 309 assertions, PHPCS 0, PHPStan 0); the runtime
 write verifier (`tests/Integration/writes-mutation-verification.php`) passes
 the full authorization matrix, no-publish invariant, stale-version conflict,
 revision-on-update, block round-trip, idempotent create, and audit-redaction
-checks. **Known gap:** the site-infrastructure MCP glue (`wpcb-mcp-server.php`
-mu-plugin and the ChatGPT-facing miniOrange OAuth config) still hardcode an
-explicit allowlist of only the five original read abilities — the two new write
-abilities are reachable directly (PHP/Abilities API, REST via the Abilities
-REST routes) but are **not yet visible to any MCP client** until that
-site-infra allowlist is updated separately (outside this plugin repo).
+checks. The 0.2.0 site-infrastructure projection closes the official Adapter
+discovery gap with an explicit 12-ability, registered-only profile. The
+ChatGPT-facing miniOrange OAuth grants remain a separate pending runtime
+configuration.
 
 **Plan 3 (`update-seo`) base is merged** to `main` (merge commit `796e932`).
 The current 0.1.3 worktree extends its fixed Yoast Free core-field allowlist
@@ -336,11 +349,10 @@ verified.
   implemented; pattern runtime sign-off is pending.
 - Media P1 writes are not implemented: `update-media`, upload, featured-image
   assignment/removal, and remote import remain separately gated future work.
-- MCP exposure of the four write abilities, two media abilities, and pattern ability: the site-infrastructure MCP glue
-  (`wpcb-mcp-server.php` mu-plugin and the ChatGPT-facing miniOrange OAuth
-  scope) still hardcodes an explicit five-read-ability allowlist and has not
-  been updated for the new abilities — this is a site-config
-  change outside the plugin repo, not a plugin-code gap.
+- Runtime verification of the 0.2.0 official Adapter profile and explicit
+  miniOrange grants for the intended principal. The OAuth grant is site
+  configuration and must not use a wildcard or enable unrelated `mosmcp/*`
+  tools.
 - Role-management UI beyond the capability grant.
 - Agents API integration.
 
@@ -350,8 +362,10 @@ verified.
    cache, pattern, and trash runtime verifiers recorded in `.continue-here.md`.
 2. Delete the now-inert `wpcb_public_base_url` option and uninstall the old
    root-owned cloudflared service; the dev-only MU shim has already been removed.
-3. After runtime sign-off, ship 0.1.4.
-4. Start Plan 4c `transition-content-status`; keep the explicit transition
+3. Verify the complete 0.2.0 profile through the official Adapter, then update
+   and verify the separate miniOrange grants for the intended principal.
+4. Ship 0.2.0 after runtime sign-off.
+5. Start Plan 4c `transition-content-status`; keep the explicit transition
    graph and the stronger public/scheduled gates defined by ADR 0015.
 
 External MCP allowlists remain site infrastructure and must be updated only

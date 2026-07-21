@@ -369,13 +369,11 @@ success-audit call outside the `try`/`catch` in both use cases, with two new
 regression tests. `composer check` green on merged `main` (120 tests / 309
 assertions, PHPCS 0, PHPStan 0).
 
-**Known gap (not a Plan 2 deliverable):** the site-infrastructure MCP glue
-(`wpcb-mcp-server.php` mu-plugin, and the ChatGPT-facing miniOrange OAuth
-scope) still hardcode an explicit allowlist of only the five original read
-abilities. `create-draft`/`update-content` are reachable directly (Abilities
-API, REST) once the flag is on, but are not yet visible to any MCP client
-until that site-infra allowlist is updated separately — see
-`docs/setup/MCP_ADAPTER.md`.
+**Resolved in the 0.2.0 projection profile:** site infrastructure exposes a
+closed list of all 12 implemented abilities through the official Adapter and
+filters out any ability not registered under the current feature flags.
+miniOrange OAuth grants remain a distinct per-principal runtime configuration;
+see `docs/setup/MCP_ADAPTER.md` and `docs/setup/CHATGPT_CONNECTOR.md`.
 
 ### Plan 3 — `update-seo` — **base merged `796e932`; Premium extension code-complete**
 
@@ -416,7 +414,8 @@ stopped Local database, so no fixture mutation ran.
 
 ### Plan 4b — `trash-content`
 
-Status: **code-complete for 0.1.4; WordPress runtime verification pending.**
+Status: **released in 0.1.5; repeatable Kormas WordPress runtime verification
+remains pending while the Local database is stopped.**
 The Kormas verifier was attempted on 2026-07-21, but Local's database socket
 was unavailable, so WordPress did not bootstrap and no fixture mutation ran.
 

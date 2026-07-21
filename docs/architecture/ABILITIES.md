@@ -231,11 +231,13 @@ Stable error codes shared by `create-draft`/`update-content`:
 `wpcb_seo_field_unsupported` (a field outside the writable allowlist rejects
 the whole request).
 
-**Not yet visible to any MCP client:** the site-infrastructure MCP glue
-(`wpcb-mcp-server.php` mu-plugin, and the ChatGPT-facing miniOrange OAuth
-scope) still hardcode an explicit five-read-ability allowlist that has not
-been updated to include pattern/media reads or any of the four write abilities — see
-`docs/setup/MCP_ADAPTER.md`.
+**MCP projection in 0.2.0:** the reference site-infrastructure profile now
+contains all 12 implemented ability IDs and intersects that closed allowlist
+with the abilities registered in the current request. Feature flags therefore
+still remove disabled operations from discovery. Projection does not grant
+authority: the official Adapter principal and the separate ChatGPT-facing
+miniOrange grant must each be configured explicitly; see
+`docs/setup/MCP_ADAPTER.md` and `docs/setup/CHATGPT_CONNECTOR.md`.
 
 ### `wp-content-bridge/create-draft`
 

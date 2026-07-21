@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Client-agnostic MCP smoke check for WP Content Bridge read abilities.
+# Client-agnostic MCP smoke check for WP Content Bridge abilities.
 #
-# Verifies: initialize -> notifications/initialized -> tools/list (five
-# tools) -> tools/call for each read ability with a minimal valid input,
-# executed as the least-privilege bridge-reader user via a disposable
-# Application Password. Not a substitute for the manual ChatGPT OAuth
-# walkthrough (Task 6) — this validates transport + abilities projection.
+# Verifies: initialize -> notifications/initialized -> tools/list (the
+# expected projection profile) -> tools/call for the safe baseline read
+# abilities with minimal valid input. Write and destructive abilities are
+# discovery-checked only and are never executed by this smoke script.
 #
 # Transport: the official WordPress/mcp-adapter HttpTransport is Streamable
 # HTTP / JSON-RPC 2.0 and is SESSION-based (see docs/setup/MCP_ADAPTER.md):
@@ -18,6 +17,7 @@ set -euo pipefail
 : "${WPCB_SITE_URL:?set WPCB_SITE_URL, e.g. https://kormas-isu.local}"
 : "${WPCB_WP_ROOT:?set WPCB_WP_ROOT to the WordPress public root}"
 WPCB_MCP_PATH="${WPCB_MCP_PATH:-/wp-json/wpcb-mcp/mcp}"  # match Task 4 namespace/route
+WPCB_EXPECTED_TOOLS="${WPCB_EXPECTED_TOOLS:-search-content,get-content,get-url-seo,get-editorial-context,get-diagnostics}"
 BRIDGE_USER="wpcb-bridge-reader"
 ENDPOINT="${WPCB_SITE_URL}${WPCB_MCP_PATH}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -103,10 +103,17 @@ notify '{"jsonrpc":"2.0","method":"notifications/initialized"}'
 echo "== tools/list =="
 LIST_RAW="$(rpc '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')"
 LIST="$(extract_json "$LIST_RAW")"
-for tool in search-content get-content get-url-seo get-editorial-context get-diagnostics; do
+
+IFS=',' read -r -a EXPECTED_TOOLS <<<"$WPCB_EXPECTED_TOOLS"
+[ "${#EXPECTED_TOOLS[@]}" -gt 0 ] || fail "WPCB_EXPECTED_TOOLS did not contain any tools"
+
+for tool in "${EXPECTED_TOOLS[@]}"; do
+	tool="${tool#wp-content-bridge/}"
+	tool="${tool#wp-content-bridge-}"
+	[ -n "$tool" ] || fail "WPCB_EXPECTED_TOOLS contains an empty tool name"
 	echo "$LIST" | grep -q "wp-content-bridge-$tool" || fail "tools/list missing wp-content-bridge-$tool"
 done
-echo "tools/list OK (five tools present)"
+echo "tools/list OK (${#EXPECTED_TOOLS[@]} expected tools present)"
 
 echo "== tools/call: get-diagnostics (no input) =="
 DIAG_RAW="$(rpc '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"wp-content-bridge-get-diagnostics","arguments":{}}}')"

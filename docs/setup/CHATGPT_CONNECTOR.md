@@ -1,18 +1,18 @@
-# ChatGPT connector setup — OAuth-fronted MCP access to the five read abilities
+# ChatGPT connector setup — OAuth-fronted MCP access
 
-This is the Milestone 4 Phase 1 ChatGPT connector recipe: the external OAuth
-2.1 layer that fronts the plugin's five read-only abilities so ChatGPT's
-"Connectors" (Apps SDK) can reach them. It documents the actual live setup
-from Task 6, including both fixes it forced and the troubleshooting the live
-run needed.
+This guide records the Milestone 4 five-read-ability walkthrough and the
+current 0.2.0 configuration rule. Version 0.2.0 defines a closed profile of all
+12 implemented WP Content Bridge abilities, but miniOrange maintains its own
+principal-to-ability grants. Update those grants explicitly for the intended
+integration user; never infer them from the official Adapter server.
 
 > **This is a different endpoint than `docs/setup/MCP_ADAPTER.md`.** That
 > document covers the official `WordPress/mcp-adapter` App-Password endpoint
 > (`/wp-json/wpcb-mcp/mcp`) used by the client-agnostic smoke suite. This
 > document covers the **OAuth-fronted** endpoint
-> (`/wp-json/mosmcp/v1/mcp`) that ChatGPT actually connects to. Both project
-> the plugin's same five read abilities; keep the two distinct — do not merge
-> their setup steps or credentials.
+> (`/wp-json/mosmcp/v1/mcp`) that ChatGPT actually connects to. The endpoints
+> have separate allowlists, grants, and credentials; keep their setup and
+> verification distinct.
 
 ## Site infrastructure — not part of the plugin package
 
@@ -47,10 +47,10 @@ Deliberately **not** used: `miniorange-ai-agent` — that is an MCP *client*
 plugin bundling its own write-capable tool catalog, the wrong direction for a
 read-only, principal-bound bridge.
 
-## Least-privilege principal — the shipped shape
+## Least-privilege principal and grants
 
-The shipped configuration grants miniOrange's ability policy **only** the
-five `wp-content-bridge/*` abilities, bound to the least-privilege
+The verified Milestone 4 configuration granted miniOrange's ability policy
+**only** the five read abilities below, bound to the least-privilege
 `wpcb-bridge-reader` user (`tests/Integration/bridge-reader-fixture.php`;
 capabilities `read` + `wpcb_read_content` only, no role):
 
@@ -67,6 +67,13 @@ already has native WordPress `read` (a Subscriber role is sufficient for the
 read-only surface), then enable **Read content, SEO, editorial context, and
 diagnostics**. The plugin does not create the user, change its role, or change
 miniOrange's separate ability grant.
+
+For 0.2.0, grant only the additional IDs the principal is meant to execute.
+The complete candidate list is documented in `MCP_ADAPTER.md`; a single
+principal does not need all 12. Media reads require `wpcb_read_media`, pattern
+reads require `wpcb_read_patterns` plus native editor access, and mutations
+require their dedicated WPCB and native WordPress capabilities. Do not grant
+`transition-content-status`: it is not implemented.
 
 > **Live consent caveat.** Task 6's live ChatGPT walkthrough was performed as
 > the WordPress administrator `dev` with the full ability catalog available,
@@ -88,9 +95,9 @@ ability policy — this is a defense-in-depth check, not the only control.
    (`miniorange-secure-mcp-server`) on the site (not the plugin repo), the
    same way as any other WordPress plugin (`wp plugin install
    miniorange-secure-mcp-server --activate` or via the plugin directory).
-2. In its settings, lock the ability/tool policy to exactly the five
-   `wp-content-bridge/*` abilities listed above. Do not enable its bundled
-   `mosmcp/*` write abilities.
+2. In its settings, lock the ability/tool policy to the explicit
+   `wp-content-bridge/*` subset needed by the integration principal. Do not use
+   a wildcard and do not enable its bundled `mosmcp/*` write abilities.
 3. Confirm the MCP endpoint resolves: `https://<your-site>/wp-json/mosmcp/v1/mcp`.
 4. For local development only, continue with the tunnel and proxy-base shim
    below so ChatGPT (a remote client) can reach a `Local by Flywheel` site.
