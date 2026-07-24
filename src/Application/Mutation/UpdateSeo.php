@@ -176,6 +176,9 @@ final readonly class UpdateSeo {
 		if ( $error instanceof SeoFieldUnsupported ) {
 			return array( 'invalid', 'wpcb_seo_field_unsupported' );
 		}
+		if ( $error instanceof SeoImageUnavailable ) {
+			return array( 'invalid', $error->error_code() );
+		}
 
 		return array( 'failure', 'wpcb_write_failed' );
 	}

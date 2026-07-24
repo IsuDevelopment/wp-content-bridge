@@ -424,24 +424,8 @@ final readonly class YoastSeoProvider implements SeoProvider {
 				metadata_exists( 'post', $post_id, '_yoast_wpseo_focuskeywords' ) ? null : 'No explicit Premium related-keyphrase value is stored.'
 			)
 			: new SeoField( null, SeoValueState::UNSUPPORTED, 'yoast.premium', 'Yoast Premium is not active.' );
-		$configured['robots']             = $this->configured_group_field(
-			$post_id,
-			array(
-				'noindex'  => '_yoast_wpseo_meta-robots-noindex',
-				'nofollow' => '_yoast_wpseo_meta-robots-nofollow',
-			)
-		);
-		$configured['social']             = $this->configured_group_field(
-			$post_id,
-			array(
-				'open_graph_title'       => '_yoast_wpseo_opengraph-title',
-				'open_graph_description' => '_yoast_wpseo_opengraph-description',
-				'open_graph_image'       => '_yoast_wpseo_opengraph-image',
-				'twitter_title'          => '_yoast_wpseo_twitter-title',
-				'twitter_description'    => '_yoast_wpseo_twitter-description',
-				'twitter_image'          => '_yoast_wpseo_twitter-image',
-			)
-		);
+		$configured['robots']             = $this->configured_robots_field( $post_id );
+		$configured['social']             = $this->configured_social_field( $post_id );
 		$configured['schema_types']       = $this->configured_group_field(
 			$post_id,
 			array(
@@ -458,6 +442,68 @@ final readonly class YoastSeoProvider implements SeoProvider {
 		);
 
 		return $configured;
+	}
+
+	/**
+	 * Returns normalized configured robots state, including Yoast's advanced directives.
+	 *
+	 * @param int $post_id Authorized post ID.
+	 * @return SeoField
+	 */
+	private function configured_robots_field( int $post_id ): SeoField {
+		$keys         = array(
+			'noindex'  => '_yoast_wpseo_meta-robots-noindex',
+			'nofollow' => '_yoast_wpseo_meta-robots-nofollow',
+		);
+		$values       = array();
+		$has_explicit = metadata_exists( 'post', $post_id, '_yoast_wpseo_meta-robots-adv' );
+		foreach ( $keys as $field => $meta_key ) {
+			$has_explicit     = metadata_exists( 'post', $post_id, $meta_key ) || $has_explicit;
+			$values[ $field ] = get_post_meta( $post_id, $meta_key, true );
+		}
+		if ( ! $has_explicit ) {
+			return new SeoField( null, SeoValueState::INHERITED, 'yoast.inheritance', 'No explicit editor value is stored.' );
+		}
+
+		$advanced = get_post_meta( $post_id, '_yoast_wpseo_meta-robots-adv', true );
+		$advanced = is_string( $advanced ) ? array_map( 'trim', explode( ',', $advanced ) ) : array();
+		foreach ( array( 'noarchive', 'noimageindex', 'nosnippet' ) as $directive ) {
+			$values[ $directive ] = in_array( $directive, $advanced, true );
+		}
+
+		return new SeoField( $values, SeoValueState::EXPLICIT, 'yoast.post_meta.v28' );
+	}
+
+	/**
+	 * Returns configured social overrides with normalized attachment identities.
+	 *
+	 * @param int $post_id Authorized post ID.
+	 * @return SeoField
+	 */
+	private function configured_social_field( int $post_id ): SeoField {
+		$keys         = array(
+			'open_graph_title'       => '_yoast_wpseo_opengraph-title',
+			'open_graph_description' => '_yoast_wpseo_opengraph-description',
+			'open_graph_image'       => '_yoast_wpseo_opengraph-image',
+			'open_graph_image_id'    => '_yoast_wpseo_opengraph-image-id',
+			'twitter_title'          => '_yoast_wpseo_twitter-title',
+			'twitter_description'    => '_yoast_wpseo_twitter-description',
+			'twitter_image'          => '_yoast_wpseo_twitter-image',
+			'twitter_image_id'       => '_yoast_wpseo_twitter-image-id',
+		);
+		$values       = array();
+		$has_explicit = false;
+		foreach ( $keys as $field => $meta_key ) {
+			$has_explicit     = metadata_exists( 'post', $post_id, $meta_key ) || $has_explicit;
+			$value            = get_post_meta( $post_id, $meta_key, true );
+			$values[ $field ] = str_ends_with( $field, '_image_id' )
+				? ( is_numeric( $value ) && 0 < (int) $value ? (int) $value : null )
+				: $value;
+		}
+
+		return $has_explicit
+			? new SeoField( $values, SeoValueState::EXPLICIT, 'yoast.post_meta.v28' )
+			: new SeoField( null, SeoValueState::INHERITED, 'yoast.inheritance', 'No explicit editor value is stored.' );
 	}
 
 	/**

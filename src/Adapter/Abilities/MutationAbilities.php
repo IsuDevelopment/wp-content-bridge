@@ -17,6 +17,7 @@ use IsuDev\WPContentBridge\Application\Mutation\MutationConflict;
 use IsuDev\WPContentBridge\Application\Mutation\MutationForbidden;
 use IsuDev\WPContentBridge\Application\Mutation\MutationWriteFailed;
 use IsuDev\WPContentBridge\Application\Mutation\SeoFieldUnsupported;
+use IsuDev\WPContentBridge\Application\Mutation\SeoImageUnavailable;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateContent;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateSeo;
 use Throwable;
@@ -237,6 +238,7 @@ final readonly class MutationAbilities {
 			|| $error instanceof MutationForbidden
 			|| $error instanceof MutationWriteFailed
 			|| $error instanceof SeoFieldUnsupported
+			|| $error instanceof SeoImageUnavailable
 		) {
 			return new WP_Error( $error->error_code(), $error->getMessage() );
 		}

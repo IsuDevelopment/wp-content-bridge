@@ -17,7 +17,7 @@ use JsonException;
  */
 final readonly class SeoDocument {
 
-	public const SCHEMA_VERSION   = '1.2';
+	public const SCHEMA_VERSION   = '1.3';
 	public const MAX_SCHEMA_NODES = 200;
 	public const MAX_SCHEMA_BYTES = 1024 * 1024;
 	public const MAX_WARNINGS     = 50;

@@ -869,6 +869,18 @@ final class AbilitySchemas {
 					'description' => 'True forces follow; false forces nofollow.',
 					'type'        => array( 'boolean', 'null' ),
 				),
+				'robots_noarchive'    => array(
+					'description' => 'True adds noarchive; false removes it; null leaves it unchanged.',
+					'type'        => array( 'boolean', 'null' ),
+				),
+				'robots_noimageindex' => array(
+					'description' => 'True adds noimageindex; false removes it; null leaves it unchanged.',
+					'type'        => array( 'boolean', 'null' ),
+				),
+				'robots_nosnippet'    => array(
+					'description' => 'True adds nosnippet; false removes it; null leaves it unchanged.',
+					'type'        => array( 'boolean', 'null' ),
+				),
 				'og_title'            => array(
 					'description' => 'Yoast Open Graph title override.',
 					'type'        => array( 'string', 'null' ),
@@ -879,6 +891,11 @@ final class AbilitySchemas {
 					'type'        => array( 'string', 'null' ),
 					'maxLength'   => 500,
 				),
+				'og_image_id'         => array(
+					'description' => 'Readable WordPress image attachment ID; zero clears the Open Graph image override.',
+					'type'        => array( 'integer', 'null' ),
+					'minimum'     => 0,
+				),
 				'twitter_title'       => array(
 					'description' => 'Yoast Twitter title override.',
 					'type'        => array( 'string', 'null' ),
@@ -888,6 +905,11 @@ final class AbilitySchemas {
 					'description' => 'Yoast Twitter description override.',
 					'type'        => array( 'string', 'null' ),
 					'maxLength'   => 500,
+				),
+				'twitter_image_id'    => array(
+					'description' => 'Readable WordPress image attachment ID; zero clears the Twitter image override.',
+					'type'        => array( 'integer', 'null' ),
+					'minimum'     => 0,
 				),
 			),
 			'additionalProperties' => false,

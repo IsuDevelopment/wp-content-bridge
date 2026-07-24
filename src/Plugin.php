@@ -50,6 +50,7 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressMediaRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressPostCacheInvalidator;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressRenderedSchemaReader;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoImageRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressTaxonomyCatalog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoTargetAccess;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressTransientIdempotencyStore;
@@ -149,7 +150,7 @@ final class Plugin {
 			$block_validator     = new PhpBlockMarkupValidator();
 			$idempotency         = new WordPressTransientIdempotencyStore();
 			$audit_log           = new WordPressAuditLog();
-			$seo_writer          = new YoastSeoWriter( $seo_providers->active() );
+			$seo_writer          = new YoastSeoWriter( $seo_providers->active(), new WordPressSeoImageRepository() );
 			( new WordPressPostCacheInvalidator() )->register_hooks();
 
 			( new MutationAbilities(

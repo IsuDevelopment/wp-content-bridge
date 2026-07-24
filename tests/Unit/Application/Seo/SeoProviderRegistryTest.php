@@ -47,7 +47,7 @@ final class SeoProviderRegistryTest extends TestCase {
 		self::assertSame(
 			array(
 				'provider'                     => $provider->status()->to_array(),
-				'normalization_schema_version' => '1.2',
+				'normalization_schema_version' => '1.3',
 				'completeness'                 => 'unavailable',
 			),
 			$document['provenance']

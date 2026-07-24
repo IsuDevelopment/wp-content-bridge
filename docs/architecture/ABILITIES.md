@@ -305,12 +305,21 @@ Inputs:
 - Any subset of: `seo_title?`, `meta_description?`, `focus_keyphrase?`,
   `keyphrase_synonyms?: string[]|null`, `related_keyphrases?: string[]|null`,
   `canonical?`, `og_title?`, `og_description?`, `twitter_title?`,
-  `twitter_description?: string|null`, `robots_index?`, `robots_follow?:
-  bool|null`. Premium lists contain at most 20 unique, non-empty values of at
+  `twitter_description?: string|null`, `robots_index?`, `robots_follow?`,
+  `robots_noarchive?`, `robots_noimageindex?`, `robots_nosnippet?: bool|null`,
+  and `og_image_id?`, `twitter_image_id?: integer|null`. Premium lists contain
+  at most 20 unique, non-empty values of at
   most 191 characters; `[]` clears and null/omission leaves unchanged. A key
   outside this allowlist (e.g. Local-only `schema_type`) rejects the **whole** request with
   `wpcb_seo_field_unsupported` naming the offending keys — there is no
   field-level partial application.
+
+Advanced robots booleans merge only their named directive with Yoast's current
+`meta-robots-adv` value. A positive social image ID must be a readable WordPress
+image attachment; `0` clears the override and null/omission leaves it unchanged.
+The client cannot supply an image URL. Image validation completes before any
+field is written, and failure is non-enumerating (`wpcb_seo_image_unavailable`;
+ADR 0016).
 
 Output: same envelope shape as `create-draft`/`update-content`
 (`schema_version, post_id, post_type, status, version_token, changed_fields,
@@ -318,7 +327,9 @@ created, provenance`) plus `effective_seo` — the same resolved SEO shape as
 `get-url-seo`, re-read via `YoastSeoProvider` immediately after the write so
 callers can confirm what actually landed.
 
-For Premium fields, the re-read uses normalization schema 1.2 and includes
+The re-read uses normalization schema 1.3. It retains the 1.2 Premium fields
+and additionally returns the advanced robots flags and social image IDs in the
+configured projection. Premium output includes
 `configured.keyphrase_synonyms` plus `configured.related_keyphrases`. The
 provider's raw positional JSON is never part of the Ability contract (ADR
 0014).
@@ -366,7 +377,7 @@ excluded. Draft creation and scheduling remain two separate calls.
 - New required inputs, removed fields, semantic changes, or renamed ability IDs require a major contract version/ability migration.
 - Every response includes `schema_version` so clients can reject incompatible payloads.
 
-The current SEO normalization schema is `1.2`. It adds `module_versions`,
-`configured.keyphrase_details`, `configured.keyphrase_synonyms`,
-`configured.related_keyphrases`, and `resolved.local_businesses`; no raw Yoast
-Premium/Local options or licensing state are exposed.
+The current SEO normalization schema is `1.3`. Schema 1.2 added
+`module_versions`, detailed Premium keyphrases, and resolved Local businesses;
+1.3 adds configured advanced robots flags and social attachment IDs. No raw
+Yoast Premium/Local options or licensing state are exposed.

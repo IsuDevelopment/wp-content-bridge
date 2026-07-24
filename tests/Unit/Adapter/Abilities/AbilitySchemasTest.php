@@ -145,6 +145,23 @@ final class AbilitySchemasTest extends TestCase {
 	}
 
 	/**
+	 * Advanced robots and social images use normalized, non-provider inputs.
+	 */
+	public function test_update_seo_advanced_robots_and_social_images_are_explicit(): void {
+		$input = AbilitySchemas::update_seo_input();
+
+		foreach ( array( 'robots_noarchive', 'robots_noimageindex', 'robots_nosnippet' ) as $field ) {
+			self::assertSame( array( 'boolean', 'null' ), $input['properties'][ $field ]['type'] );
+		}
+		foreach ( array( 'og_image_id', 'twitter_image_id' ) as $field ) {
+			self::assertSame( array( 'integer', 'null' ), $input['properties'][ $field ]['type'] );
+			self::assertSame( 0, $input['properties'][ $field ]['minimum'] );
+		}
+		self::assertArrayNotHasKey( 'og_image', $input['properties'] );
+		self::assertArrayNotHasKey( 'twitter_image', $input['properties'] );
+	}
+
+	/**
 	 * Trash requires exact target identity and optimistic concurrency.
 	 *
 	 * @return void

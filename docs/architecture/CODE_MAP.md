@@ -235,7 +235,7 @@ get-editorial-context Ability
 ## Write (mutation) feature
 
 ```text
-create-draft / update-content / trash-content Ability
+create-draft / update-content / update-seo / trash-content Ability
   -> plugin capability (`wpcb_edit_content`) + native object capability
      (`create_posts`/`edit_posts` or `edit_post`) — MutationAbilities
      permission callback
@@ -288,6 +288,9 @@ Files:
   (`{content_hash}:{modified_gmt}`), from Plan 1.
 - `src/Application/Mutation/ContentMutationRepository.php` — write port
   (`post_type`/`current_version`/`create`/`update`/`result_for`).
+- `src/Application/Mutation/SeoImageRepository.php` — narrow port that resolves
+  an authorized WordPress image attachment ID to its public URL before an SEO
+  write; `SeoImageUnavailable` is its non-enumerating failure boundary.
 - `src/Domain/Mutation/TrashInput.php` and `MutationTarget.php` — strict trash
   request plus current target state/version snapshot.
 - `src/Application/Mutation/ContentTrashRepository.php` and
@@ -314,6 +317,9 @@ Files:
   `wp_insert_post`/`wp_update_post`, revisions, and `result_for()` replay
   lookup; the only place `post_status` is written, and it is never
   `publish`/`future`/`pending`.
+- `src/Infrastructure/WordPress/WordPressSeoImageRepository.php` — requires an
+  existing image attachment plus native `read_post`, then resolves its public
+  URL without accepting caller-controlled URLs or filesystem paths.
 - `src/Infrastructure/WordPress/WordPressContentTrashRepository.php` — checks
   trash retention before calling `wp_trash_post`, attempts a pre-trash
   revision, and verifies the resulting `trash` state.
@@ -330,6 +336,9 @@ Files:
   editor-field writer. Free core fields remain available with Yoast Free;
   normalized `keyphrase_synonyms` and `related_keyphrases` additionally require
   Premium 28.x and are mapped to bounded positional JSON under ADR 0014.
+  Advanced robots are merged per directive, while social images are
+  pre-resolved and written as paired Yoast URL/attachment-ID values under ADR
+  0016.
 - `src/Adapter/Abilities/MutationAbilities.php` — registers `create-draft`/
   `update-content` only when `wpcb_writes_enabled` is on; permission callbacks
   enforce `wpcb_edit_content` + the native type/object capability; maps

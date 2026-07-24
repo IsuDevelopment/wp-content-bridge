@@ -55,10 +55,15 @@ final class SeoUpdateTest extends TestCase {
 				'canonical'           => 'https://example.com/post',
 				'robots_index'        => false,
 				'robots_follow'       => true,
+				'robots_noarchive'    => true,
+				'robots_noimageindex' => false,
+				'robots_nosnippet'    => true,
 				'og_title'            => 'OG T',
 				'og_description'      => 'OG D',
+				'og_image_id'         => 123,
 				'twitter_title'       => 'TW T',
 				'twitter_description' => 'TW D',
+				'twitter_image_id'    => 0,
 			)
 		);
 
@@ -72,15 +77,25 @@ final class SeoUpdateTest extends TestCase {
 				'canonical',
 				'robots_index',
 				'robots_follow',
+				'robots_noarchive',
+				'robots_noimageindex',
+				'robots_nosnippet',
 				'og_title',
 				'og_description',
+				'og_image_id',
 				'twitter_title',
 				'twitter_description',
+				'twitter_image_id',
 			),
 			$update->changed_fields()
 		);
 		self::assertFalse( $update->writable_fields()['robots_index'] );
 		self::assertTrue( $update->writable_fields()['robots_follow'] );
+		self::assertTrue( $update->writable_fields()['robots_noarchive'] );
+		self::assertFalse( $update->writable_fields()['robots_noimageindex'] );
+		self::assertTrue( $update->writable_fields()['robots_nosnippet'] );
+		self::assertSame( 123, $update->writable_fields()['og_image_id'] );
+		self::assertSame( 0, $update->writable_fields()['twitter_image_id'] );
 		self::assertSame( array( 'synonym one', 'synonym two' ), $update->writable_fields()['keyphrase_synonyms'] );
 		self::assertSame( array( 'related one', 'related two' ), $update->writable_fields()['related_keyphrases'] );
 	}
@@ -207,6 +222,21 @@ final class SeoUpdateTest extends TestCase {
 				'post_id'       => 7,
 				'version_token' => self::TOKEN,
 				'robots_index'  => 'yes',
+			)
+		);
+	}
+
+	/**
+	 * Social image IDs reject negative and numeric-string values.
+	 */
+	public function test_from_input_rejects_invalid_social_image_id(): void {
+		$this->expectException( InvalidArgumentException::class );
+
+		SeoUpdate::from_input(
+			array(
+				'post_id'       => 7,
+				'version_token' => self::TOKEN,
+				'og_image_id'   => -1,
 			)
 		);
 	}

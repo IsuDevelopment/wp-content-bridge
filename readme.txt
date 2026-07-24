@@ -27,6 +27,7 @@ Install a packaged release or run Composer before activating a source checkout.
 = 0.2.0 =
 * Added an explicit MCP projection profile for all 12 implemented WP Content Bridge abilities. Only currently registered abilities enter discovery; authorization and policy gates remain mandatory.
 * Added configurable MCP discovery verification without executing write or destructive abilities.
+* Extended `update-seo` with merged noarchive/noimageindex/nosnippet controls and Open Graph/Twitter image overrides by authorized WordPress attachment ID.
 
 = 0.1.5 =
 * Added `wp-content-bridge/trash-content`, separately gated reversible trash with native `delete_post`, optimistic concurrency, audit, and fail-closed behavior when WordPress trash is disabled.

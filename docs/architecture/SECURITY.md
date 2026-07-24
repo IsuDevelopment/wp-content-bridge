@@ -135,6 +135,13 @@ when compatible Premium is absent, preserves only allowlisted scores/synonyms,
 and never accepts raw provider JSON or caller-supplied analysis scores (ADR
 0014).
 
+SEO social-image writes accept WordPress attachment IDs only. The current
+principal must be able to read the object, the object must be an image
+attachment, and WordPress supplies its public URL. Zero is the explicit clear
+operation; arbitrary URLs and paths are never accepted. Advanced robots writes
+merge three explicit booleans with the existing Yoast allowlist instead of
+accepting or replacing a raw directive string (ADR 0016).
+
 ### Cache invalidation abuse or stale public output
 
 Mitigations: invalidation is triggered only by a successful internal mutation

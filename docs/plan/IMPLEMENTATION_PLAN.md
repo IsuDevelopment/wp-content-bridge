@@ -375,7 +375,7 @@ filters out any ability not registered under the current feature flags.
 miniOrange OAuth grants remain a distinct per-principal runtime configuration;
 see `docs/setup/MCP_ADAPTER.md` and `docs/setup/CHATGPT_CONNECTOR.md`.
 
-### Plan 3 — `update-seo` — **base merged `796e932`; Premium extension code-complete**
+### Plan 3 — `update-seo` — **base merged `796e932`; SEO extensions runtime-verified**
 
 - `SeoUpdate` DTO; `SeoWriter` port + `YoastSeoWriter` (Yoast Free core
   allowlist plus the Premium 28.x normalized `keyphrase_synonyms` and
@@ -386,15 +386,15 @@ ADR 0014 replaces the original blanket Premium-write exclusion for these two
 fields only. Their installed Premium 28.0 storage shape is version-gated,
 scores/synonyms for retained related phrases are preserved, raw provider JSON
 and caller-supplied scores remain forbidden, and normalization schema 1.2
-returns both fields. Live Kormas verification remains required.
-The extended verifier was retried on 2026-07-21, but the stopped Local database
-prevented WordPress bootstrap; no fixture mutation ran.
+introduced both fields.
 
 The implementation is merged to `main` and `composer check` passes. The
 repeatable live Yoast verifier exists at
 `tests/Integration/writes-seo-verification.php`; its Kormas local execution is
-still pending because the Local database was stopped during the 2026-07-21
-verification session.
+green on 2026-07-24 against Yoast Free 28.1, Premium 28.0, and Local 15.8.
+ADR 0016 adds merged `noarchive`/`noimageindex`/`nosnippet` writes and
+Open Graph/Twitter overrides by authorized WordPress image attachment ID. The
+normalized output contract advances to schema 1.3.
 
 ### Plan 4a — `list-block-patterns`
 

@@ -176,7 +176,9 @@ Include examples for:
 
 - explicit and inherited title/description;
 - custom canonical and robots;
-- social overrides and images;
+- advanced robots merge/removal without collateral directive loss;
+- social overrides and images, including attachment-ID authorization, paired
+  URL/ID persistence, explicit clearing, and fail-before-write behavior;
 - focus keyphrase and missing analysis;
 - Premium primary/additional keyphrase roles, bounded scores, normalized
   primary/related synonyms, malformed JSON, duplicate removal, and

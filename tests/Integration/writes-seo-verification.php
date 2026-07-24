@@ -15,6 +15,7 @@ declare(strict_types=1);
 use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessManager;
 use IsuDev\WPContentBridge\Application\Mutation\MutationConflict;
 use IsuDev\WPContentBridge\Application\Mutation\SeoFieldUnsupported;
+use IsuDev\WPContentBridge\Application\Mutation\SeoImageUnavailable;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateSeo;
 use IsuDev\WPContentBridge\Domain\ContentAccess\ContentOperation;
 use IsuDev\WPContentBridge\Domain\Mutation\VersionToken;
@@ -23,6 +24,7 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressAuditLog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentAccessSettingsRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentMutationRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentTypeCatalog;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoImageRepository;
 use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastSeoWriter;
 use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastSeoProvider;
 
@@ -43,6 +45,8 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Fail-fast runtime verifier for update-seo.
  */
 final class WPCB_Seo_Write_Verification {
+
+	private const MISSING_OPTION = '__wpcb_runtime_verifier_missing_option__';
 
 	/**
 	 * Exact fixture post IDs for cleanup.
@@ -66,19 +70,46 @@ final class WPCB_Seo_Write_Verification {
 	private array $failures = array();
 
 	/**
+	 * Original write-switch value, restored after the verifier.
+	 *
+	 * @var mixed
+	 */
+	private mixed $original_writes_enabled;
+
+	/**
+	 * Original per-content-type policy, restored after the verifier.
+	 *
+	 * @var mixed
+	 */
+	private mixed $original_content_access;
+
+	/**
+	 * User active before the verifier changed principals.
+	 *
+	 * @var int
+	 */
+	private int $original_user_id;
+
+	/**
 	 * Runs the full verification matrix.
 	 *
 	 * @return void
 	 */
 	public function run(): void {
+		$this->original_writes_enabled = get_option( Installer::WRITES_ENABLED_OPTION, self::MISSING_OPTION );
+		$this->original_content_access = get_option( 'wpcb_content_type_access', self::MISSING_OPTION );
+		$this->original_user_id        = get_current_user_id();
+
 		Installer::activate();
 		update_option( Installer::WRITES_ENABLED_OPTION, true );
+		update_option( 'wpcb_content_type_access', array() );
 
 		try {
 			$this->verify_authorization_matrix();
 			$this->verify_stale_version_conflict();
 			$this->verify_unsupported_field_rejected();
 			$this->verify_write_and_reread_parity();
+			$this->verify_advanced_robots_and_social_images();
 			$this->verify_premium_keyphrase_write_and_reread();
 			$this->verify_audit_redaction();
 		} finally {
@@ -115,6 +146,45 @@ final class WPCB_Seo_Write_Verification {
 		$this->post_ids[] = (int) $post_id;
 
 		return (int) $post_id;
+	}
+
+	/**
+	 * Creates a disposable PNG attachment.
+	 *
+	 * @return int
+	 */
+	private function fixture_image(): int {
+		if ( ! function_exists( 'wp_generate_attachment_metadata' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/image.php';
+		}
+
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- fixed transparent 1x1 PNG fixture.
+		$bytes = base64_decode( 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', true );
+		if ( ! is_string( $bytes ) ) {
+			throw new RuntimeException( 'Could not decode fixture image.' );
+		}
+		$upload = wp_upload_bits( 'wpcb-seo-image-' . wp_generate_password( 8, false, false ) . '.png', null, $bytes );
+		if ( ! empty( $upload['error'] ) || ! is_string( $upload['file'] ) ) {
+			throw new RuntimeException( 'Could not write fixture image.' );
+		}
+
+		$attachment_id = wp_insert_attachment(
+			array(
+				'post_mime_type' => 'image/png',
+				'post_title'     => 'WPCB SEO social image fixture',
+				'post_status'    => 'inherit',
+			),
+			$upload['file'],
+			0,
+			true
+		);
+		if ( is_wp_error( $attachment_id ) ) {
+			throw new RuntimeException( 'Could not create fixture image attachment.' );
+		}
+		$this->post_ids[] = (int) $attachment_id;
+		wp_update_attachment_metadata( (int) $attachment_id, wp_generate_attachment_metadata( (int) $attachment_id, $upload['file'] ) );
+
+		return (int) $attachment_id;
 	}
 
 	/**
@@ -162,7 +232,7 @@ final class WPCB_Seo_Write_Verification {
 	 * @return UpdateSeo
 	 */
 	private function use_case(): UpdateSeo {
-		$writer = new YoastSeoWriter( new YoastSeoProvider() );
+		$writer = new YoastSeoWriter( new YoastSeoProvider(), new WordPressSeoImageRepository() );
 
 		return new UpdateSeo(
 			new ContentAccessManager(
@@ -304,7 +374,7 @@ final class WPCB_Seo_Write_Verification {
 		$post_id = $this->fixture_post();
 		$token   = $this->current_token( $post_id );
 
-		$writer = new YoastSeoWriter( new YoastSeoProvider() );
+		$writer = new YoastSeoWriter( new YoastSeoProvider(), new WordPressSeoImageRepository() );
 		if ( ! $writer->is_available() ) {
 			echo "WARN: no compatible Yoast Free install active; skipping write/re-read parity check.\n";
 			return;
@@ -330,9 +400,83 @@ final class WPCB_Seo_Write_Verification {
 			'robots_index=false did not persist as noindex (1)'
 		);
 		$this->assert_true(
-			isset( $result->effective_seo['resolved']['title'] ),
-			'effective_seo re-read is missing the resolved title field'
+			'WPCB verified title' === ( $result->effective_seo['configured']['title']['value'] ?? null ),
+			'effective_seo re-read is missing the configured title value'
 		);
+	}
+
+	/**
+	 * Advanced robots merge without collateral removal and social images use
+	 * authorized attachment identity. Invalid images fail before any field write.
+	 *
+	 * @return void
+	 */
+	private function verify_advanced_robots_and_social_images(): void {
+		$post_id       = $this->fixture_post();
+		$image_id      = $this->fixture_image();
+		$administrator = $this->fixture_user( 'administrator' );
+		wp_set_current_user( $administrator );
+		update_option(
+			'wpcb_content_type_access',
+			array(
+				'post' => array(
+					'get_content' => true,
+					'update_seo'  => true,
+				),
+			)
+		);
+		update_post_meta( $post_id, '_yoast_wpseo_meta-robots-adv', 'noarchive,nosnippet' );
+
+		$result = $this->use_case()->execute(
+			array(
+				'post_id'             => $post_id,
+				'version_token'       => $this->current_token( $post_id ),
+				'robots_noarchive'    => false,
+				'robots_noimageindex' => true,
+				'og_image_id'         => $image_id,
+				'twitter_image_id'    => $image_id,
+			),
+			$administrator
+		);
+
+		$image_url = wp_get_attachment_url( $image_id );
+		$this->assert_true( 'noimageindex,nosnippet' === get_post_meta( $post_id, '_yoast_wpseo_meta-robots-adv', true ), 'advanced robots merge removed or retained the wrong directive' );
+		$this->assert_true( get_post_meta( $post_id, '_yoast_wpseo_opengraph-image-id', true ) === (string) $image_id, 'Open Graph image ID did not persist' );
+		$this->assert_true( get_post_meta( $post_id, '_yoast_wpseo_opengraph-image', true ) === $image_url, 'Open Graph image URL was not resolved from WordPress' );
+		$this->assert_true( get_post_meta( $post_id, '_yoast_wpseo_twitter-image-id', true ) === (string) $image_id, 'Twitter image ID did not persist' );
+		$this->assert_true( true === ( $result->effective_seo['configured']['robots']['value']['noimageindex'] ?? null ), 'advanced robots were not normalized in the post-write re-read' );
+		$this->assert_true( ( $result->effective_seo['configured']['social']['value']['open_graph_image_id'] ?? null ) === $image_id, 'social image ID was not present in the post-write re-read' );
+
+		$this->use_case()->execute(
+			array(
+				'post_id'          => $post_id,
+				'version_token'    => $this->current_token( $post_id ),
+				'og_image_id'      => 0,
+				'twitter_image_id' => 0,
+			),
+			$administrator
+		);
+		$this->assert_true( '' === get_post_meta( $post_id, '_yoast_wpseo_opengraph-image', true ), 'Open Graph image URL was not cleared' );
+		$this->assert_true( '' === get_post_meta( $post_id, '_yoast_wpseo_opengraph-image-id', true ), 'Open Graph image ID was not cleared' );
+		$this->assert_true( '' === get_post_meta( $post_id, '_yoast_wpseo_twitter-image', true ), 'Twitter image URL was not cleared' );
+		$this->assert_true( '' === get_post_meta( $post_id, '_yoast_wpseo_twitter-image-id', true ), 'Twitter image ID was not cleared' );
+
+		$before_title = get_post_meta( $post_id, '_yoast_wpseo_title', true );
+		try {
+			$this->use_case()->execute(
+				array(
+					'post_id'       => $post_id,
+					'version_token' => $this->current_token( $post_id ),
+					'seo_title'     => 'Must not persist',
+					'og_image_id'   => $post_id,
+				),
+				$administrator
+			);
+			$this->failures[] = 'a non-image social attachment unexpectedly succeeded';
+		} catch ( SeoImageUnavailable $unavailable ) {
+			$this->assert_true( 'wpcb_seo_image_unavailable' === $unavailable->error_code(), 'wrong social image error code' );
+		}
+		$this->assert_true( get_post_meta( $post_id, '_yoast_wpseo_title', true ) === $before_title, 'invalid social image caused a partial SEO write' );
 	}
 
 	/**
@@ -401,7 +545,7 @@ final class WPCB_Seo_Write_Verification {
 		$post_id = $this->fixture_post();
 		$token   = $this->current_token( $post_id );
 
-		$writer = new YoastSeoWriter( new YoastSeoProvider() );
+		$writer = new YoastSeoWriter( new YoastSeoProvider(), new WordPressSeoImageRepository() );
 		if ( ! $writer->is_available() ) {
 			echo "WARN: no compatible Yoast Free install active; skipping audit redaction check.\n";
 			return;
@@ -458,14 +602,31 @@ final class WPCB_Seo_Write_Verification {
 	 * @return void
 	 */
 	private function cleanup(): void {
-		wp_set_current_user( 0 );
+		wp_set_current_user( $this->original_user_id );
 		foreach ( $this->post_ids as $post_id ) {
 			wp_delete_post( $post_id, true );
 		}
 		foreach ( $this->user_ids as $user_id ) {
 			wp_delete_user( $user_id );
 		}
-		delete_option( 'wpcb_content_type_access' );
+		$this->restore_option( Installer::WRITES_ENABLED_OPTION, $this->original_writes_enabled );
+		$this->restore_option( 'wpcb_content_type_access', $this->original_content_access );
+	}
+
+	/**
+	 * Restores an option exactly to its pre-verification state.
+	 *
+	 * @param string $name  Option name.
+	 * @param mixed  $value Original value or the missing-option sentinel.
+	 * @return void
+	 */
+	private function restore_option( string $name, mixed $value ): void {
+		if ( self::MISSING_OPTION === $value ) {
+			delete_option( $name );
+			return;
+		}
+
+		update_option( $name, $value );
 	}
 }
 

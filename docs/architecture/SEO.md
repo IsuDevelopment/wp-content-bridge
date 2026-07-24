@@ -93,6 +93,16 @@ The write adapter exposes only normalized `keyphrase_synonyms` and
 the tested Premium 28.x envelope and preserves scores/synonyms for retained
 related phrases (ADR 0014).
 
+Advanced robots writes expose only `robots_noarchive`, `robots_noimageindex`,
+and `robots_nosnippet` booleans and merge explicitly requested changes with the
+current Yoast value. Social image overrides accept readable WordPress image
+attachment IDs only, resolve their URLs internally, and write Yoast's paired
+URL/ID fields. Zero clears an override. Raw robots strings and caller-supplied
+image URLs remain outside the contract (ADR 0016).
+
+These configured-output additions advance the normalization schema from 1.2
+to 1.3. Existing 1.2 keys retain their meanings.
+
 Schema is capped at 200 nodes and 1 MiB after normalization. Warnings are capped
 at 50. Arbitrary Yoast meta, WordPress options, indexables rows, provider objects,
 and secrets are outside the public document.
@@ -155,4 +165,4 @@ SEO writes are postponed until read compatibility is proven. A write adapter:
 
 Each response includes provider name/version, detected modules, safe
 `module_versions`, supported features, completeness, warnings, and normalization
-schema version 1.2. Claims remain scoped to the exact licensed fixtures tested.
+schema version 1.3. Claims remain scoped to the exact licensed fixtures tested.

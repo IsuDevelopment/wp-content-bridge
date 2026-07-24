@@ -42,10 +42,15 @@ final readonly class SeoUpdate {
 		'canonical',
 		'robots_index',
 		'robots_follow',
+		'robots_noarchive',
+		'robots_noimageindex',
+		'robots_nosnippet',
 		'og_title',
 		'og_description',
+		'og_image_id',
 		'twitter_title',
 		'twitter_description',
+		'twitter_image_id',
 	);
 
 	/**
@@ -61,10 +66,15 @@ final readonly class SeoUpdate {
 	 * @param string|null  $canonical           Yoast canonical URL override.
 	 * @param bool|null    $robots_index        True: force index. False: force noindex. Null: unchanged.
 	 * @param bool|null    $robots_follow       True: force follow. False: force nofollow. Null: unchanged.
+	 * @param bool|null    $robots_noarchive    True: add noarchive. False: remove it. Null: unchanged.
+	 * @param bool|null    $robots_noimageindex True: add noimageindex. False: remove it. Null: unchanged.
+	 * @param bool|null    $robots_nosnippet    True: add nosnippet. False: remove it. Null: unchanged.
 	 * @param string|null  $og_title            Yoast Open Graph title override.
 	 * @param string|null  $og_description      Yoast Open Graph description override.
+	 * @param int|null     $og_image_id         Image attachment ID; zero clears; null leaves unchanged.
 	 * @param string|null  $twitter_title       Yoast Twitter title override.
 	 * @param string|null  $twitter_description Yoast Twitter description override.
+	 * @param int|null     $twitter_image_id    Image attachment ID; zero clears; null leaves unchanged.
 	 * @phpstan-param list<string>|null $keyphrase_synonyms
 	 * @phpstan-param list<string>|null $related_keyphrases
 	 */
@@ -79,10 +89,15 @@ final readonly class SeoUpdate {
 		public ?string $canonical,
 		public ?bool $robots_index,
 		public ?bool $robots_follow,
+		public ?bool $robots_noarchive,
+		public ?bool $robots_noimageindex,
+		public ?bool $robots_nosnippet,
 		public ?string $og_title,
 		public ?string $og_description,
+		public ?int $og_image_id,
 		public ?string $twitter_title,
 		public ?string $twitter_description,
+		public ?int $twitter_image_id,
 	) {}
 
 	/**
@@ -117,16 +132,22 @@ final readonly class SeoUpdate {
 		$canonical           = self::optional_canonical( $input );
 		$robots_index        = self::optional_bool( $input, 'robots_index' );
 		$robots_follow       = self::optional_bool( $input, 'robots_follow' );
+		$robots_noarchive    = self::optional_bool( $input, 'robots_noarchive' );
+		$robots_noimageindex = self::optional_bool( $input, 'robots_noimageindex' );
+		$robots_nosnippet    = self::optional_bool( $input, 'robots_nosnippet' );
 		$og_title            = self::optional_string( $input, 'og_title', self::MAX_TITLE );
 		$og_description      = self::optional_string( $input, 'og_description', self::MAX_DESCRIPTION );
+		$og_image_id         = self::optional_non_negative_int( $input, 'og_image_id' );
 		$twitter_title       = self::optional_string( $input, 'twitter_title', self::MAX_TITLE );
 		$twitter_description = self::optional_string( $input, 'twitter_description', self::MAX_DESCRIPTION );
+		$twitter_image_id    = self::optional_non_negative_int( $input, 'twitter_image_id' );
 
 		if ( null === $seo_title && null === $meta_description && null === $focus_keyphrase
 			&& null === $keyphrase_synonyms && null === $related_keyphrases
 			&& null === $canonical && null === $robots_index && null === $robots_follow
-			&& null === $og_title && null === $og_description && null === $twitter_title
-			&& null === $twitter_description
+			&& null === $robots_noarchive && null === $robots_noimageindex && null === $robots_nosnippet
+			&& null === $og_title && null === $og_description && null === $og_image_id
+			&& null === $twitter_title && null === $twitter_description && null === $twitter_image_id
 		) {
 			throw new InvalidArgumentException( 'An SEO update must change at least one field.' );
 		}
@@ -142,10 +163,15 @@ final readonly class SeoUpdate {
 			$canonical,
 			$robots_index,
 			$robots_follow,
+			$robots_noarchive,
+			$robots_noimageindex,
+			$robots_nosnippet,
 			$og_title,
 			$og_description,
+			$og_image_id,
 			$twitter_title,
-			$twitter_description
+			$twitter_description,
+			$twitter_image_id
 		);
 	}
 
@@ -161,7 +187,7 @@ final readonly class SeoUpdate {
 	/**
 	 * Present field name to value, for the SeoWriter port.
 	 *
-	 * @return array<string, string|bool|list<string>>
+	 * @return array<string, string|int|bool|list<string>>
 	 */
 	public function writable_fields(): array {
 		return $this->present_fields();
@@ -170,7 +196,7 @@ final readonly class SeoUpdate {
 	/**
 	 * Collects the present (non-null) allowlisted fields in stable order.
 	 *
-	 * @return array<string, string|bool|list<string>>
+	 * @return array<string, string|int|bool|list<string>>
 	 */
 	private function present_fields(): array {
 		$fields = array();
@@ -198,17 +224,32 @@ final readonly class SeoUpdate {
 		if ( null !== $this->robots_follow ) {
 			$fields['robots_follow'] = $this->robots_follow;
 		}
+		if ( null !== $this->robots_noarchive ) {
+			$fields['robots_noarchive'] = $this->robots_noarchive;
+		}
+		if ( null !== $this->robots_noimageindex ) {
+			$fields['robots_noimageindex'] = $this->robots_noimageindex;
+		}
+		if ( null !== $this->robots_nosnippet ) {
+			$fields['robots_nosnippet'] = $this->robots_nosnippet;
+		}
 		if ( null !== $this->og_title ) {
 			$fields['og_title'] = $this->og_title;
 		}
 		if ( null !== $this->og_description ) {
 			$fields['og_description'] = $this->og_description;
 		}
+		if ( null !== $this->og_image_id ) {
+			$fields['og_image_id'] = $this->og_image_id;
+		}
 		if ( null !== $this->twitter_title ) {
 			$fields['twitter_title'] = $this->twitter_title;
 		}
 		if ( null !== $this->twitter_description ) {
 			$fields['twitter_description'] = $this->twitter_description;
+		}
+		if ( null !== $this->twitter_image_id ) {
+			$fields['twitter_image_id'] = $this->twitter_image_id;
 		}
 
 		return $fields;
@@ -302,6 +343,25 @@ final readonly class SeoUpdate {
 		$value = $input[ $key ];
 		if ( ! is_bool( $value ) ) {
 			throw new InvalidArgumentException( 'A robots field must be a boolean.' );
+		}
+
+		return $value;
+	}
+
+	/**
+	 * Validates an optional attachment ID where zero is the explicit clear operation.
+	 *
+	 * @param array<string, mixed> $input Raw input.
+	 * @param string               $key   Field key.
+	 * @throws InvalidArgumentException When present but not a non-negative integer.
+	 */
+	private static function optional_non_negative_int( array $input, string $key ): ?int {
+		if ( ! array_key_exists( $key, $input ) || null === $input[ $key ] ) {
+			return null;
+		}
+		$value = $input[ $key ];
+		if ( ! is_int( $value ) || 0 > $value ) {
+			throw new InvalidArgumentException( 'A social image attachment ID must be a non-negative integer.' );
 		}
 
 		return $value;

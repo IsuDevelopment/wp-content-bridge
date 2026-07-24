@@ -231,8 +231,11 @@ Supported fields are:
 
 - SEO title, meta description, focus keyphrase, and canonical URL;
 - robots index and follow settings;
+- advanced robots noarchive, noimageindex, and nosnippet flags;
 - Open Graph title and description;
+- Open Graph image by readable WordPress attachment ID;
 - Twitter title and description;
+- Twitter image by readable WordPress attachment ID;
 - Yoast Premium primary-keyphrase synonyms;
 - Yoast Premium related keyphrases.
 
@@ -240,6 +243,11 @@ An unsupported field rejects the complete request; there is no partial
 application and no generic post-meta write. After success, the plugin re-reads
 SEO through the normalized provider and returns `effective_seo`, allowing the
 caller to verify what actually took effect.
+
+Advanced robots updates merge only the explicitly supplied flags. Social
+images accept a positive image attachment ID, or `0` to clear the override;
+caller-supplied URLs are rejected. All requested attachments are authorized and
+resolved before the first SEO field is written.
 
 ### `wp-content-bridge/trash-content`
 

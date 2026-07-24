@@ -11,6 +11,8 @@ namespace IsuDev\WPContentBridge\Infrastructure\Yoast;
 
 use IsuDev\WPContentBridge\Application\Mutation\MutationWriteFailed;
 use IsuDev\WPContentBridge\Application\Mutation\SeoFieldUnsupported;
+use IsuDev\WPContentBridge\Application\Mutation\SeoImageRepository;
+use IsuDev\WPContentBridge\Application\Mutation\SeoImageUnavailable;
 use IsuDev\WPContentBridge\Application\Mutation\SeoWriter;
 use IsuDev\WPContentBridge\Application\Seo\SeoProvider;
 use IsuDev\WPContentBridge\Domain\Seo\SeoTarget;
@@ -24,6 +26,15 @@ final readonly class YoastSeoWriter implements SeoWriter {
 	private const PREMIUM_FIELDS   = array( 'keyphrase_synonyms', 'related_keyphrases' );
 	private const PREMIUM_LIMIT    = 20;
 	private const SYNONYM_BYTES    = 4000;
+	private const ADVANCED_ROBOTS  = array(
+		'robots_noimageindex' => 'noimageindex',
+		'robots_noarchive'    => 'noarchive',
+		'robots_nosnippet'    => 'nosnippet',
+	);
+	private const SOCIAL_IMAGES    = array(
+		'og_image_id'      => 'opengraph-image',
+		'twitter_image_id' => 'twitter-image',
+	);
 
 	/**
 	 * Simple string fields mapped 1:1 to a single versioned Yoast meta key.
@@ -44,10 +55,12 @@ final readonly class YoastSeoWriter implements SeoWriter {
 	/**
 	 * Creates the writer.
 	 *
-	 * @param SeoProvider $reader Read-side provider used for the mandatory post-write re-read.
+	 * @param SeoProvider        $reader Read-side provider used for the mandatory post-write re-read.
+	 * @param SeoImageRepository $images Authorized WordPress image attachment resolver.
 	 */
 	public function __construct(
 		private SeoProvider $reader,
+		private SeoImageRepository $images,
 	) {}
 
 	/**
@@ -69,7 +82,7 @@ final readonly class YoastSeoWriter implements SeoWriter {
 	 *
 	 * @param int   $post_id Target post ID.
 	 * @param array $fields  Present allowlisted field name to value.
-	 * @phpstan-param array<string, string|bool|list<string>> $fields
+	 * @phpstan-param array<string, string|int|bool|list<string>> $fields
 	 * @return array<string, mixed>
 	 * @throws SeoFieldUnsupported When the required compatible provider is unavailable.
 	 */
@@ -84,6 +97,10 @@ final readonly class YoastSeoWriter implements SeoWriter {
 			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- structured field names, not rendered output.
 			throw new SeoFieldUnsupported( $requested_premium );
 		}
+
+		// Resolve every requested attachment before the first write so an invalid
+		// image cannot leave an otherwise valid multi-field request half-applied.
+		$social_images = $this->resolve_social_images( $fields );
 
 		foreach ( self::TEXT_META as $field => $yoast_key ) {
 			if ( array_key_exists( $field, $fields ) && is_string( $fields[ $field ] ) ) {
@@ -101,11 +118,99 @@ final readonly class YoastSeoWriter implements SeoWriter {
 			\WPSEO_Meta::set_value( 'meta-robots-nofollow', $fields['robots_follow'] ? '0' : '1', $post_id );
 		}
 
+		$this->write_advanced_robots( $post_id, $fields );
+		$this->write_social_images( $post_id, $social_images );
+
 		$this->write_premium_keyphrases( $post_id, $fields );
 
 		$document = $this->reader->get( SeoTarget::for_post( $post_id ) );
 
 		return $document->to_array();
+	}
+
+	/**
+	 * Resolves requested image IDs to trusted attachment URLs before any write.
+	 *
+	 * @param array $fields Validated public fields.
+	 * @phpstan-param array<string, string|int|bool|list<string>> $fields
+	 * @return array<string, array{id: int, url: string}>
+	 * @throws SeoImageUnavailable When an attachment is absent, unreadable, or not an image.
+	 */
+	private function resolve_social_images( array $fields ): array {
+		$resolved = array();
+		foreach ( self::SOCIAL_IMAGES as $field => $yoast_key ) {
+			if ( ! array_key_exists( $field, $fields ) || ! is_int( $fields[ $field ] ) ) {
+				continue;
+			}
+
+			$attachment_id = $fields[ $field ];
+			if ( 0 === $attachment_id ) {
+				$resolved[ $yoast_key ] = array(
+					'id'  => 0,
+					'url' => '',
+				);
+				continue;
+			}
+
+			$url = $this->images->image_url( $attachment_id );
+			if ( null === $url ) {
+				throw new SeoImageUnavailable( 'SEO social image is unavailable.' );
+			}
+			$resolved[ $yoast_key ] = array(
+				'id'  => $attachment_id,
+				'url' => $url,
+			);
+		}
+
+		return $resolved;
+	}
+
+	/**
+	 * Merges explicitly requested advanced directives with the current Yoast value.
+	 *
+	 * @param int   $post_id Target post ID.
+	 * @param array $fields  Validated public fields.
+	 * @phpstan-param array<string, string|int|bool|list<string>> $fields
+	 * @return void
+	 */
+	private function write_advanced_robots( int $post_id, array $fields ): void {
+		$requested = array_intersect( array_keys( self::ADVANCED_ROBOTS ), array_keys( $fields ) );
+		if ( array() === $requested ) {
+			return;
+		}
+
+		$current = get_post_meta( $post_id, '_yoast_wpseo_meta-robots-adv', true );
+		$current = is_string( $current ) ? array_map( 'trim', explode( ',', $current ) ) : array();
+		$enabled = array_fill_keys( array_intersect( array_values( self::ADVANCED_ROBOTS ), $current ), true );
+
+		foreach ( self::ADVANCED_ROBOTS as $field => $directive ) {
+			if ( ! array_key_exists( $field, $fields ) || ! is_bool( $fields[ $field ] ) ) {
+				continue;
+			}
+			if ( $fields[ $field ] ) {
+				$enabled[ $directive ] = true;
+			} else {
+				unset( $enabled[ $directive ] );
+			}
+		}
+
+		$ordered = array_values( array_filter( array_values( self::ADVANCED_ROBOTS ), static fn ( string $directive ): bool => isset( $enabled[ $directive ] ) ) );
+		\WPSEO_Meta::set_value( 'meta-robots-adv', implode( ',', $ordered ), $post_id );
+	}
+
+	/**
+	 * Writes each resolved social image as the paired Yoast URL and attachment ID.
+	 *
+	 * @param int   $post_id Target post ID.
+	 * @param array $images  Resolved Yoast key to attachment identity.
+	 * @phpstan-param array<string, array{id: int, url: string}> $images
+	 * @return void
+	 */
+	private function write_social_images( int $post_id, array $images ): void {
+		foreach ( $images as $yoast_key => $image ) {
+			\WPSEO_Meta::set_value( $yoast_key, esc_url_raw( $image['url'], array( 'http', 'https' ) ), $post_id );
+			\WPSEO_Meta::set_value( $yoast_key . '-id', 0 === $image['id'] ? '' : (string) $image['id'], $post_id );
+		}
 	}
 
 	/**
@@ -128,7 +233,7 @@ final readonly class YoastSeoWriter implements SeoWriter {
 	 *
 	 * @param int   $post_id Target post ID.
 	 * @param array $fields  Validated fields.
-	 * @phpstan-param array<string, string|bool|list<string>> $fields
+	 * @phpstan-param array<string, string|int|bool|list<string>> $fields
 	 * @return void
 	 * @throws MutationWriteFailed When JSON encoding fails.
 	 */

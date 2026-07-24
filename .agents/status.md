@@ -2,6 +2,21 @@
 
 ## Current phase
 
+**The critical `update-seo` gap is closed and runtime-verified on 2026-07-24.**
+ADR 0016 extends the existing ability with independently merged
+`robots_noarchive`, `robots_noimageindex`, and `robots_nosnippet` flags plus
+`og_image_id` and `twitter_image_id`. Social overrides accept only readable
+WordPress image attachment IDs; URLs are resolved internally, both Yoast ID and
+URL values are written, `0` clears the pair, and all images are validated
+before the first field write. Configured SEO re-reads expose the new flags and
+attachment IDs under normalization schema 1.3. The complete unit suite is 200
+tests / 493 assertions, PHPStan is clean, and the Kormas runtime write verifier
+passes against Yoast Free 28.1, Premium 28.0, and Local 15.8, including merge,
+clear, re-read, invalid-image atomicity, concurrency, authorization, and audit
+coverage. The verifier now snapshots and restores local WPCB policy/options.
+The managed `wpcb-bridge-reader` principal (user 87) was changed from
+Subscriber to Editor while retaining its seven explicit WPCB capabilities.
+
 **Version 0.2.0 MCP exposure is statically complete on 2026-07-21.** The plugin version,
 readme changelog, official Adapter setup, and configurable MCP discovery smoke
 profile now describe a closed profile of all 12 implemented abilities. Kormas
@@ -358,8 +373,8 @@ verified.
 
 ## Next action
 
-1. Start Kormas in Local and run the integration-access, update-seo, media,
-   cache, pattern, and trash runtime verifiers recorded in `.continue-here.md`.
+1. Run the remaining integration-access, media, cache, pattern, and trash
+   runtime verifiers recorded in `.continue-here.md`; update-seo is green.
 2. Delete the now-inert `wpcb_public_base_url` option and uninstall the old
    root-owned cloudflared service; the dev-only MU shim has already been removed.
 3. Verify the complete 0.2.0 profile through the official Adapter, then update

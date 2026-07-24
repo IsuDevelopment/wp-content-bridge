@@ -21,6 +21,7 @@ use IsuDev\WPContentBridge\Application\Mutation\MutationConflict;
 use IsuDev\WPContentBridge\Application\Mutation\MutationForbidden;
 use IsuDev\WPContentBridge\Application\Mutation\MutationWriteFailed;
 use IsuDev\WPContentBridge\Application\Mutation\SeoFieldUnsupported;
+use IsuDev\WPContentBridge\Application\Mutation\SeoImageUnavailable;
 use IsuDev\WPContentBridge\Application\Mutation\SeoWriter;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateSeo;
 use IsuDev\WPContentBridge\Domain\ContentAccess\ContentTypeDefinition;
@@ -182,6 +183,55 @@ final class UpdateSeoTest extends TestCase {
 			self::fail( 'Expected SeoFieldUnsupported.' );
 		} catch ( SeoFieldUnsupported $unsupported ) {
 			self::assertSame( array( 'seo_title', 'canonical' ), $unsupported->fields() );
+		}
+	}
+
+	/**
+	 * An invalid social image is classified without exposing attachment details.
+	 */
+	public function test_invalid_social_image_records_non_enumerating_error(): void {
+		$audit    = $this->audit_spy();
+		$use_case = new UpdateSeo(
+			$this->manager_allowing( true ),
+			$this->repository( self::TOKEN ),
+			new class() implements SeoWriter {
+				/**
+				 * Reports the failing writer as available.
+				 *
+				 * @return bool
+				 */
+				public function is_available(): bool {
+					return true;
+				}
+
+				/**
+				 * Simulates attachment resolution failure.
+				 *
+				 * @param int   $post_id Unused target post ID.
+				 * @param array $fields  Unused SEO fields.
+				 * @throws SeoImageUnavailable Always.
+				 */
+				public function write( int $post_id, array $fields ): array {
+					throw new SeoImageUnavailable( 'SEO social image is unavailable.' );
+				}
+			},
+			$audit
+		);
+
+		$this->expectException( SeoImageUnavailable::class );
+		try {
+			$use_case->execute(
+				array(
+					'post_id'       => 42,
+					'version_token' => self::TOKEN,
+					'og_image_id'   => 999,
+				),
+				5
+			);
+		} finally {
+			self::assertCount( 1, $audit->events );
+			self::assertSame( 'invalid', $audit->events[0]->outcome );
+			self::assertSame( 'wpcb_seo_image_unavailable', $audit->events[0]->error_code );
 		}
 	}
 
