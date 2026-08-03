@@ -1,8 +1,8 @@
 # ChatGPT connector setup — OAuth-fronted MCP access
 
 This guide records the Milestone 4 five-read-ability walkthrough and the
-current 0.2.0 configuration rule. Version 0.2.0 defines a closed profile of all
-12 implemented WP Content Bridge abilities, but miniOrange maintains its own
+current configuration rule. The current source defines a closed profile of 13
+potential WP Content Bridge abilities, but miniOrange maintains its own
 principal-to-ability grants. Update those grants explicitly for the intended
 integration user; never infer them from the official Adapter server.
 
@@ -68,11 +68,13 @@ read-only surface), then enable **Read content, SEO, editorial context, and
 diagnostics**. The plugin does not create the user, change its role, or change
 miniOrange's separate ability grant.
 
-For 0.2.0, grant only the additional IDs the principal is meant to execute.
+Grant only the additional IDs the principal is meant to execute.
 The complete candidate list is documented in `MCP_ADAPTER.md`; a single
-principal does not need all 12. Media reads require `wpcb_read_media`, pattern
+principal does not need all 13. Media reads require `wpcb_read_media`, pattern
 reads require `wpcb_read_patterns` plus native editor access, and mutations
-require their dedicated WPCB and native WordPress capabilities. Do not grant
+require their dedicated WPCB and native WordPress capabilities.
+`update-service-schema` additionally requires global writes, Update SEO policy,
+and the active standalone Schema Extended provider. Do not grant
 `transition-content-status`: it is not implemented.
 
 > **Live consent caveat.** Task 6's live ChatGPT walkthrough was performed as

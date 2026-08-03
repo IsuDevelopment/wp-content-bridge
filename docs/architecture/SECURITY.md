@@ -142,6 +142,17 @@ operation; arbitrary URLs and paths are never accepted. Advanced robots writes
 merge three explicit booleans with the existing Yoast allowlist instead of
 accepting or replacing a raw directive string (ADR 0016).
 
+Structured Service writes are conditionally available only when the standalone
+IsuDev Schema Extended plugin marker and compatible public `Meta_Fields` API are
+loaded. They reuse `wpcb_manage_seo`, native `edit_post`, per-type `update_seo`
+policy, optimistic concurrency, redacted audit, and post-scoped cache
+invalidation. The input is a strict normalized allowlist with bounded nested
+area and offer objects. Raw JSON-LD, arbitrary metadata keys, Schema node IDs,
+and caller-selected provider functions are never accepted. Every value is
+normalized before the first write; a later metadata failure triggers
+best-effort restoration of already-written keys from their pre-write values
+(ADR 0017).
+
 ### Cache invalidation abuse or stale public output
 
 Mitigations: invalidation is triggered only by a successful internal mutation
@@ -149,6 +160,19 @@ event and derives one post ID from the authoritative result. Callers cannot
 provide cache keys, action names, paths, URLs, or full-purge commands. Core and
 supported cache adapters receive only that post ID; failures are contained and
 reported through a redacted infrastructure event after the write has committed.
+
+### Supply-chain and self-update safety
+
+Packaged installs query the canonical GitHub repository through Plugin Update
+Checker only during WordPress admin or cron requests. The updater is configured
+to install the built `wp-content-bridge.zip` release asset, never GitHub's source
+archive, because production Composer dependencies are required at runtime. A
+directory containing `.git` disables registration so WordPress cannot overwrite
+a source checkout. Composer/deployment-managed sites can fail closed with
+`WPCB_DISABLE_SELF_UPDATES` or the
+`wp_content_bridge_self_updates_enabled` filter. Release builds lock the updater
+dependency, include production `vendor/`, exclude Git metadata/tests, and must
+pass Composer advisory review plus artifact inventory (ADR 0018).
 
 ## Audit events
 
@@ -169,5 +193,8 @@ Read events are observable but persistence may be configurable to control volume
 - No remote production setup documentation uses a shared administrator account.
 - No Premium/Local support claim is made from reverse engineering alone.
 - Static analysis, coding standards, unit tests, integration tests, and a manual authorization matrix pass before release.
+- `composer audit --locked` reports no known dependency advisories, and the
+  release ZIP contains the updater runtime but no `.git` metadata or dev-only
+  packages.
 - A plugin-owned OAuth server or managed-key system requires its own threat
   review and cannot be introduced as part of a content ability change.

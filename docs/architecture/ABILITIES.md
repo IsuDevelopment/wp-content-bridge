@@ -213,10 +213,13 @@ Annotations: read-only, non-destructive, idempotent.
 
 ## Write abilities
 
-`create-draft`, `update-content`, `update-seo`, and `trash-content` are
-**implemented and reachable**. The first three are registered when
+`create-draft`, `update-content`, `update-seo`, `update-service-schema`, and
+`trash-content` are **implemented and reachable**. The first three are
+registered when
 `get_option( Installer::WRITES_ENABLED_OPTION )` (`wpcb_writes_enabled`) is
-truthy; `trash-content` additionally requires `wpcb_trash_enabled`. An ability
+truthy. `update-service-schema` additionally requires the compatible standalone
+IsuDev Schema Extended public API to be loaded, while `trash-content`
+additionally requires `wpcb_trash_enabled`. An ability
 that is not registered is invisible to Abilities discovery and to any MCP
 projection. Every write additionally requires its plugin capability
 (`wpcb_edit_content`, `wpcb_manage_seo`, or `wpcb_delete_content`), the native
@@ -230,11 +233,15 @@ Stable error codes shared by `create-draft`/`update-content`:
 `update-seo` shares the same set except `wpcb_invalid_blocks`, and adds
 `wpcb_seo_field_unsupported` (a field outside the writable allowlist rejects
 the whole request).
+`update-service-schema` uses the SEO gate and adds
+`wpcb_service_schema_unavailable` when the optional provider or target post type
+is unsupported.
 
-**MCP projection in 0.2.0:** the reference site-infrastructure profile now
-contains all 12 implemented ability IDs and intersects that closed allowlist
+**MCP projection:** the current reference profile contains all 13 implemented
+ability IDs and intersects that closed allowlist
 with the abilities registered in the current request. Feature flags therefore
-still remove disabled operations from discovery. Projection does not grant
+still remove disabled operations from discovery, and the Service-schema Ability
+also disappears when Schema Extended is not loaded. Projection does not grant
 authority: the official Adapter principal and the separate ChatGPT-facing
 miniOrange grant must each be configured explicitly; see
 `docs/setup/MCP_ADAPTER.md` and `docs/setup/CHATGPT_CONNECTOR.md`.
@@ -333,6 +340,43 @@ configured projection. Premium output includes
 `configured.keyphrase_synonyms` plus `configured.related_keyphrases`. The
 provider's raw positional JSON is never part of the Ability contract (ADR
 0014).
+
+Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
+
+### `wp-content-bridge/update-service-schema`
+
+Writes a provider-neutral, structured `Service` configuration through the
+optional standalone IsuDev Schema Extended adapter. Registration occurs only
+when `wpcb_writes_enabled` is true and the plugin's loaded public
+`Meta_Fields` API passes compatibility checks. The Ability is therefore absent
+from WordPress and MCP discovery when the dependency is inactive.
+
+Inputs:
+
+- `post_id: integer` and current `version_token: string` (required);
+- `enabled?: boolean`;
+- `name?`, `service_type?`, `catalog_name?: string` (maximum 191 characters);
+- `description?: string` (maximum 2,000 characters);
+- `areas?: [{type, name}]` (maximum 100), where `type` is exactly `City`,
+  `AdministrativeArea`, or `Country`;
+- `brands?: string[]` (maximum 50 unique values, 191 characters each);
+- `offers?: [{name, description?}]` (maximum 20 unique names; descriptions are
+  capped at 1,000 characters).
+
+At least one mutable field is required. Omission leaves a field unchanged;
+empty strings and empty arrays are explicit clear operations. The contract maps
+to `Service`, `areaServed`, `brand`, and `hasOfferCatalog`; it never accepts raw
+JSON-LD, caller-selected meta keys, Schema IDs, URLs, or provider storage
+objects.
+
+Execution requires `wpcb_manage_seo`, native `edit_post`, configured
+`update_seo` policy for the post type, and optimistic concurrency. The provider
+must also list the target post type as Service-capable. Values are normalized
+before the first write. If WordPress rejects a later field, already-written
+keys are restored best-effort from a pre-write snapshot. Success returns the
+standard mutation envelope plus strict `effective_service_schema` values re-read
+through the provider API. Audit records contain field names only, and the
+normal post-scoped cache invalidation runs after success.
 
 Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
 

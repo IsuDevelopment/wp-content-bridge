@@ -6,6 +6,7 @@ parameters:
   scanFiles:
     - vendor/php-stubs/wordpress-stubs/wordpress-stubs.php
     - stubs/yoast.stub.php
+    - stubs/schema-extended.stub.php
   bootstrapFiles:
     - vendor/szepeviktor/phpstan-wordpress/bootstrap.php
   ignoreErrors:

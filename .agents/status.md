@@ -2,6 +2,22 @@
 
 ## Current phase
 
+**Conditional structured Service writes are code-complete on 2026-08-03.**
+`wp-content-bridge/update-service-schema` is registered only when global writes
+are enabled and the standalone IsuDev Schema Extended plugin marker plus
+compatible public `Meta_Fields` API are loaded. The provider-neutral contract
+covers bounded Service name/type/description, typed service areas, brands, and
+OfferCatalog entries; it never exposes arbitrary post meta or raw JSON-LD. The
+write reuses `wpcb_manage_seo`, native `edit_post`, per-type Update SEO policy,
+optimistic concurrency, redacted audit, and post-scoped cache invalidation.
+The provider adapter pre-normalizes values, maps fixed metadata constants,
+restores earlier keys best-effort after a later write failure, and returns an
+effective configuration re-read. ADR 0017 records the optional provider
+boundary. PHPCS and PHPStan are clean; PHPUnit passes 214 tests / 532
+assertions. WordPress runtime graph verification with the standalone provider
+active remains a release check. The closed MCP profile now has 13 potential
+entries and continues to intersect them with currently registered abilities.
+
 **The critical `update-seo` gap is closed and runtime-verified on 2026-07-24.**
 ADR 0016 extends the existing ability with independently merged
 `robots_noarchive`, `robots_noimageindex`, and `robots_nosnippet` flags plus

@@ -10,6 +10,9 @@
 
 - GitHub repository and signed/tagged releases.
 - Release ZIP contains production Composer dependencies and excludes tests, local AI state, dev tooling, and secrets.
+- Packaged installs discover canonical GitHub releases through Plugin Update
+  Checker and install only the uploaded `wp-content-bridge.zip` release asset.
+  Source/Composer-managed installations retain explicit opt-out controls.
 - MCP Adapter, Yoast, and Agents API are never bundled.
 
 ## Release stages
@@ -29,6 +32,7 @@
 - WordPress/PHP compatibility matrix.
 - Plugin Check and release ZIP smoke install.
 - Generated artifact inventory to ensure no secret/dev files ship.
+- Locked Composer advisory audit and self-update policy tests.
 
 ## Compatibility policy
 
@@ -43,4 +47,3 @@
 - Future data migrations are versioned and backward-safe where practical.
 - Writes rely on WordPress revisions and audit evidence; plugin rollback must never delete content.
 - Uninstall does not delete audit/settings data by default without explicit user opt-in.
-

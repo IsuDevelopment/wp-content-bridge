@@ -930,6 +930,128 @@ final class AbilitySchemas {
 	}
 
 	/**
+	 * Returns the update-Service-schema input contract.
+	 *
+	 * Omitted fields remain unchanged. Empty strings and arrays explicitly clear
+	 * their corresponding configured values.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_service_schema_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'post_id', 'version_token' ),
+			'properties'           => array(
+				'post_id'       => array(
+					'description' => 'Target post ID.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+				),
+				'version_token' => array(
+					'description' => 'Optimistic-concurrency token from get-content.',
+					'type'        => 'string',
+					'minLength'   => 18,
+					'maxLength'   => 191,
+				),
+				'enabled'       => array(
+					'description' => 'Whether the page emits the configured Service entity.',
+					'type'        => 'boolean',
+				),
+				'name'          => array(
+					'description' => 'Service name. Empty string clears the override.',
+					'type'        => 'string',
+					'maxLength'   => 191,
+				),
+				'service_type'  => array(
+					'description' => 'Human-readable service category. Empty string clears.',
+					'type'        => 'string',
+					'maxLength'   => 191,
+				),
+				'description'   => array(
+					'description' => 'Service description consistent with visible page content. Empty string clears.',
+					'type'        => 'string',
+					'maxLength'   => 2000,
+				),
+				'areas'         => array(
+					'description' => 'Typed areaServed entries. Empty array clears all areas.',
+					'type'        => 'array',
+					'maxItems'    => 100,
+					'uniqueItems' => true,
+					'items'       => array(
+						'type'                 => 'object',
+						'required'             => array( 'type', 'name' ),
+						'properties'           => array(
+							'type' => array(
+								'type' => 'string',
+								'enum' => array( 'City', 'AdministrativeArea', 'Country' ),
+							),
+							'name' => array(
+								'type'      => 'string',
+								'minLength' => 1,
+								'maxLength' => 191,
+							),
+						),
+						'additionalProperties' => false,
+					),
+				),
+				'brands'        => array(
+					'description' => 'Brand names used by the service. Empty array clears all brands.',
+					'type'        => 'array',
+					'maxItems'    => 50,
+					'uniqueItems' => true,
+					'items'       => array(
+						'type'      => 'string',
+						'minLength' => 1,
+						'maxLength' => 191,
+						'pattern'   => '^[^,\\r\\n]+$',
+					),
+				),
+				'catalog_name'  => array(
+					'description' => 'OfferCatalog name. Empty string clears the catalog name.',
+					'type'        => 'string',
+					'maxLength'   => 191,
+				),
+				'offers'        => array(
+					'description' => 'OfferCatalog items matching visible services. Empty array clears all offers.',
+					'type'        => 'array',
+					'maxItems'    => 20,
+					'uniqueItems' => true,
+					'items'       => array(
+						'type'                 => 'object',
+						'required'             => array( 'name' ),
+						'properties'           => array(
+							'name'        => array(
+								'type'      => 'string',
+								'minLength' => 1,
+								'maxLength' => 191,
+							),
+							'description' => array(
+								'type'      => 'string',
+								'maxLength' => 1000,
+							),
+						),
+						'additionalProperties' => false,
+					),
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the update-Service-schema output contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_service_schema_output(): array {
+		$schema               = self::mutation_output();
+		$schema['required'][] = 'effective_service_schema';
+		$schema['properties']['effective_service_schema'] = self::service_schema_configuration();
+
+		return $schema;
+	}
+
+	/**
 	 * Returns the reversible trash input schema.
 	 *
 	 * @return array<string, mixed>
@@ -962,6 +1084,67 @@ final class AbilitySchemas {
 	 */
 	public static function trash_content_output(): array {
 		return self::mutation_output();
+	}
+
+	/**
+	 * Returns the strict effective Service configuration document.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function service_schema_configuration(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'schema_version', 'enabled', 'name', 'service_type', 'description', 'areas', 'brands', 'catalog_name', 'offers', 'provider' ),
+			'properties'           => array(
+				'schema_version' => array( 'type' => 'string' ),
+				'enabled'        => array( 'type' => 'boolean' ),
+				'name'           => array( 'type' => 'string' ),
+				'service_type'   => array( 'type' => 'string' ),
+				'description'    => array( 'type' => 'string' ),
+				'areas'          => array(
+					'type'     => 'array',
+					'maxItems' => 100,
+					'items'    => array(
+						'type'                 => 'object',
+						'required'             => array( 'type', 'name' ),
+						'properties'           => array(
+							'type' => array( 'type' => 'string' ),
+							'name' => array( 'type' => 'string' ),
+						),
+						'additionalProperties' => false,
+					),
+				),
+				'brands'         => array(
+					'type'     => 'array',
+					'maxItems' => 50,
+					'items'    => array( 'type' => 'string' ),
+				),
+				'catalog_name'   => array( 'type' => 'string' ),
+				'offers'         => array(
+					'type'     => 'array',
+					'maxItems' => 20,
+					'items'    => array(
+						'type'                 => 'object',
+						'required'             => array( 'name', 'description' ),
+						'properties'           => array(
+							'name'        => array( 'type' => 'string' ),
+							'description' => array( 'type' => 'string' ),
+						),
+						'additionalProperties' => false,
+					),
+				),
+				'provider'       => array(
+					'type'                 => 'object',
+					'required'             => array( 'name', 'version' ),
+					'properties'           => array(
+						'name'    => array( 'type' => 'string' ),
+						'version' => array( 'type' => 'string' ),
+					),
+					'additionalProperties' => false,
+				),
+			),
+			'additionalProperties' => false,
+		);
 	}
 
 	/**

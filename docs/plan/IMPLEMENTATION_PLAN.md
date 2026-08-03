@@ -20,6 +20,16 @@ Acceptance:
 - `composer check` passes for the scaffold;
 - Kormas source/deploy files remain unchanged.
 
+### Release update infrastructure — **code-complete 2026-08-03**
+
+- production `yahnis-elsts/plugin-update-checker` dependency locked through
+  Composer and included by the existing release workflow;
+- admin/cron-only GitHub updater configured to use the packaged release asset;
+- `.git` checkout protection plus constant/filter opt-outs for Composer- and
+  deployment-managed sites;
+- side-effect-free policy tests, Composer advisory gate, documentation, and ADR
+  0018.
+
 ## Milestone 1 — read-only content core
 
 ### Milestone 1A — content access foundation
@@ -369,8 +379,8 @@ success-audit call outside the `try`/`catch` in both use cases, with two new
 regression tests. `composer check` green on merged `main` (120 tests / 309
 assertions, PHPCS 0, PHPStan 0).
 
-**Resolved in the 0.2.0 projection profile:** site infrastructure exposes a
-closed list of all 12 implemented abilities through the official Adapter and
+**Expanded in the current source profile:** site infrastructure may expose a
+closed list of all 13 implemented abilities through the official Adapter and
 filters out any ability not registered under the current feature flags.
 miniOrange OAuth grants remain a distinct per-principal runtime configuration;
 see `docs/setup/MCP_ADAPTER.md` and `docs/setup/CHATGPT_CONNECTOR.md`.
@@ -395,6 +405,29 @@ green on 2026-07-24 against Yoast Free 28.1, Premium 28.0, and Local 15.8.
 ADR 0016 adds merged `noarchive`/`noimageindex`/`nosnippet` writes and
 Open Graph/Twitter overrides by authorized WordPress image attachment ID. The
 normalized output contract advances to schema 1.3.
+
+### Plan 3b — `update-service-schema` — **code-complete 2026-08-03**
+
+- provider-neutral `ServiceSchemaUpdate`, `ServiceSchemaWriter`, and
+  `UpdateServiceSchema` application flow;
+- optional `SchemaExtendedServiceSchemaWriter` adapter for the standalone
+  plugin's loaded public `Meta_Fields` API, with no plugin-path or admin-helper
+  dependency;
+- conditional Ability registration only under global writes plus compatible
+  provider availability;
+- strict Service, typed-area, brand, and OfferCatalog schemas; no raw JSON-LD or
+  arbitrary metadata surface;
+- existing SEO capability, native object authorization, per-type Update SEO
+  policy, optimistic concurrency, redacted audit, and post-scoped cache event;
+- pre-normalization, fixed metadata constants, best-effort rollback of earlier
+  keys after a later write failure, and effective post-write configuration;
+- ADR 0017 plus unit, schema-contract, static-analysis, and coding-standard
+  coverage.
+
+Static verification is green on 2026-08-03: PHPCS, PHPStan at maximum level,
+and PHPUnit 214 tests / 532 assertions. A disposable WordPress runtime verifier
+with the standalone provider active remains the release gate for graph-level
+`Service`/`areaServed`/`hasOfferCatalog` parity.
 
 ### Plan 4a — `list-block-patterns`
 

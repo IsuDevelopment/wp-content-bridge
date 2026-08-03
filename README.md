@@ -13,6 +13,8 @@ It gives an authenticated integration a typed interface for:
 - reading registered block patterns;
 - creating drafts and updating Gutenberg content;
 - updating an allowlisted set of Yoast SEO fields;
+- configuring a structured Service entity, local service areas, brands, and an
+  offer catalog when IsuDev Schema Extended is active;
 - moving content to reversible WordPress trash;
 - diagnosing whether the WordPress, Abilities API, MCP, and SEO layers are
   available.
@@ -31,6 +33,28 @@ clients, but Abilities remain the plugin's transport-neutral public API.
   keyphrases
 - Optional: Yoast Local SEO 15.x for public organization and location data
   resolved from the Schema graph
+- Optional: IsuDev Schema Extended 0.2.x for structured Service entity writes
+  (`PHP 8.4+` is required by that optional plugin)
+
+## Automatic updates
+
+Packaged installs use Plugin Update Checker to discover WP Content Bridge
+releases from GitHub. Update checks initialize only in WordPress admin or cron,
+and downloads use the packaged `wp-content-bridge.zip` GitHub release asset —
+never GitHub's dependency-free source archive.
+
+Self-updates are disabled automatically when the plugin directory contains
+`.git`, protecting source checkouts from being overwritten. A site whose plugin
+files are managed by Composer or deployment automation should also disable the
+WordPress updater in `wp-config.php`:
+
+```php
+define( 'WPCB_DISABLE_SELF_UPDATES', true );
+```
+
+Site infrastructure may alternatively return `false` from
+`wp_content_bridge_self_updates_enabled`. The release ZIP contains the
+production updater dependency; a source checkout still requires Composer.
 
 ## Implemented abilities
 
@@ -53,6 +77,7 @@ annotations.
 | `create-draft` | Content writes enabled | `wpcb_edit_content` | Creates a draft with Gutenberg markup, excerpt, taxonomies, and optional idempotency. |
 | `update-content` | Content writes enabled | `wpcb_edit_content` | Updates selected content fields with optimistic concurrency and a WordPress revision. |
 | `update-seo` | Content writes enabled | `wpcb_manage_seo` | Updates supported Yoast fields and returns the effective SEO document after the write. |
+| `update-service-schema` | Content writes enabled and Schema Extended active | `wpcb_manage_seo` | Updates a fixed Service, areaServed, brand, and OfferCatalog field set and returns the effective configuration. |
 | `trash-content` | Content writes and trash enabled | `wpcb_delete_content` | Moves an authorized object to reversible WordPress trash without exposing permanent deletion. |
 
 A WPCB capability never grants access by itself. Operations also enforce the
@@ -249,6 +274,26 @@ images accept a positive image attachment ID, or `0` to clear the override;
 caller-supplied URLs are rejected. All requested attachments are authorized and
 resolved before the first SEO field is written.
 
+### `wp-content-bridge/update-service-schema`
+
+Configures the structured `Service` entity emitted by the optional standalone
+IsuDev Schema Extended plugin. The Ability is not registered unless content
+writes are enabled and a compatible plugin API is loaded. It requires
+`wpcb_manage_seo`, native `edit_post`, the post type's Update SEO policy, and a
+current `version_token`.
+
+The input is a fixed normalized document: `enabled`, `name`, `service_type`,
+`description`, typed `areas` (`City`, `AdministrativeArea`, or `Country`),
+`brands`, `catalog_name`, and bounded `offers`. These map to Schema.org
+`Service`, `areaServed`, `brand`, and `hasOfferCatalog`. Omission leaves a field
+unchanged; an empty string or list clears that configured value. Arbitrary meta
+keys and raw JSON-LD fragments are never accepted.
+
+Success returns the standard mutation envelope plus
+`effective_service_schema`, re-read through the provider's public metadata API.
+The write is audited using field names only and triggers the normal post-scoped
+cache invalidation.
+
 ### `wp-content-bridge/trash-content`
 
 Moves one current object to reversible WordPress trash. It requires:
@@ -329,10 +374,12 @@ The plugin registers domain abilities; it does not provide MCP transport or
 authentication. Install the official WordPress MCP Adapter separately and
 explicitly allow only the abilities required by a client.
 
-Version 0.2.0 defines a closed 12-ability projection profile covering every
-currently implemented ability. The reference site-level MCP server intersects
+The current source defines a closed 13-ability projection profile covering
+every implemented ability. The reference site-level MCP server intersects
 that profile with the abilities registered in the current request, so disabled
-media, pattern, write, and trash features remain absent from discovery.
+media, pattern, write, Service-schema, and trash features remain absent from
+discovery. `update-service-schema` additionally disappears when IsuDev Schema
+Extended is inactive or incompatible.
 
 An ability can be registered in WordPress but still hidden from a particular
 MCP client by the Adapter or OAuth allowlist. Those projection allowlists never

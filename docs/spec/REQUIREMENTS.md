@@ -86,6 +86,13 @@ Requirement identifiers are stable references for code, tests, ADRs, and release
 - **FR-WRITE-009:** Trash must fail closed when WordPress would bypass trash
   and permanently delete. Restoration and permanent deletion are separate
   future operations.
+- **FR-WRITE-010:** Update a structured Service entity through a bounded,
+  provider-neutral field set covering typed service areas, brands, and an offer
+  catalog; never accept arbitrary metadata or raw JSON-LD.
+- **FR-WRITE-011:** Register the Service-schema write Ability only when global
+  writes and a compatible loaded provider are both available. Execution reuses
+  SEO capability, native object authorization, per-type Update SEO policy,
+  optimistic concurrency, redacted audit, and post-write verification.
 
 ### Block patterns
 
@@ -118,6 +125,9 @@ Requirement identifiers are stable references for code, tests, ADRs, and release
 - **NFR-COMPAT-002:** Core content features work without an SEO provider or MCP Adapter.
 - **NFR-EXT-001:** Additional SEO providers implement a provider interface without changing ability IDs.
 - **NFR-EXT-002:** Agents API remains an optional integration.
+- **NFR-EXT-003:** Optional write providers are feature-detected through loaded
+  public APIs and isolated behind application ports; plugin filesystem paths do
+  not enter domain contracts.
 - **NFR-OBS-001:** Errors use stable machine codes and include safe diagnostic data.
 - **NFR-TEST-001:** Ability schemas, permissions, provider normalization, and mutation safety have automated contract coverage.
 - **NFR-REL-001:** Releases are reproducible ZIPs containing production Composer dependencies.

@@ -18,6 +18,9 @@
   policy ordering, and featured-image ID+URL pair invariants.
 - Pattern query bounds, metadata-only defaults, strict item/envelope shapes,
   content byte accounting, and feature/native-access ordering.
+- GitHub updater policy: packaged admin and cron requests allowed; front-end,
+  source checkout, missing dependency, constant opt-out, and filter opt-out
+  denied.
 
 ### WordPress integration
 
@@ -74,7 +77,7 @@ wp eval 'require "/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/In
 WPCB_SITE_URL=https://kormas-isu.local \
 WPCB_WP_ROOT="/Users/lukaszbiedron/Local Sites/kormas-isu/app/public" \
 WPCB_MCP_PATH="/wp-json/wpcb-mcp/mcp" \
-WPCB_EXPECTED_TOOLS=search-content,get-content,get-url-seo,get-editorial-context,get-diagnostics,get-media,get-media-by-id,list-block-patterns,create-draft,update-content,update-seo,trash-content \
+WPCB_EXPECTED_TOOLS=search-content,get-content,get-url-seo,get-editorial-context,get-diagnostics,get-media,get-media-by-id,list-block-patterns,create-draft,update-content,update-seo,update-service-schema,trash-content \
 "/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/Integration/mcp-smoke-verification.sh"
 ```
 
@@ -87,6 +90,10 @@ WPCB_EXPECTED_TOOLS=search-content,get-content,get-url-seo,get-editorial-context
 ### End-to-end
 
 - Install release ZIP on a clean WordPress instance.
+- Verify the release ZIP contains production `vendor/`, excludes `.git`, and
+  exposes the GitHub release update only from the uploaded ZIP asset.
+- Verify a Git checkout and a site defining `WPCB_DISABLE_SELF_UPDATES` expose
+  no WP Content Bridge update checker.
 - Activate with/without MCP Adapter and Yoast.
 - Connect a client, discover abilities, search, read, retrieve SEO.
 - Later create/update a draft and verify revision/audit behavior.
@@ -241,6 +248,36 @@ Verified on 2026-07-17 against WordPress 7.0.1 with Yoast Free 28.0, Premium
 28.0, and Local 15.8 in the single-location fixture. Evidence is recorded in
 `docs/verification/EDITORIAL_CONTEXT.md`.
 
+## Structured Service write matrix
+
+- Schema Extended inactive: `update-service-schema` is not registered and is
+  absent from MCP discovery even when global writes are enabled;
+- Schema Extended active but global writes disabled: still absent;
+- active provider and writes enabled: strict input/output schema, complete
+  annotations, and MCP-public metadata are present;
+- `wpcb_manage_seo`, native `edit_post`, and per-type `update_seo` policy each
+  deny independently;
+- stale `version_token` rejects before the provider write;
+- unsupported provider post type returns
+  `wpcb_service_schema_unavailable`;
+- typed City/AdministrativeArea/Country values, brands, catalog name, and
+  offers round-trip through `effective_service_schema`;
+- omissions preserve existing values, while empty strings/arrays clear only
+  their named fields;
+- arbitrary keys, raw JSON-LD, duplicate areas/brands/offers, invalid types,
+  and values over bounds reject atomically;
+- an injected failure after one metadata update restores keys changed earlier
+  in the same request;
+- audit contains field names only and success invalidates only the target post;
+- public `get-url-seo` Schema contains the expected `Service`, `areaServed`, and
+  `hasOfferCatalog` nodes after WordPress runtime rendering.
+
+Unit coverage includes the inactive-provider gate, DTO bounds, use-case policy,
+concurrency, provider support, audit classification, and public schema contract.
+The full static/unit baseline on 2026-08-03 is 214 tests / 532 assertions; the
+WordPress runtime matrix remains a release check on a site with Schema Extended
+active.
+
 ## Security tests
 
 - Cross-site URL attempts and encoded host confusion.
@@ -262,3 +299,6 @@ Verified on 2026-07-17 against WordPress 7.0.1 with Yoast Free 28.0, Premium
 - Deactivation is non-destructive.
 - Uninstall behavior matches documented retention setting.
 - Client setup examples use a dedicated least-privilege user.
+- `composer audit --locked` is clean.
+- GitHub release contains `wp-content-bridge.zip`; updater metadata resolves that
+  asset rather than the repository source archive.

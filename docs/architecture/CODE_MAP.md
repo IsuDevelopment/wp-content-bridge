@@ -4,9 +4,17 @@ This is the onboarding map for humans and AI agents. Update it whenever a direct
 
 ## Runtime entry points
 
-- `wp-content-bridge.php` — plugin header, Composer guard, activation hook, `plugins_loaded` bootstrap.
+- `wp-content-bridge.php` — plugin header, Composer guard, activation hook,
+  packaged-update registration, and `plugins_loaded` bootstrap.
 - `src/Plugin.php` — composition root; runs schema upgrades and wires the admin,
   application, WordPress repository, and Abilities adapters.
+- `src/Infrastructure/WordPress/GitHubReleaseUpdateChecker.php` — admin/cron-only
+  Plugin Update Checker adapter for packaged GitHub release assets. Git source
+  checkouts and site-level opt-outs fail closed; no updater behavior enters the
+  composition root or Ability layer (ADR 0018).
+- `yahnis-elsts/plugin-update-checker` — production Composer dependency included
+  in the release ZIP. It is used only by the updater adapter and never bundled
+  into an MCP or domain contract.
 
 ## Read request flow
 
@@ -235,7 +243,7 @@ get-editorial-context Ability
 ## Write (mutation) feature
 
 ```text
-create-draft / update-content / update-seo / trash-content Ability
+create-draft / update-content / update-seo / update-service-schema / trash-content Ability
   -> plugin capability (`wpcb_edit_content`) + native object capability
      (`create_posts`/`edit_posts` or `edit_post`) — MutationAbilities
      permission callback
@@ -339,6 +347,21 @@ Files:
   Advanced robots are merged per directive, while social images are
   pre-resolved and written as paired Yoast URL/attachment-ID values under ADR
   0016.
+- `src/Domain/Mutation/ServiceSchemaUpdate.php` — provider-neutral, bounded
+  Service/area/brand/OfferCatalog write intent with explicit clear semantics.
+- `src/Application/Mutation/ServiceSchemaWriter.php` and
+  `UpdateServiceSchema.php` — optional-provider port plus the shared
+  policy/version/audit orchestration. The application layer has no dependency
+  on Schema Extended or WordPress metadata.
+- `src/Infrastructure/SchemaExtended/SchemaExtendedServiceSchemaWriter.php` —
+  optional adapter for the standalone plugin's public `Meta_Fields` API. It
+  feature-detects the loaded plugin, maps only fixed metadata constants,
+  normalizes all values before writing, rolls back earlier keys on a later
+  write failure, and re-reads effective configuration.
+- `src/Adapter/Abilities/ServiceSchemaAbilities.php` — conditionally registered
+  write projection using `wpcb_manage_seo` plus native `edit_post`.
+- `stubs/schema-extended.stub.php` — analysis-only public API declarations for
+  the optional provider; it does not load or emulate the plugin at runtime.
 - `src/Adapter/Abilities/MutationAbilities.php` — registers `create-draft`/
   `update-content` only when `wpcb_writes_enabled` is on; permission callbacks
   enforce `wpcb_edit_content` + the native type/object capability; maps
@@ -365,10 +388,12 @@ Files:
   successful events purge one post, failed events do nothing, and cache-adapter
   exceptions cannot change the completed write outcome.
 
-**MCP projection:** version 0.2.0 documents a closed profile containing all 12
-implemented abilities. The reference Kormas site owns this boundary as a
+**MCP projection:** the current source documents a closed profile containing all
+13 implemented abilities. The reference Kormas site owns this boundary as a
 Composer-installed MU-plugin and passes only profile entries that are currently
-registered. OAuth grants remain a separate site configuration; see
+registered. The Service-schema entry therefore disappears automatically when
+the standalone provider or global writes are inactive. OAuth grants remain a
+separate site configuration; see
 `docs/setup/MCP_ADAPTER.md`.
 
 ## Specification routes

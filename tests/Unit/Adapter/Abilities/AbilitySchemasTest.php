@@ -162,6 +162,26 @@ final class AbilitySchemasTest extends TestCase {
 	}
 
 	/**
+	 * Service schema writes expose only bounded, typed Service and OfferCatalog fields.
+	 */
+	public function test_update_service_schema_contract_is_strict_and_bounded(): void {
+		$input  = AbilitySchemas::update_service_schema_input();
+		$output = AbilitySchemas::update_service_schema_output();
+
+		self::assertSame( array( 'post_id', 'version_token' ), $input['required'] );
+		self::assertFalse( $input['additionalProperties'] );
+		self::assertSame( 100, $input['properties']['areas']['maxItems'] );
+		self::assertSame( array( 'City', 'AdministrativeArea', 'Country' ), $input['properties']['areas']['items']['properties']['type']['enum'] );
+		self::assertFalse( $input['properties']['areas']['items']['additionalProperties'] );
+		self::assertSame( 50, $input['properties']['brands']['maxItems'] );
+		self::assertSame( 20, $input['properties']['offers']['maxItems'] );
+		self::assertFalse( $input['properties']['offers']['items']['additionalProperties'] );
+		self::assertContains( 'effective_service_schema', $output['required'] );
+		self::assertFalse( $output['properties']['effective_service_schema']['additionalProperties'] );
+		self::assertFalse( $output['properties']['effective_service_schema']['properties']['provider']['additionalProperties'] );
+	}
+
+	/**
 	 * Trash requires exact target identity and optimistic concurrency.
 	 *
 	 * @return void

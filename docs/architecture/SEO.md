@@ -151,7 +151,8 @@ failure. See ADR 0009.
 
 ## Write strategy
 
-SEO writes are postponed until read compatibility is proven. A write adapter:
+SEO writes are introduced only after read compatibility is proven. A write
+adapter:
 
 - accepts normalized fields only;
 - validates provider support per field;
@@ -160,6 +161,23 @@ SEO writes are postponed until read compatibility is proven. A write adapter:
 - triggers provider reindexing through documented mechanisms;
 - re-reads resolved output and reports discrepancies;
 - never writes provider indexables tables directly.
+
+### Structured Service provider
+
+`wp-content-bridge/update-service-schema` is a separate semantic write from
+Yoast editor SEO. Its public contract describes `Service`, typed `areaServed`,
+`brand`, and `hasOfferCatalog`, while the infrastructure adapter maps those
+fields to the standalone IsuDev Schema Extended plugin's public `Meta_Fields`
+API. The application service depends only on `ServiceSchemaWriter`; it does not
+know the plugin class, metadata keys, Gutenberg sidebar, or Yoast graph-piece
+implementation.
+
+The Ability is registered only when content writes are enabled and WordPress
+has loaded both the standalone plugin marker and compatible API class. It is not
+registered merely because matching files or an autoloadable class exist. The
+provider's supported-post-type filter remains authoritative. Effective values
+are re-read after the write, while the public Schema graph itself remains
+observable through `get-url-seo`. See ADR 0017.
 
 ## Compatibility reporting
 
