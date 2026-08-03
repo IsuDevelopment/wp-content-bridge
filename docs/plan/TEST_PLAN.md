@@ -286,6 +286,36 @@ The full static/unit baseline on 2026-08-03 is 214 tests / 532 assertions; the
 WordPress runtime matrix remains a release check on a site with Schema Extended
 active.
 
+## Custom Schema configuration matrix
+
+- Schema Extended inactive, pre-0.3, incompatible contract, or global writes
+  disabled: all three Custom Schema abilities are absent from WordPress and MCP
+  discovery;
+- raw MCP descriptors require `post_id` for get and `post_id` plus
+  `version_token` for preview/update;
+- `wpcb_manage_seo`, native `edit_post`, and per-type `update_seo` policy deny
+  independently;
+- stale tokens reject before provider validation or persistence;
+- preview returns current and prospective configurations with `dry_run: true`
+  and performs no metadata, audit, revision, or cache mutation;
+- valid single-node, node-array, and `@graph` sources round-trip through
+  `effective_custom_schema` within the 100,000-byte, 20-node, and depth bounds;
+- malformed JSON, unknown placeholders, nested contexts, duplicate IDs, and
+  oversized/deep graphs return bounded diagnostics;
+- invalid source with `enabled: true` rejects with
+  `wpcb_invalid_custom_schema`; disabled invalid source remains editable but is
+  not render eligible;
+- unsupported posts and provider drift fail closed with
+  `wpcb_custom_schema_unavailable`;
+- arbitrary input keys never become meta writes, and audit contains only
+  `enabled`/`source` field names, never JSON;
+- after a successful update, `get-url-seo` returns the complete resolved Yoast
+  graph with the expected custom nodes and no duplicate JSON-LD script.
+
+The full static/unit baseline after adding this matrix is 234 tests / 596
+assertions with PHPCS and maximum-level PHPStan clean. The final provider-active
+WordPress runtime checks remain pending.
+
 ## Security tests
 
 - Cross-site URL attempts and encoded host confusion.

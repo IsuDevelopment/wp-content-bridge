@@ -70,12 +70,12 @@ miniOrange's separate ability grant.
 
 Grant only the additional IDs the principal is meant to execute.
 The complete candidate list is documented in `MCP_ADAPTER.md`; a single
-principal does not need all 15. Media reads require `wpcb_read_media`, pattern
+principal does not need all 18. Media reads require `wpcb_read_media`, pattern
 reads require `wpcb_read_patterns` plus native editor access, and mutations
 require their dedicated WPCB and native WordPress capabilities.
-All Service-schema operations additionally require global writes, Update SEO
-policy, and the active standalone Schema Extended provider. Preview/update
-require the current `version_token`. Do not grant
+All Service and Custom Schema operations additionally require global writes,
+Update SEO policy, and their compatible standalone Schema Extended provider
+contract. Preview/update require the current `version_token`. Do not grant
 `transition-content-status`: it is not implemented.
 
 > **Live consent caveat.** Task 6's live ChatGPT walkthrough was performed as

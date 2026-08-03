@@ -21,7 +21,7 @@ allowlists and credentials.
 
 ## Projection profile for current source
 
-The complete WP Content Bridge profile contains 15 potential abilities:
+The complete WP Content Bridge profile contains 18 potential abilities:
 
 ```text
 wp-content-bridge/search-content
@@ -38,6 +38,9 @@ wp-content-bridge/update-seo
 wp-content-bridge/get-service-schema
 wp-content-bridge/preview-service-schema
 wp-content-bridge/update-service-schema
+wp-content-bridge/get-custom-schema
+wp-content-bridge/preview-custom-schema
+wp-content-bridge/update-custom-schema
 wp-content-bridge/trash-content
 ```
 
@@ -49,6 +52,8 @@ WordPress registry only when their WP Content Bridge feature flags are enabled:
 - draft/content/SEO writes: `wpcb_writes_enabled`;
 - Service schema: `wpcb_writes_enabled` plus a loaded, compatible standalone
   IsuDev Schema Extended plugin;
+- Custom Schema: `wpcb_writes_enabled` plus Schema Extended's compatible public
+  `Integration_API` contract;
 - trash: both `wpcb_writes_enabled` and `wpcb_trash_enabled`.
 
 The MCP server should therefore intersect its explicit profile with abilities
@@ -82,7 +87,7 @@ hand-edited runtime file as the deployment source.
 /**
  * Plugin Name: WP Content Bridge MCP Server
  * Description: Projects registered WP Content Bridge abilities through the official MCP Adapter.
- * Version:     0.2.0
+ * Version:     0.3.0
  */
 
 declare(strict_types=1);
@@ -107,6 +112,9 @@ $wpcb_profile = array(
 	'wp-content-bridge/get-service-schema',
 	'wp-content-bridge/preview-service-schema',
 	'wp-content-bridge/update-service-schema',
+	'wp-content-bridge/get-custom-schema',
+	'wp-content-bridge/preview-custom-schema',
+	'wp-content-bridge/update-custom-schema',
 	'wp-content-bridge/trash-content',
 );
 
@@ -127,7 +135,7 @@ add_action(
 			'mcp',
 			'WP Content Bridge',
 			'Capability-gated access to registered WP Content Bridge abilities.',
-			'0.2.0',
+			'0.3.0',
 			array( HttpTransport::class ),
 			ErrorLogMcpErrorHandler::class,
 			NullMcpObservabilityHandler::class,
@@ -153,8 +161,8 @@ the capabilities required by that integration:
 - `wpcb_read_patterns` plus native editor access for block patterns;
 - `wpcb_edit_content` plus native create/edit capabilities for draft/content
   writes;
-- `wpcb_manage_seo` plus native `edit_post` for SEO and structured Service
-  writes; the latter also requires the provider's supported post type;
+- `wpcb_manage_seo` plus native `edit_post` for SEO, structured Service, and
+  Custom Schema writes; Schema operations also require provider support;
 - `wpcb_delete_content` plus native `delete_post` for trash.
 
 Do not grant `wpcb_publish_content` until
@@ -167,7 +175,7 @@ the same operation.
 First verify registration inside WordPress:
 
 ```bash
-wp eval 'foreach (array("search-content","get-content","get-url-seo","get-editorial-context","get-diagnostics","get-media","get-media-by-id","list-block-patterns","create-draft","update-content","update-seo","get-service-schema","preview-service-schema","update-service-schema","trash-content") as $name) { $id = "wp-content-bridge/" . $name; echo $id, "=", (int) (function_exists("wp_has_ability") && wp_has_ability($id)), PHP_EOL; }'
+wp eval 'foreach (array("search-content","get-content","get-url-seo","get-editorial-context","get-diagnostics","get-media","get-media-by-id","list-block-patterns","create-draft","update-content","update-seo","get-service-schema","preview-service-schema","update-service-schema","get-custom-schema","preview-custom-schema","update-custom-schema","trash-content") as $name) { $id = "wp-content-bridge/" . $name; echo $id, "=", (int) (function_exists("wp_has_ability") && wp_has_ability($id)), PHP_EOL; }'
 ```
 
 Then run the client-agnostic smoke test. `WPCB_EXPECTED_TOOLS` controls the
@@ -178,14 +186,14 @@ executes write or destructive tools.
 WPCB_SITE_URL=https://example.test \
 WPCB_WP_ROOT=/absolute/path/to/site/public \
 WPCB_MCP_PATH=/wp-json/wpcb-mcp/mcp \
-WPCB_EXPECTED_TOOLS=search-content,get-content,get-url-seo,get-editorial-context,get-diagnostics,get-media,get-media-by-id,list-block-patterns,create-draft,update-content,update-seo,get-service-schema,preview-service-schema,update-service-schema,trash-content \
+WPCB_EXPECTED_TOOLS=search-content,get-content,get-url-seo,get-editorial-context,get-diagnostics,get-media,get-media-by-id,list-block-patterns,create-draft,update-content,update-seo,get-service-schema,preview-service-schema,update-service-schema,get-custom-schema,preview-custom-schema,update-custom-schema,trash-content \
 tests/Integration/mcp-smoke-verification.sh
 ```
 
 The smoke script creates a disposable Application Password and deletes it on
 exit. It also verifies the raw MCP `inputSchema.required` declaration for known
-targeted tools, including `post_id` and `version_token` on Service-schema
-preview/update. Never print, log, or commit that secret.
+targeted tools, including `post_id` and `version_token` on Service and Custom
+Schema preview/update. Never print, log, or commit that secret.
 
 MCP tool names replace the ability ID slash with a hyphen, for example:
 
@@ -202,5 +210,7 @@ wp-content-bridge/get-media -> wp-content-bridge-get-media
 - `trash-content` remains absent unless both writes and trash are enabled.
 - all three Service-schema abilities remain absent unless writes and the
   compatible standalone Schema Extended provider are both active.
+- all three Custom Schema abilities remain absent unless writes and Schema
+  Extended's compatible `Integration_API` contract are both active.
 - No Application Password, OAuth token, client registration, or site URL is
   committed to either repository.

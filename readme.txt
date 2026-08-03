@@ -4,7 +4,7 @@ Tags: abilities, mcp, ai, content, seo, yoast
 Requires at least: 7.0
 Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.2.3
+Stable tag: 0.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -14,7 +14,7 @@ Provider-neutral WordPress content and SEO abilities for MCP and other agent cli
 
 The read-only content core exposes access-aware search, content detail, provider-neutral SEO, and safe diagnostics through the WordPress Abilities API. Responses use strict schemas, native WordPress object permissions, per-post-type policy, bounded search, and an explicit content payload limit. A Yoast SEO adapter covers Yoast Free / Premium / Local 28.x.
 
-Safe write abilities (create draft, update content, update SEO, optional structured Service schema, and reversible trash) are also available behind off-by-default feature flags, per-post-type write policy, dedicated capabilities, native object checks, and optimistic concurrency. Service schema configuration additionally provides read-before-write and read-only preview abilities when the standalone IsuDev Schema Extended plugin is loaded. Publication and other status transitions are not yet supported.
+Safe write abilities (create draft, update content, update SEO, optional structured Service and bounded Custom Schema, and reversible trash) are also available behind off-by-default feature flags, per-post-type write policy, dedicated capabilities, native object checks, and optimistic concurrency. Schema Extended integrations additionally provide read-before-write and read-only preview abilities when their compatible public contracts are loaded. Publication and other status transitions are not yet supported.
 
 MCP transport is provided separately by the official WordPress MCP Adapter and is not bundled with this plugin.
 
@@ -25,6 +25,11 @@ Packaged installs can update from the plugin's GitHub release ZIP through Plugin
 Install a packaged release or run Composer before activating a source checkout.
 
 == Changelog ==
+
+= 0.3.0 =
+* Added conditional `get-custom-schema`, `preview-custom-schema`, and `update-custom-schema` abilities through Schema Extended 0.3.0's public integration contract.
+* Added bounded JSON source and provider-result validation, read-only dry run, safe diagnostics, redacted audit, and post-write verification.
+* Kept `get-url-seo` as the authoritative complete resolved graph read and expanded the closed MCP profile to 18 potential abilities.
 
 = 0.2.3 =
 * Added read-only `wp-content-bridge/get-service-schema` and `wp-content-bridge/preview-service-schema` operations for read-before-write and provider-sanitized dry-run workflows.

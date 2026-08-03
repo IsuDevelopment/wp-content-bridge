@@ -380,7 +380,7 @@ regression tests. `composer check` green on merged `main` (120 tests / 309
 assertions, PHPCS 0, PHPStan 0).
 
 **Expanded in the current source profile:** site infrastructure may expose a
-closed list of all 15 implemented abilities through the official Adapter and
+closed list of all 18 implemented abilities through the official Adapter and
 filters out any ability not registered under the current feature flags.
 miniOrange OAuth grants remain a distinct per-principal runtime configuration;
 see `docs/setup/MCP_ADAPTER.md` and `docs/setup/CHATGPT_CONNECTOR.md`.
@@ -444,6 +444,30 @@ with the standalone provider active remains the release gate for graph-level
 Static verification is green: PHPCS, maximum-level PHPStan, and PHPUnit 223
 tests / 560 assertions. Kormas runtime registration verification remains
 pending because the Local database socket was unavailable on 2026-08-03.
+
+### Plan 3d — bounded Custom Schema read/preview/update — **code-complete 2026-08-03**
+
+- added separate `get-custom-schema`, `preview-custom-schema`, and
+  `update-custom-schema` semantic intents;
+- integrated only with Schema Extended 0.3.0's public `Integration_API`
+  contract version 1.0; no storage keys or provider internals cross the bridge;
+- bounded editable JSON to 100,000 bytes and normalized provider output to 20
+  nodes plus strict diagnostics;
+- reused global writes, `wpcb_manage_seo`, native `edit_post`, per-type Update
+  SEO policy, optimistic concurrency, redacted audit, post-write verification,
+  and post-scoped cache invalidation;
+- preview reports invalid prospective JSON without writing and distinguishes
+  `save_allowed` from `render_eligible`;
+- retained `get-url-seo` as the single authoritative complete resolved graph
+  read instead of adding a duplicate graph endpoint;
+- ADR 0020 records the bounded raw-JSON exception and provider boundary.
+
+The closed MCP profile now contains 18 potential abilities. Static/unit checks
+cover DTO bounds, strict public schemas, read/preview/update orchestration,
+stale-token rejection, audit redaction, and inactive-provider discovery. A
+full `composer check` is green at 234 tests / 596 assertions. A
+WordPress runtime with Schema Extended 0.3.0 and Yoast active remains the final
+registration and merged-graph release check.
 
 ### Plan 4a — `list-block-patterns`
 

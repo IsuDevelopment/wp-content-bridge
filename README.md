@@ -80,6 +80,9 @@ annotations.
 | `get-service-schema` | Content writes enabled and Schema Extended active | `wpcb_manage_seo` | Reads the independently saved Service, areaServed, brand, and OfferCatalog configuration. |
 | `preview-service-schema` | Content writes enabled and Schema Extended active | `wpcb_manage_seo` | Returns current and provider-sanitized prospective Service configuration without writing. |
 | `update-service-schema` | Content writes enabled and Schema Extended active | `wpcb_manage_seo` | Updates a fixed Service, areaServed, brand, and OfferCatalog field set and returns the effective configuration. |
+| `get-custom-schema` | Content writes enabled and Schema Extended 0.3+ active | `wpcb_manage_seo` | Reads bounded Custom Schema JSON and structural validation diagnostics. |
+| `preview-custom-schema` | Content writes enabled and Schema Extended 0.3+ active | `wpcb_manage_seo` | Validates prospective Custom Schema without writing; reports save and render eligibility. |
+| `update-custom-schema` | Content writes enabled and Schema Extended 0.3+ active | `wpcb_manage_seo` | Writes validated Custom Schema through the provider's public integration contract. |
 | `trash-content` | Content writes and trash enabled | `wpcb_delete_content` | Moves an authorized object to reversible WordPress trash without exposing permanent deletion. |
 
 A WPCB capability never grants access by itself. Operations also enforce the
@@ -303,6 +306,31 @@ Success returns the standard mutation envelope plus
 The write is audited using field names only and triggers the normal post-scoped
 cache invalidation.
 
+### Custom Schema configuration
+
+The optional Custom Schema workflow exposes three separate intents when global
+writes are enabled and Schema Extended's compatible `Integration_API` contract
+is active. `get-custom-schema` reads the saved `enabled` flag, editable JSON,
+normalized nodes, and diagnostics. `preview-custom-schema` requires `post_id`,
+the current `version_token`, and at least one of `enabled` or `source`; it
+returns current and prospective configurations with `dry_run: true` and cannot
+write. `update-custom-schema` uses the same input and is the only mutation.
+
+JSON source is limited to 100,000 bytes. Schema Extended validates a single
+Schema.org object, a node list, or an `@graph` wrapper with at most 20 nodes and
+bounded nesting. It rejects malformed JSON, unsupported placeholders, nested
+contexts, duplicate identifiers, and Yoast-owned identifiers at render time.
+Invalid source may remain saved only while disabled; `save_allowed` and
+`render_eligible` make that distinction explicit.
+
+This is not a generic meta or arbitrary provider endpoint. The connector calls
+only Schema Extended's public contract, enforces the Update SEO policy,
+`wpcb_manage_seo`, native `edit_post`, optimistic concurrency, and redacted
+audit, and never logs JSON source. After a successful update, call
+`get-url-seo` with the same `post_id` to inspect the complete, context-resolved
+Yoast graph; preview intentionally reports `context_resolved: false` because it
+does not execute a speculative front-end render.
+
 ### `wp-content-bridge/trash-content`
 
 Moves one current object to reversible WordPress trash. It requires:
@@ -383,12 +411,12 @@ The plugin registers domain abilities; it does not provide MCP transport or
 authentication. Install the official WordPress MCP Adapter separately and
 explicitly allow only the abilities required by a client.
 
-The current source defines a closed 15-ability projection profile covering
+The current source defines a closed 18-ability projection profile covering
 every implemented ability. The reference site-level MCP server intersects
 that profile with the abilities registered in the current request, so disabled
-media, pattern, write, Service-schema, and trash features remain absent from
-discovery. All three Service-schema abilities additionally disappear when
-IsuDev Schema Extended is inactive or incompatible.
+media, pattern, write, Schema Extended, and trash features remain absent from
+discovery. Service and Custom Schema abilities additionally disappear when
+their required Schema Extended public contract is inactive or incompatible.
 
 An ability can be registered in WordPress but still hidden from a particular
 MCP client by the Adapter or OAuth allowlist. Those projection allowlists never

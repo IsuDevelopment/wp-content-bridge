@@ -238,12 +238,16 @@ the whole request).
 `update-service-schema` uses the SEO gate and adds
 `wpcb_service_schema_unavailable` when the optional provider or target post type
 is unsupported.
+`update-custom-schema` uses the same SEO gate and adds
+`wpcb_custom_schema_unavailable` for an absent, incompatible, or unsupported
+provider and `wpcb_invalid_custom_schema` with bounded diagnostics when enabled
+JSON fails provider validation.
 
-**MCP projection:** the current reference profile contains all 15 implemented
+**MCP projection:** the current reference profile contains all 18 implemented
 ability IDs and intersects that closed allowlist
 with the abilities registered in the current request. Feature flags therefore
-still remove disabled operations from discovery, and all Service-schema
-Abilities disappear when Schema Extended is not loaded. Projection does not grant
+still remove disabled operations from discovery, and Service/Custom Schema
+Abilities disappear when their Schema Extended contracts are not loaded. Projection does not grant
 authority: the official Adapter principal and the separate ChatGPT-facing
 miniOrange grant must each be configured explicitly; see
 `docs/setup/MCP_ADAPTER.md` and `docs/setup/CHATGPT_CONNECTOR.md`.
@@ -400,6 +404,51 @@ keys are restored best-effort from a pre-write snapshot. Success returns the
 standard mutation envelope plus strict `effective_service_schema` values re-read
 through the provider API. Audit records contain field names only, and the
 normal post-scoped cache invalidation runs after success.
+
+Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
+
+### `wp-content-bridge/get-custom-schema`
+
+Reads the Custom Schema configuration through Schema Extended's public
+`Integration_API` contract. Input requires `post_id`. Output includes the
+current content `version_token`, editable `source`, `enabled`, normalized
+validation nodes and diagnostics, `save_allowed`, `render_eligible`, and
+provider provenance. Structural source validation does not resolve page
+placeholders or execute a speculative Yoast render, so
+`validation.context_resolved` is false.
+
+Annotations: `readonly: true`, `destructive: false`, `idempotent: true`.
+
+### `wp-content-bridge/preview-custom-schema`
+
+Accepts the exact `update-custom-schema` input contract: required `post_id` and
+current `version_token`, plus at least one of `enabled` or `source`. Omitted
+fields retain their current saved values. The preview checks policy and
+optimistic concurrency, validates the prospective source through the provider,
+and returns current plus prospective configurations with `dry_run: true`.
+Invalid source is reported rather than thrown so an agent can repair it. No
+metadata, audit row, revision, or cache state is changed.
+
+Annotations: `readonly: true`, `destructive: false`, `idempotent: true`.
+
+### `wp-content-bridge/update-custom-schema`
+
+Writes only `enabled?: boolean` and `source?: string` through the optional
+Schema Extended `Integration_API` contract version 1.0. Source is valid UTF-8,
+contains no null bytes, and is limited to 100,000 bytes. Schema Extended owns
+JSON parsing, a 20-node and depth limit, allowed placeholders, context and ID
+rules, and final Yoast graph integration. Invalid source can be saved only when
+disabled; enabled invalid JSON fails with `wpcb_invalid_custom_schema` and
+bounded diagnostics.
+
+Registration requires global writes and a compatible provider. Execution also
+requires `wpcb_manage_seo`, native `edit_post`, configured `update_seo` policy,
+and the current content `version_token`. The adapter never accepts meta keys,
+provider method names, PHP callbacks, script markup, or an unbounded graph.
+Audit stores only changed field names and never JSON source. Success returns the
+standard mutation envelope plus `effective_custom_schema` re-read through the
+provider. The authoritative complete graph is then available through the
+existing `get-url-seo` Ability, avoiding a duplicate full-graph endpoint.
 
 Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
 

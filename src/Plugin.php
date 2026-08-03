@@ -11,6 +11,7 @@ namespace IsuDev\WPContentBridge;
 
 use IsuDev\WPContentBridge\Adapter\Admin\ContentAccessSettingsPage;
 use IsuDev\WPContentBridge\Adapter\Abilities\ContentAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\CustomSchemaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\MediaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\MutationAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\PatternAbilities;
@@ -23,9 +24,12 @@ use IsuDev\WPContentBridge\Application\Content\SearchContent;
 use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessManager;
 use IsuDev\WPContentBridge\Application\Editorial\GetEditorialContext;
 use IsuDev\WPContentBridge\Application\Mutation\CreateDraft;
+use IsuDev\WPContentBridge\Application\Mutation\GetCustomSchema;
 use IsuDev\WPContentBridge\Application\Mutation\GetServiceSchema;
+use IsuDev\WPContentBridge\Application\Mutation\PreviewCustomSchema;
 use IsuDev\WPContentBridge\Application\Mutation\PreviewServiceSchema;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateContent;
+use IsuDev\WPContentBridge\Application\Mutation\UpdateCustomSchema;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateSeo;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateServiceSchema;
 use IsuDev\WPContentBridge\Application\Mutation\TrashContent;
@@ -58,6 +62,7 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoImageRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressTaxonomyCatalog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoTargetAccess;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressTransientIdempotencyStore;
+use IsuDev\WPContentBridge\Infrastructure\SchemaExtended\SchemaExtendedCustomSchemaProvider;
 use IsuDev\WPContentBridge\Infrastructure\SchemaExtended\SchemaExtendedServiceSchemaWriter;
 use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastSeoWriter;
 use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastSeoProvider;
@@ -170,6 +175,15 @@ final class Plugin {
 					new GetServiceSchema( $manager, $mutation_repository, $service_schema_writer ),
 					new PreviewServiceSchema( $manager, $mutation_repository, $service_schema_writer ),
 					new UpdateServiceSchema( $manager, $mutation_repository, $service_schema_writer, $audit_log )
+				) )->register_hooks();
+			}
+
+			$custom_schema_provider = new SchemaExtendedCustomSchemaProvider();
+			if ( $custom_schema_provider->is_available() ) {
+				( new CustomSchemaAbilities(
+					new GetCustomSchema( $manager, $mutation_repository, $custom_schema_provider ),
+					new PreviewCustomSchema( $manager, $mutation_repository, $custom_schema_provider ),
+					new UpdateCustomSchema( $manager, $mutation_repository, $custom_schema_provider, $audit_log )
 				) )->register_hooks();
 			}
 

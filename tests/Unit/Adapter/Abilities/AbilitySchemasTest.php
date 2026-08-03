@@ -192,6 +192,30 @@ final class AbilitySchemasTest extends TestCase {
 	}
 
 	/**
+	 * Custom Schema exposes bounded JSON as data without opening WordPress fields.
+	 */
+	public function test_custom_schema_contract_is_strict_bounded_and_versioned(): void {
+		$input          = AbilitySchemas::update_custom_schema_input();
+		$output         = AbilitySchemas::update_custom_schema_output();
+		$get_input      = AbilitySchemas::get_custom_schema_input();
+		$get_output     = AbilitySchemas::get_custom_schema_output();
+		$preview_output = AbilitySchemas::preview_custom_schema_output();
+
+		self::assertSame( array( 'post_id', 'version_token' ), $input['required'] );
+		self::assertSame( array( 'post_id' ), $get_input['required'] );
+		self::assertFalse( $input['additionalProperties'] );
+		self::assertSame( array( 'post_id', 'version_token', 'enabled', 'source' ), array_keys( $input['properties'] ) );
+		self::assertSame( 100000, $input['properties']['source']['maxLength'] );
+		self::assertContains( 'effective_custom_schema', $output['required'] );
+		self::assertContains( 'custom_schema', $get_output['required'] );
+		self::assertContains( 'current_custom_schema', $preview_output['required'] );
+		self::assertContains( 'preview_custom_schema', $preview_output['required'] );
+		self::assertSame( 20, $get_output['properties']['custom_schema']['properties']['validation']['properties']['nodes']['maxItems'] );
+		self::assertTrue( $get_output['properties']['custom_schema']['properties']['validation']['properties']['nodes']['items']['additionalProperties'] );
+		self::assertFalse( $get_output['properties']['custom_schema']['additionalProperties'] );
+	}
+
+	/**
 	 * Trash requires exact target identity and optimistic concurrency.
 	 *
 	 * @return void

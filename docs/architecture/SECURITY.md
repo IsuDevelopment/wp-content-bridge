@@ -161,6 +161,21 @@ preview) optimistic concurrency. Preview shares provider sanitization with the
 write but cannot reach metadata writes, mutation audit, or cache invalidation
 (ADR 0019).
 
+Custom Schema is an explicit bounded exception to the Service Ability's ban on
+raw JSON-LD (ADR 0020). It is not a generic metadata surface: the bridge accepts
+only `enabled` and a maximum 100,000-byte `source`, and calls only Schema
+Extended's compatible public `Integration_API`. The provider limits graph size
+and depth, validates JSON and Schema node shape, controls placeholders and
+Yoast-owned IDs, and fails closed at render time. The bridge independently
+enforces `wpcb_manage_seo`, native `edit_post`, per-type `update_seo` policy,
+optimistic concurrency, strict provider-result normalization, and post-write
+verification. A verification mismatch triggers a best-effort restore through
+the same public provider API. Audit contains field names only; JSON source and nodes are never
+stored in the audit sink. Preview is a separate read-only Ability and never
+mutates. The complete context-resolved graph is read after saving through the
+existing `get-url-seo` contract rather than by exposing Yoast internals or a
+second arbitrary graph renderer.
+
 ### Cache invalidation abuse or stale public output
 
 Mitigations: invalidation is triggered only by a successful internal mutation

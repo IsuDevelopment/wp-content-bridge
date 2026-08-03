@@ -34,3 +34,18 @@ final class Meta_Fields {
 	/** @return list<array{name: string, description: string}> */
 	public static function sanitize_offers( mixed $value ): array {}
 }
+
+namespace IsuDev\SchemaExtended\Custom;
+
+use WP_Error;
+
+final class Integration_API {
+	public const CONTRACT_VERSION = '1.0';
+
+	/** @return array<string, mixed>|WP_Error */
+	public static function get_configuration( int $post_id ): array|WP_Error {}
+	/** @return array<string, mixed> */
+	public static function validate_source( string $source ): array {}
+	/** @return array<string, mixed>|WP_Error */
+	public static function update_configuration( int $post_id, bool $enabled, string $source ): array|WP_Error {}
+}

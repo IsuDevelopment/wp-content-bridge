@@ -244,7 +244,8 @@ get-editorial-context Ability
 
 ```text
 create-draft / update-content / update-seo / get-service-schema /
-preview-service-schema / update-service-schema / trash-content Ability
+preview-service-schema / update-service-schema / get-custom-schema /
+preview-custom-schema / update-custom-schema / trash-content Ability
   -> plugin capability (`wpcb_edit_content`) + native object capability
      (`create_posts`/`edit_posts` or `edit_post`) — MutationAbilities
      permission callback
@@ -394,10 +395,10 @@ Files:
   exceptions cannot change the completed write outcome.
 
 **MCP projection:** the current source documents a closed profile containing all
-15 implemented abilities. The reference Kormas site owns this boundary as a
+18 implemented abilities. The reference Kormas site owns this boundary as a
 Composer-installed MU-plugin and passes only profile entries that are currently
-registered. The three Service-schema entries therefore disappear automatically when
-the standalone provider or global writes are inactive. OAuth grants remain a
+registered. Service and Custom Schema entries therefore disappear automatically
+when their standalone provider contract or global writes are inactive. OAuth grants remain a
 separate site configuration; see
 `docs/setup/MCP_ADAPTER.md`.
 

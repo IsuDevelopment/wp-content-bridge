@@ -149,10 +149,10 @@ for tool in "${EXPECTED_TOOLS[@]}"; do
 	tool="${tool#wp-content-bridge/}"
 	tool="${tool#wp-content-bridge-}"
 	case "$tool" in
-		get-content|get-service-schema)
+		get-content|get-service-schema|get-custom-schema)
 			assert_required_fields "wp-content-bridge-$tool" post_id
 			;;
-		update-service-schema|preview-service-schema)
+		update-service-schema|preview-service-schema|update-custom-schema|preview-custom-schema)
 			assert_required_fields "wp-content-bridge-$tool" post_id version_token
 			;;
 	esac

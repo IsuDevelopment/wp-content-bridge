@@ -1137,6 +1137,139 @@ final class AbilitySchemas {
 	}
 
 	/**
+	 * Returns the update-Custom-schema input contract.
+	 *
+	 * Omitted fields remain unchanged. Empty source clears the editable JSON.
+	 * The provider decides whether an invalid source may be saved while disabled.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_custom_schema_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'post_id', 'version_token' ),
+			'properties'           => array(
+				'post_id'       => array(
+					'description' => 'Target post ID.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+				),
+				'version_token' => array(
+					'description' => 'Optimistic-concurrency token from get-custom-schema or get-content.',
+					'type'        => 'string',
+					'minLength'   => 18,
+					'maxLength'   => 191,
+				),
+				'enabled'       => array(
+					'description' => 'Whether Schema Extended may merge valid custom nodes into the Yoast graph.',
+					'type'        => 'boolean',
+				),
+				'source'        => array(
+					'description' => 'Bounded JSON containing one Schema.org object, a node array, or an @graph wrapper. Empty string clears the source.',
+					'type'        => 'string',
+					'maxLength'   => 100000,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the get-Custom-schema input contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function get_custom_schema_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'post_id' ),
+			'properties'           => array(
+				'post_id' => array(
+					'description' => 'Target post ID.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the get-Custom-schema output contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function get_custom_schema_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'schema_version', 'post_id', 'post_type', 'version_token', 'custom_schema', 'provenance' ),
+			'properties'           => array(
+				'schema_version' => array( 'type' => 'string' ),
+				'post_id'        => array( 'type' => 'integer' ),
+				'post_type'      => array( 'type' => 'string' ),
+				'version_token'  => array( 'type' => 'string' ),
+				'custom_schema'  => self::custom_schema_configuration(),
+				'provenance'     => self::provenance(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the preview-Custom-schema input contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function preview_custom_schema_input(): array {
+		return self::update_custom_schema_input();
+	}
+
+	/**
+	 * Returns the preview-Custom-schema output contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function preview_custom_schema_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'schema_version', 'dry_run', 'post_id', 'post_type', 'version_token', 'changed_fields', 'current_custom_schema', 'preview_custom_schema', 'provenance' ),
+			'properties'           => array(
+				'schema_version'        => array( 'type' => 'string' ),
+				'dry_run'               => array( 'type' => 'boolean' ),
+				'post_id'               => array( 'type' => 'integer' ),
+				'post_type'             => array( 'type' => 'string' ),
+				'version_token'         => array( 'type' => 'string' ),
+				'changed_fields'        => array(
+					'type'        => 'array',
+					'uniqueItems' => true,
+					'maxItems'    => 2,
+					'items'       => array(
+						'type' => 'string',
+						'enum' => array( 'enabled', 'source' ),
+					),
+				),
+				'current_custom_schema' => self::custom_schema_configuration(),
+				'preview_custom_schema' => self::custom_schema_configuration(),
+				'provenance'            => self::provenance(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the update-Custom-schema output contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_custom_schema_output(): array {
+		$schema               = self::mutation_output();
+		$schema['required'][] = 'effective_custom_schema';
+		$schema['properties']['effective_custom_schema'] = self::custom_schema_configuration();
+
+		return $schema;
+	}
+
+	/**
 	 * Returns the reversible trash input schema.
 	 *
 	 * @return array<string, mixed>
@@ -1219,6 +1352,98 @@ final class AbilitySchemas {
 					),
 				),
 				'provider'       => array(
+					'type'                 => 'object',
+					'required'             => array( 'name', 'version' ),
+					'properties'           => array(
+						'name'    => array( 'type' => 'string' ),
+						'version' => array( 'type' => 'string' ),
+					),
+					'additionalProperties' => false,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the bounded Custom Schema configuration document.
+	 *
+	 * Schema.org node properties are intentionally open because they are the
+	 * validated data payload, not caller-selected WordPress fields. The source,
+	 * node count, parser depth, and encoded result remain provider-bounded.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function custom_schema_configuration(): array {
+		$diagnostic = array(
+			'type'                 => 'object',
+			'required'             => array( 'code', 'message' ),
+			'properties'           => array(
+				'code'    => array(
+					'type'      => 'string',
+					'minLength' => 1,
+					'maxLength' => 191,
+				),
+				'message' => array(
+					'type'      => 'string',
+					'maxLength' => 2000,
+				),
+			),
+			'additionalProperties' => false,
+		);
+
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'contract_version', 'enabled', 'source', 'save_allowed', 'render_eligible', 'validation', 'provider' ),
+			'properties'           => array(
+				'contract_version' => array(
+					'type' => 'string',
+					'enum' => array( '1.0' ),
+				),
+				'enabled'          => array( 'type' => 'boolean' ),
+				'source'           => array(
+					'type'      => 'string',
+					'maxLength' => 100000,
+				),
+				'save_allowed'     => array(
+					'description' => 'False only when invalid source is proposed while rendering is enabled.',
+					'type'        => 'boolean',
+				),
+				'render_eligible'  => array(
+					'description' => 'True only when the configuration is enabled and structurally valid.',
+					'type'        => 'boolean',
+				),
+				'validation'       => array(
+					'type'                 => 'object',
+					'required'             => array( 'valid', 'context_resolved', 'nodes', 'errors', 'warnings' ),
+					'properties'           => array(
+						'valid'            => array( 'type' => 'boolean' ),
+						'context_resolved' => array(
+							'description' => 'False for source validation; use get-url-seo after saving to inspect the resolved complete graph.',
+							'type'        => 'boolean',
+						),
+						'nodes'            => array(
+							'type'     => 'array',
+							'maxItems' => 20,
+							'items'    => array(
+								'type'                 => 'object',
+								'additionalProperties' => true,
+							),
+						),
+						'errors'           => array(
+							'type'     => 'array',
+							'maxItems' => 50,
+							'items'    => $diagnostic,
+						),
+						'warnings'         => array(
+							'type'     => 'array',
+							'maxItems' => 50,
+							'items'    => $diagnostic,
+						),
+					),
+					'additionalProperties' => false,
+				),
+				'provider'         => array(
 					'type'                 => 'object',
 					'required'             => array( 'name', 'version' ),
 					'properties'           => array(

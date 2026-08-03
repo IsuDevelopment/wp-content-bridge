@@ -2,7 +2,21 @@
 
 ## Current phase
 
-**Service schema read-before-write is code-complete on 2026-08-03.** Separate
+**Bounded Custom Schema MCP support is code-complete for connector 0.3.0 on
+2026-08-03.** Conditional `get-custom-schema`, `preview-custom-schema`, and
+`update-custom-schema` Abilities use only Schema Extended 0.3.0's public
+`Integration_API` contract version 1.0. Input is limited to `enabled` and a
+100,000-byte JSON source; provider output is normalized to at most 20 nodes and
+strict diagnostics. Preview is read-only and reports save/render eligibility.
+Update reuses SEO policy, native authorization, optimistic concurrency,
+redacted audit, and post-scoped cache invalidation. Full resolved graph checks
+remain on the existing `get-url-seo` Ability. ADR 0020 records the bounded JSON
+exception. The closed MCP profile now has 18 potential entries. Full
+`composer check` is green: PHPCS, maximum-level PHPStan, and PHPUnit 234 tests /
+596 assertions. Live WordPress registration and Yoast graph-merge checks remain
+the release gate.
+
+**Service schema read-before-write was code-complete on 2026-08-03.** Separate
 `get-service-schema` and `preview-service-schema` Abilities now complement the
 existing update. Get returns the independently saved provider configuration and
 current token. Preview consumes the exact update input, policy, provider,
@@ -10,7 +24,7 @@ optimistic-concurrency, and sanitization paths but performs no metadata write,
 mutation audit, or cache invalidation. Both are truthfully annotated read-only.
 The raw MCP smoke test now inspects each targeted tool's own required-field
 declaration, covering `post_id` and `version_token`. ADR 0019 records why dry
-run is a separate semantic intent. The closed profile now has 15 potential
+run is a separate semantic intent. The profile at that milestone had 15 potential
 entries. PHPCS and maximum-level PHPStan are clean; PHPUnit passes 223 tests /
 560 assertions. The Kormas source profile is updated to 0.2.1. Runtime
 registration verification was attempted, but Local's database socket was not
@@ -37,7 +51,7 @@ restores earlier keys best-effort after a later write failure, and returns an
 effective configuration re-read. ADR 0017 records the optional provider
 boundary. PHPCS and PHPStan are clean; PHPUnit passes 214 tests / 532
 assertions. WordPress runtime graph verification with the standalone provider
-active remains a release check. The closed MCP profile now has 15 potential
+active remains a release check. The profile at that milestone had 15 potential
 entries and continues to intersect them with currently registered abilities.
 
 **The critical `update-seo` gap is closed and runtime-verified on 2026-07-24.**
