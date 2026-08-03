@@ -1039,6 +1039,91 @@ final class AbilitySchemas {
 	}
 
 	/**
+	 * Returns the get-Service-schema input contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function get_service_schema_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'post_id' ),
+			'properties'           => array(
+				'post_id' => array(
+					'description' => 'Target post ID.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the get-Service-schema output contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function get_service_schema_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'schema_version', 'post_id', 'post_type', 'version_token', 'service_schema', 'provenance' ),
+			'properties'           => array(
+				'schema_version' => array( 'type' => 'string' ),
+				'post_id'        => array( 'type' => 'integer' ),
+				'post_type'      => array( 'type' => 'string' ),
+				'version_token'  => array( 'type' => 'string' ),
+				'service_schema' => self::service_schema_configuration(),
+				'provenance'     => self::provenance(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the preview-Service-schema input contract.
+	 *
+	 * The preview intentionally shares the exact update input so the result can
+	 * be applied without changing semantic intent or validation rules.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function preview_service_schema_input(): array {
+		return self::update_service_schema_input();
+	}
+
+	/**
+	 * Returns the preview-Service-schema output contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function preview_service_schema_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'schema_version', 'dry_run', 'post_id', 'post_type', 'version_token', 'changed_fields', 'current_service_schema', 'preview_service_schema', 'provenance' ),
+			'properties'           => array(
+				'schema_version'         => array( 'type' => 'string' ),
+				'dry_run'                => array( 'type' => 'boolean' ),
+				'post_id'                => array( 'type' => 'integer' ),
+				'post_type'              => array( 'type' => 'string' ),
+				'version_token'          => array( 'type' => 'string' ),
+				'changed_fields'         => array(
+					'type'        => 'array',
+					'uniqueItems' => true,
+					'maxItems'    => 8,
+					'items'       => array(
+						'type' => 'string',
+						'enum' => array( 'enabled', 'name', 'service_type', 'description', 'areas', 'brands', 'catalog_name', 'offers' ),
+					),
+				),
+				'current_service_schema' => self::service_schema_configuration(),
+				'preview_service_schema' => self::service_schema_configuration(),
+				'provenance'             => self::provenance(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
 	 * Returns the update-Service-schema output contract.
 	 *
 	 * @return array<string, mixed>

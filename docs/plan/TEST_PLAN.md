@@ -68,7 +68,8 @@ wp eval 'require "/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/In
 - MCP discovery and execution envelopes through the official adapter.
 - Client-agnostic MCP smoke check: session-based `initialize` →
   `notifications/initialized` → `tools/list` (asserts the profile supplied in
-  `WPCB_EXPECTED_TOOLS`) → `tools/call` for the five safe baseline reads with
+  `WPCB_EXPECTED_TOOLS` and known required input fields on the raw MCP
+  descriptors) → `tools/call` for the five safe baseline reads with
   minimal valid input. Write/destructive tools are discovery-tested but never
   executed by this smoke script. Authentication uses a disposable Application
   Password that is deleted on exit, including failure. Repeatable command:
@@ -77,7 +78,7 @@ wp eval 'require "/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/In
 WPCB_SITE_URL=https://kormas-isu.local \
 WPCB_WP_ROOT="/Users/lukaszbiedron/Local Sites/kormas-isu/app/public" \
 WPCB_MCP_PATH="/wp-json/wpcb-mcp/mcp" \
-WPCB_EXPECTED_TOOLS=search-content,get-content,get-url-seo,get-editorial-context,get-diagnostics,get-media,get-media-by-id,list-block-patterns,create-draft,update-content,update-seo,update-service-schema,trash-content \
+WPCB_EXPECTED_TOOLS=search-content,get-content,get-url-seo,get-editorial-context,get-diagnostics,get-media,get-media-by-id,list-block-patterns,create-draft,update-content,update-seo,get-service-schema,preview-service-schema,update-service-schema,trash-content \
 "/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/Integration/mcp-smoke-verification.sh"
 ```
 
@@ -248,16 +249,23 @@ Verified on 2026-07-17 against WordPress 7.0.1 with Yoast Free 28.0, Premium
 28.0, and Local 15.8 in the single-location fixture. Evidence is recorded in
 `docs/verification/EDITORIAL_CONTEXT.md`.
 
-## Structured Service write matrix
+## Structured Service configuration matrix
 
-- Schema Extended inactive: `update-service-schema` is not registered and is
+- Schema Extended inactive: none of the three Service-schema abilities is registered and they are
   absent from MCP discovery even when global writes are enabled;
 - Schema Extended active but global writes disabled: still absent;
-- active provider and writes enabled: strict input/output schema, complete
+- active provider and writes enabled: strict input/output schemas, complete
   annotations, and MCP-public metadata are present;
 - `wpcb_manage_seo`, native `edit_post`, and per-type `update_seo` policy each
   deny independently;
 - stale `version_token` rejects before the provider write;
+- `get-service-schema` returns independently saved configuration and a current
+  token before any change;
+- `preview-service-schema` returns current plus provider-sanitized prospective
+  configuration with `dry_run: true` and performs no metadata, audit, revision,
+  or cache mutation;
+- raw MCP descriptors mark `post_id` required for get, and both `post_id` plus
+  `version_token` required for preview/update;
 - unsupported provider post type returns
   `wpcb_service_schema_unavailable`;
 - typed City/AdministrativeArea/Country values, brands, catalog name, and

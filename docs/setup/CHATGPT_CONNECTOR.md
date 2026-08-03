@@ -70,11 +70,12 @@ miniOrange's separate ability grant.
 
 Grant only the additional IDs the principal is meant to execute.
 The complete candidate list is documented in `MCP_ADAPTER.md`; a single
-principal does not need all 13. Media reads require `wpcb_read_media`, pattern
+principal does not need all 15. Media reads require `wpcb_read_media`, pattern
 reads require `wpcb_read_patterns` plus native editor access, and mutations
 require their dedicated WPCB and native WordPress capabilities.
-`update-service-schema` additionally requires global writes, Update SEO policy,
-and the active standalone Schema Extended provider. Do not grant
+All Service-schema operations additionally require global writes, Update SEO
+policy, and the active standalone Schema Extended provider. Preview/update
+require the current `version_token`. Do not grant
 `transition-content-status`: it is not implemented.
 
 > **Live consent caveat.** Task 6's live ChatGPT walkthrough was performed as
@@ -87,6 +88,20 @@ and the active standalone Schema Extended provider. Do not grant
 ```bash
 wp eval 'global $wpdb; echo $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}mosmcp_nhi_grants WHERE ability_id LIKE \"mosmcp/%-post\"" );'
 ```
+
+### Known miniOrange input-schema projection defect
+
+miniOrange Secure MCP Server 1.3.1 removes the source Ability's nested
+`required` list when it wraps inputs under the MCP `input` property. Its
+WordPress.org 1.4.2 trunk still contains the same transformation. Endpoint-side
+WordPress validation remains authoritative, but clients can therefore display
+required fields such as `post_id` and `version_token` as optional.
+
+Do not weaken or double-wrap WP Content Bridge schemas to compensate: that
+would break the correct official MCP Adapter projection. Verify required fields
+against the App-Password endpoint with `mcp-smoke-verification.sh`; treat the
+OAuth descriptor issue as an upstream miniOrange compatibility defect until a
+fixed release or a separately reviewed site-level patch is available.
 
 Expected: `0`. Writes stay globally blocked in Phase 1 regardless of any
 ability policy — this is a defense-in-depth check, not the only control.

@@ -93,6 +93,10 @@ Requirement identifiers are stable references for code, tests, ADRs, and release
   writes and a compatible loaded provider are both available. Execution reuses
   SEO capability, native object authorization, per-type Update SEO policy,
   optimistic concurrency, redacted audit, and post-write verification.
+- **FR-WRITE-012:** Expose separate read-only Service-schema get and preview
+  intents under the same provider/authorization gate. Preview must reuse the
+  update input and optimistic-concurrency validation, return current and
+  provider-sanitized prospective values, and perform no mutation.
 
 ### Block patterns
 

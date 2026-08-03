@@ -380,7 +380,7 @@ regression tests. `composer check` green on merged `main` (120 tests / 309
 assertions, PHPCS 0, PHPStan 0).
 
 **Expanded in the current source profile:** site infrastructure may expose a
-closed list of all 13 implemented abilities through the official Adapter and
+closed list of all 15 implemented abilities through the official Adapter and
 filters out any ability not registered under the current feature flags.
 miniOrange OAuth grants remain a distinct per-principal runtime configuration;
 see `docs/setup/MCP_ADAPTER.md` and `docs/setup/CHATGPT_CONNECTOR.md`.
@@ -428,6 +428,22 @@ Static verification is green on 2026-08-03: PHPCS, PHPStan at maximum level,
 and PHPUnit 214 tests / 532 assertions. A disposable WordPress runtime verifier
 with the standalone provider active remains the release gate for graph-level
 `Service`/`areaServed`/`hasOfferCatalog` parity.
+
+### Plan 3c — Service schema read-before-write — **code-complete 2026-08-03**
+
+- added separate read-only `get-service-schema` and
+  `preview-service-schema` semantic intents rather than a mixed `dry_run` mode
+  on the destructive write;
+- preview reuses the exact update validation, policy, provider support,
+  optimistic concurrency, and sanitization paths without metadata writes,
+  mutation audit, or cache invalidation;
+- added strict current/prospective result contracts and raw MCP `tools/list`
+  assertions for required `post_id` and `version_token` fields;
+- ADR 0019 records the safety and projection decision.
+
+Static verification is green: PHPCS, maximum-level PHPStan, and PHPUnit 223
+tests / 560 assertions. Kormas runtime registration verification remains
+pending because the Local database socket was unavailable on 2026-08-03.
 
 ### Plan 4a — `list-block-patterns`
 

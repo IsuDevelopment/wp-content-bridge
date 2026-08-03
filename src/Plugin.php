@@ -23,6 +23,8 @@ use IsuDev\WPContentBridge\Application\Content\SearchContent;
 use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessManager;
 use IsuDev\WPContentBridge\Application\Editorial\GetEditorialContext;
 use IsuDev\WPContentBridge\Application\Mutation\CreateDraft;
+use IsuDev\WPContentBridge\Application\Mutation\GetServiceSchema;
+use IsuDev\WPContentBridge\Application\Mutation\PreviewServiceSchema;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateContent;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateSeo;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateServiceSchema;
@@ -165,6 +167,8 @@ final class Plugin {
 			$service_schema_writer = new SchemaExtendedServiceSchemaWriter();
 			if ( $service_schema_writer->is_available() ) {
 				( new ServiceSchemaAbilities(
+					new GetServiceSchema( $manager, $mutation_repository, $service_schema_writer ),
+					new PreviewServiceSchema( $manager, $mutation_repository, $service_schema_writer ),
 					new UpdateServiceSchema( $manager, $mutation_repository, $service_schema_writer, $audit_log )
 				) )->register_hooks();
 			}

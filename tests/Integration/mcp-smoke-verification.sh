@@ -22,7 +22,7 @@ BRIDGE_USER="wpcb-bridge-reader"
 ENDPOINT="${WPCB_SITE_URL}${WPCB_MCP_PATH}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-for WPCB_COMMAND in wp curl; do
+for WPCB_COMMAND in wp curl php; do
 	command -v "$WPCB_COMMAND" >/dev/null || {
 		echo "Missing required command: $WPCB_COMMAND" >&2
 		exit 1
@@ -114,6 +114,50 @@ for tool in "${EXPECTED_TOOLS[@]}"; do
 	echo "$LIST" | grep -q "wp-content-bridge-$tool" || fail "tools/list missing wp-content-bridge-$tool"
 done
 echo "tools/list OK (${#EXPECTED_TOOLS[@]} expected tools present)"
+
+# Contract-check required fields on the raw MCP descriptor. This inspects the
+# schema belonging to the exact tool rather than only trusting endpoint-side
+# validation. Both the direct schema and a single `input` wrapper are accepted.
+assert_required_fields() {
+	local tool_name="$1"
+	shift
+	php -r '
+		$document = json_decode(stream_get_contents(STDIN), true);
+		if (!is_array($document)) { exit(2); }
+		$tools = $document["result"]["tools"] ?? [];
+		$target = null;
+		foreach ($tools as $tool) {
+			if (($tool["name"] ?? null) === $argv[1]) { $target = $tool; break; }
+		}
+		if (!is_array($target)) { exit(3); }
+		$schema = $target["inputSchema"] ?? [];
+		if (
+			isset($schema["properties"]["input"])
+			&& in_array("input", $schema["required"] ?? [], true)
+			&& is_array($schema["properties"]["input"])
+		) {
+			$schema = $schema["properties"]["input"];
+		}
+		$required = $schema["required"] ?? [];
+		foreach (array_slice($argv, 2) as $field) {
+			if (!in_array($field, $required, true)) { exit(4); }
+		}
+	' "$tool_name" "$@" <<<"$LIST" || fail "tools/list does not mark required inputs for $tool_name: $*"
+}
+
+for tool in "${EXPECTED_TOOLS[@]}"; do
+	tool="${tool#wp-content-bridge/}"
+	tool="${tool#wp-content-bridge-}"
+	case "$tool" in
+		get-content|get-service-schema)
+			assert_required_fields "wp-content-bridge-$tool" post_id
+			;;
+		update-service-schema|preview-service-schema)
+			assert_required_fields "wp-content-bridge-$tool" post_id version_token
+			;;
+	esac
+done
+echo "tools/list required-field contracts OK"
 
 echo "== tools/call: get-diagnostics (no input) =="
 DIAG_RAW="$(rpc '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"wp-content-bridge-get-diagnostics","arguments":{}}}')"

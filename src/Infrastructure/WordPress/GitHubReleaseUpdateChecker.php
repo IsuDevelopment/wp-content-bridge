@@ -49,11 +49,14 @@ final class GitHubReleaseUpdateChecker {
 			$plugin_file,
 			self::PLUGIN_SLUG
 		);
+		if ( ! method_exists( $checker, 'getVcsApi' ) ) {
+			return;
+		}
 		$vcs_api = $checker->getVcsApi();
 
 		// Release ZIPs are uploaded as GitHub release assets. Do not install the
 		// repository's source archive because it lacks production dependencies.
-		if ( method_exists( $vcs_api, 'enableReleaseAssets' ) ) {
+		if ( is_object( $vcs_api ) && method_exists( $vcs_api, 'enableReleaseAssets' ) ) {
 			$vcs_api->enableReleaseAssets();
 		}
 	}

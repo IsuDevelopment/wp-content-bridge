@@ -243,7 +243,8 @@ get-editorial-context Ability
 ## Write (mutation) feature
 
 ```text
-create-draft / update-content / update-seo / update-service-schema / trash-content Ability
+create-draft / update-content / update-seo / get-service-schema /
+preview-service-schema / update-service-schema / trash-content Ability
   -> plugin capability (`wpcb_edit_content`) + native object capability
      (`create_posts`/`edit_posts` or `edit_post`) — MutationAbilities
      permission callback
@@ -353,13 +354,17 @@ Files:
   `UpdateServiceSchema.php` — optional-provider port plus the shared
   policy/version/audit orchestration. The application layer has no dependency
   on Schema Extended or WordPress metadata.
+- `src/Application/Mutation/ServiceSchemaReader.php`, `GetServiceSchema.php`,
+  and `PreviewServiceSchema.php` — provider-neutral read-before-write paths;
+  preview shares update validation/concurrency but cannot mutate.
 - `src/Infrastructure/SchemaExtended/SchemaExtendedServiceSchemaWriter.php` —
   optional adapter for the standalone plugin's public `Meta_Fields` API. It
   feature-detects the loaded plugin, maps only fixed metadata constants,
   normalizes all values before writing, rolls back earlier keys on a later
   write failure, and re-reads effective configuration.
-- `src/Adapter/Abilities/ServiceSchemaAbilities.php` — conditionally registered
-  write projection using `wpcb_manage_seo` plus native `edit_post`.
+- `src/Adapter/Abilities/ServiceSchemaAbilities.php` — conditionally registers
+  read, preview, and write projections using `wpcb_manage_seo` plus native
+  `edit_post`, with truthful per-intent annotations.
 - `stubs/schema-extended.stub.php` — analysis-only public API declarations for
   the optional provider; it does not load or emulate the plugin at runtime.
 - `src/Adapter/Abilities/MutationAbilities.php` — registers `create-draft`/
@@ -389,9 +394,9 @@ Files:
   exceptions cannot change the completed write outcome.
 
 **MCP projection:** the current source documents a closed profile containing all
-13 implemented abilities. The reference Kormas site owns this boundary as a
+15 implemented abilities. The reference Kormas site owns this boundary as a
 Composer-installed MU-plugin and passes only profile entries that are currently
-registered. The Service-schema entry therefore disappears automatically when
+registered. The three Service-schema entries therefore disappear automatically when
 the standalone provider or global writes are inactive. OAuth grants remain a
 separate site configuration; see
 `docs/setup/MCP_ADAPTER.md`.

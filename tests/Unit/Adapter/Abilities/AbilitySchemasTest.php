@@ -165,10 +165,16 @@ final class AbilitySchemasTest extends TestCase {
 	 * Service schema writes expose only bounded, typed Service and OfferCatalog fields.
 	 */
 	public function test_update_service_schema_contract_is_strict_and_bounded(): void {
-		$input  = AbilitySchemas::update_service_schema_input();
-		$output = AbilitySchemas::update_service_schema_output();
+		$input          = AbilitySchemas::update_service_schema_input();
+		$output         = AbilitySchemas::update_service_schema_output();
+		$get_input      = AbilitySchemas::get_service_schema_input();
+		$get_output     = AbilitySchemas::get_service_schema_output();
+		$preview_input  = AbilitySchemas::preview_service_schema_input();
+		$preview_output = AbilitySchemas::preview_service_schema_output();
 
 		self::assertSame( array( 'post_id', 'version_token' ), $input['required'] );
+		self::assertSame( array( 'post_id' ), $get_input['required'] );
+		self::assertSame( array( 'post_id', 'version_token' ), $preview_input['required'] );
 		self::assertFalse( $input['additionalProperties'] );
 		self::assertSame( 100, $input['properties']['areas']['maxItems'] );
 		self::assertSame( array( 'City', 'AdministrativeArea', 'Country' ), $input['properties']['areas']['items']['properties']['type']['enum'] );
@@ -177,6 +183,10 @@ final class AbilitySchemasTest extends TestCase {
 		self::assertSame( 20, $input['properties']['offers']['maxItems'] );
 		self::assertFalse( $input['properties']['offers']['items']['additionalProperties'] );
 		self::assertContains( 'effective_service_schema', $output['required'] );
+		self::assertContains( 'service_schema', $get_output['required'] );
+		self::assertContains( 'current_service_schema', $preview_output['required'] );
+		self::assertContains( 'preview_service_schema', $preview_output['required'] );
+		self::assertSame( 'boolean', $preview_output['properties']['dry_run']['type'] );
 		self::assertFalse( $output['properties']['effective_service_schema']['additionalProperties'] );
 		self::assertFalse( $output['properties']['effective_service_schema']['properties']['provider']['additionalProperties'] );
 	}

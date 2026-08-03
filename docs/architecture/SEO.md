@@ -164,20 +164,21 @@ adapter:
 
 ### Structured Service provider
 
-`wp-content-bridge/update-service-schema` is a separate semantic write from
-Yoast editor SEO. Its public contract describes `Service`, typed `areaServed`,
+`get-service-schema`, `preview-service-schema`, and `update-service-schema` are
+separate semantic intents from Yoast editor SEO. Their public contracts describe `Service`, typed `areaServed`,
 `brand`, and `hasOfferCatalog`, while the infrastructure adapter maps those
 fields to the standalone IsuDev Schema Extended plugin's public `Meta_Fields`
 API. The application service depends only on `ServiceSchemaWriter`; it does not
 know the plugin class, metadata keys, Gutenberg sidebar, or Yoast graph-piece
 implementation.
 
-The Ability is registered only when content writes are enabled and WordPress
+The Abilities are registered only when content writes are enabled and WordPress
 has loaded both the standalone plugin marker and compatible API class. It is not
 registered merely because matching files or an autoloadable class exist. The
 provider's supported-post-type filter remains authoritative. Effective values
 are re-read after the write, while the public Schema graph itself remains
-observable through `get-url-seo`. See ADR 0017.
+observable through `get-url-seo`. Preview shares the update validator and
+provider sanitization but has no write path. See ADRs 0017 and 0019.
 
 ## Compatibility reporting
 

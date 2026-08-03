@@ -77,6 +77,8 @@ annotations.
 | `create-draft` | Content writes enabled | `wpcb_edit_content` | Creates a draft with Gutenberg markup, excerpt, taxonomies, and optional idempotency. |
 | `update-content` | Content writes enabled | `wpcb_edit_content` | Updates selected content fields with optimistic concurrency and a WordPress revision. |
 | `update-seo` | Content writes enabled | `wpcb_manage_seo` | Updates supported Yoast fields and returns the effective SEO document after the write. |
+| `get-service-schema` | Content writes enabled and Schema Extended active | `wpcb_manage_seo` | Reads the independently saved Service, areaServed, brand, and OfferCatalog configuration. |
+| `preview-service-schema` | Content writes enabled and Schema Extended active | `wpcb_manage_seo` | Returns current and provider-sanitized prospective Service configuration without writing. |
 | `update-service-schema` | Content writes enabled and Schema Extended active | `wpcb_manage_seo` | Updates a fixed Service, areaServed, brand, and OfferCatalog field set and returns the effective configuration. |
 | `trash-content` | Content writes and trash enabled | `wpcb_delete_content` | Moves an authorized object to reversible WordPress trash without exposing permanent deletion. |
 
@@ -274,13 +276,20 @@ images accept a positive image attachment ID, or `0` to clear the override;
 caller-supplied URLs are rejected. All requested attachments are authorized and
 resolved before the first SEO field is written.
 
-### `wp-content-bridge/update-service-schema`
+### Service schema configuration
 
 Configures the structured `Service` entity emitted by the optional standalone
 IsuDev Schema Extended plugin. The Ability is not registered unless content
 writes are enabled and a compatible plugin API is loaded. It requires
 `wpcb_manage_seo`, native `edit_post`, the post type's Update SEO policy, and a
-current `version_token`.
+current `version_token` for preview and update.
+
+`get-service-schema` requires `post_id` and returns the saved effective
+configuration plus the current `version_token`. `preview-service-schema`
+requires `post_id`, `version_token`, and at least one proposed field; it returns
+the current and provider-sanitized prospective configurations with
+`dry_run: true`. It performs no metadata write, audit mutation, or cache purge.
+`update-service-schema` remains the only mutating operation.
 
 The input is a fixed normalized document: `enabled`, `name`, `service_type`,
 `description`, typed `areas` (`City`, `AdministrativeArea`, or `Country`),
@@ -374,12 +383,12 @@ The plugin registers domain abilities; it does not provide MCP transport or
 authentication. Install the official WordPress MCP Adapter separately and
 explicitly allow only the abilities required by a client.
 
-The current source defines a closed 13-ability projection profile covering
+The current source defines a closed 15-ability projection profile covering
 every implemented ability. The reference site-level MCP server intersects
 that profile with the abilities registered in the current request, so disabled
 media, pattern, write, Service-schema, and trash features remain absent from
-discovery. `update-service-schema` additionally disappears when IsuDev Schema
-Extended is inactive or incompatible.
+discovery. All three Service-schema abilities additionally disappear when
+IsuDev Schema Extended is inactive or incompatible.
 
 An ability can be registered in WordPress but still hidden from a particular
 MCP client by the Adapter or OAuth allowlist. Those projection allowlists never

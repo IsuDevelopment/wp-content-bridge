@@ -214,10 +214,12 @@ Annotations: read-only, non-destructive, idempotent.
 ## Write abilities
 
 `create-draft`, `update-content`, `update-seo`, `update-service-schema`, and
-`trash-content` are **implemented and reachable**. The first three are
+`trash-content` are **implemented and reachable** writes. Service-schema read
+and preview are separate read-only intents under the same registration gate.
+The first three writes are
 registered when
 `get_option( Installer::WRITES_ENABLED_OPTION )` (`wpcb_writes_enabled`) is
-truthy. `update-service-schema` additionally requires the compatible standalone
+truthy. All Service-schema intents additionally require the compatible standalone
 IsuDev Schema Extended public API to be loaded, while `trash-content`
 additionally requires `wpcb_trash_enabled`. An ability
 that is not registered is invisible to Abilities discovery and to any MCP
@@ -237,11 +239,11 @@ the whole request).
 `wpcb_service_schema_unavailable` when the optional provider or target post type
 is unsupported.
 
-**MCP projection:** the current reference profile contains all 13 implemented
+**MCP projection:** the current reference profile contains all 15 implemented
 ability IDs and intersects that closed allowlist
 with the abilities registered in the current request. Feature flags therefore
-still remove disabled operations from discovery, and the Service-schema Ability
-also disappears when Schema Extended is not loaded. Projection does not grant
+still remove disabled operations from discovery, and all Service-schema
+Abilities disappear when Schema Extended is not loaded. Projection does not grant
 authority: the official Adapter principal and the separate ChatGPT-facing
 miniOrange grant must each be configured explicitly; see
 `docs/setup/MCP_ADAPTER.md` and `docs/setup/CHATGPT_CONNECTOR.md`.
@@ -342,6 +344,27 @@ provider's raw positional JSON is never part of the Ability contract (ADR
 0014).
 
 Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
+
+### `wp-content-bridge/get-service-schema`
+
+Reads the independently saved provider configuration for one target. It
+requires `post_id`, `wpcb_manage_seo`, native `edit_post`, configured
+`update_seo` policy, global writes, and the compatible provider. Output includes
+the target identity, current `version_token`, strict `service_schema`, and
+provenance. It performs no mutation.
+
+Annotations: `readonly: true`, `destructive: false`, `idempotent: true`.
+
+### `wp-content-bridge/preview-service-schema`
+
+Accepts the exact `update-service-schema` input contract, including required
+`post_id` and current `version_token`, and at least one mutable field. It checks
+policy, provider support, and optimistic concurrency, then returns
+`current_service_schema`, provider-sanitized `preview_service_schema`,
+`changed_fields`, and `dry_run: true`. No metadata, audit row, revision, or
+cache state is changed.
+
+Annotations: `readonly: true`, `destructive: false`, `idempotent: true`.
 
 ### `wp-content-bridge/update-service-schema`
 

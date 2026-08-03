@@ -11,6 +11,7 @@ namespace IsuDev\WPContentBridge\Infrastructure\SchemaExtended;
 
 use IsuDev\SchemaExtended\Service\Meta_Fields;
 use IsuDev\WPContentBridge\Application\Mutation\MutationWriteFailed;
+use IsuDev\WPContentBridge\Application\Mutation\ServiceSchemaReader;
 use IsuDev\WPContentBridge\Application\Mutation\ServiceSchemaUnavailable;
 use IsuDev\WPContentBridge\Application\Mutation\ServiceSchemaWriter;
 
@@ -18,7 +19,7 @@ use IsuDev\WPContentBridge\Application\Mutation\ServiceSchemaWriter;
  * Maps the provider-neutral Service document to the standalone plugin's fixed
  * public metadata API. No arbitrary meta key or Schema.org fragment is accepted.
  */
-final class SchemaExtendedServiceSchemaWriter implements ServiceSchemaWriter {
+final class SchemaExtendedServiceSchemaWriter implements ServiceSchemaReader, ServiceSchemaWriter {
 
 	private const REQUIRED_METHODS = array(
 		'get_supported_post_types',
@@ -78,16 +79,17 @@ final class SchemaExtendedServiceSchemaWriter implements ServiceSchemaWriter {
 
 		foreach ( $normalized as $field => $value ) {
 			$key               = self::meta_key( $field );
+			$storage_value     = self::storage_value( $field, $value );
 			$snapshots[ $key ] = array(
 				'existed' => metadata_exists( 'post', $post_id, $key ),
 				'value'   => get_post_meta( $post_id, $key, true ),
 			);
 
-			if ( $snapshots[ $key ]['value'] === $value ) {
+			if ( $snapshots[ $key ]['value'] === $storage_value ) {
 				continue;
 			}
 
-			$result = update_post_meta( $post_id, $key, $value );
+			$result = update_post_meta( $post_id, $key, $storage_value );
 			if ( false === $result ) {
 				$this->rollback( $post_id, $written, $snapshots );
 				throw new MutationWriteFailed( 'WordPress rejected a Service schema metadata write.' );
@@ -96,6 +98,18 @@ final class SchemaExtendedServiceSchemaWriter implements ServiceSchemaWriter {
 		}
 
 		return $this->read( $post_id );
+	}
+
+	/**
+	 * Returns a sanitized prospective configuration without metadata writes.
+	 *
+	 * @param int                  $post_id Target post ID.
+	 * @param array<string, mixed> $fields  Validated provider-neutral fields.
+	 * @return array<string, mixed>
+	 * @throws ServiceSchemaUnavailable When the optional plugin is unavailable.
+	 */
+	public function preview( int $post_id, array $fields ): array {
+		return array_replace( $this->read( $post_id ), $this->normalize_fields( $fields ) );
 	}
 
 	/**
@@ -124,15 +138,16 @@ final class SchemaExtendedServiceSchemaWriter implements ServiceSchemaWriter {
 					$normalized[ $field ] = Meta_Fields::sanitize_areas( $value );
 					break;
 				case 'brands':
-					$normalized[ $field ] = is_array( $value )
-						? implode(
-							"\n",
-							array_map(
-								static fn ( mixed $brand ): string => sanitize_text_field( is_string( $brand ) ? $brand : '' ),
-								$value
-							)
-						)
-						: '';
+					$brands = array();
+					if ( is_array( $value ) ) {
+						foreach ( $value as $brand ) {
+							$brand = trim( sanitize_text_field( is_string( $brand ) ? $brand : '' ) );
+							if ( '' !== $brand && ! in_array( $brand, $brands, true ) ) {
+								$brands[] = $brand;
+							}
+						}
+					}
+					$normalized[ $field ] = $brands;
 					break;
 				case 'offers':
 					$normalized[ $field ] = Meta_Fields::sanitize_offers( $value );
@@ -143,6 +158,30 @@ final class SchemaExtendedServiceSchemaWriter implements ServiceSchemaWriter {
 		}
 
 		return $normalized;
+	}
+
+	/**
+	 * Converts one normalized public value to the provider's storage shape.
+	 *
+	 * @param string $field Public field name.
+	 * @param mixed  $value Provider-normalized public value.
+	 * @return mixed
+	 */
+	private static function storage_value( string $field, mixed $value ): mixed {
+		if ( 'brands' !== $field ) {
+			return $value;
+		}
+
+		$brands = array();
+		if ( is_array( $value ) ) {
+			foreach ( $value as $brand ) {
+				if ( is_string( $brand ) ) {
+					$brands[] = $brand;
+				}
+			}
+		}
+
+		return implode( "\n", $brands );
 	}
 
 	/**
@@ -189,8 +228,13 @@ final class SchemaExtendedServiceSchemaWriter implements ServiceSchemaWriter {
 	 *
 	 * @param int $post_id Target post ID.
 	 * @return array<string, mixed>
+	 * @throws ServiceSchemaUnavailable When the optional plugin is unavailable.
 	 */
-	private function read( int $post_id ): array {
+	public function read( int $post_id ): array {
+		if ( ! $this->is_available() ) {
+			throw new ServiceSchemaUnavailable( 'The Service schema provider is unavailable.' );
+		}
+
 		$version = constant( 'ISUDEV_SCHEMA_EXTENDED_VERSION' );
 
 		return array(

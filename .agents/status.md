@@ -2,6 +2,28 @@
 
 ## Current phase
 
+**Service schema read-before-write is code-complete on 2026-08-03.** Separate
+`get-service-schema` and `preview-service-schema` Abilities now complement the
+existing update. Get returns the independently saved provider configuration and
+current token. Preview consumes the exact update input, policy, provider,
+optimistic-concurrency, and sanitization paths but performs no metadata write,
+mutation audit, or cache invalidation. Both are truthfully annotated read-only.
+The raw MCP smoke test now inspects each targeted tool's own required-field
+declaration, covering `post_id` and `version_token`. ADR 0019 records why dry
+run is a separate semantic intent. The closed profile now has 15 potential
+entries. PHPCS and maximum-level PHPStan are clean; PHPUnit passes 223 tests /
+560 assertions. The Kormas source profile is updated to 0.2.1. Runtime
+registration verification was attempted, but Local's database socket was not
+available, so WordPress could not bootstrap.
+
+The reported optional `post_id`/`version_token` display was traced outside the
+bridge: miniOrange Secure MCP Server 1.3.1 removes the nested Ability `required`
+list in `wrap_input_schema()`. WordPress.org 1.4.2 trunk still contains the same
+code. The bridge source and contract tests already require the fields, and the
+official-Adapter smoke test now asserts the raw MCP descriptor. No generated
+third-party plugin file was patched; the OAuth projection remains an upstream
+compatibility issue.
+
 **Conditional structured Service writes are code-complete on 2026-08-03.**
 `wp-content-bridge/update-service-schema` is registered only when global writes
 are enabled and the standalone IsuDev Schema Extended plugin marker plus
@@ -15,7 +37,7 @@ restores earlier keys best-effort after a later write failure, and returns an
 effective configuration re-read. ADR 0017 records the optional provider
 boundary. PHPCS and PHPStan are clean; PHPUnit passes 214 tests / 532
 assertions. WordPress runtime graph verification with the standalone provider
-active remains a release check. The closed MCP profile now has 13 potential
+active remains a release check. The closed MCP profile now has 15 potential
 entries and continues to intersect them with currently registered abilities.
 
 **The critical `update-seo` gap is closed and runtime-verified on 2026-07-24.**
