@@ -556,6 +556,14 @@ The MCP projection gap and the miniOrange grants were both closed on
    exists in the app repo.
 5. Retire the inert `wpcb_public_base_url` option — task 5.
 6. Milestone 5 security sign-off — task 6.
+7. Release packaging — task 7. Verified on 2026-08-07: 74 files under `docs/`
+   and `.agents/` ship inside the production plugin ZIP, including the security
+   model, known gaps, and notes about the consuming site's grants. The same
+   task fixes the release trigger, which fires on any push touching the version
+   line and on 2026-08-07 published a `v0.4.0` built from the rename commit
+   alone, missing all of Slice 1A. That release was deleted and re-cut from
+   `52cb2a2`; the current `v0.4.0` artifact is correct and was verified by
+   listing the ZIP.
 
 **Open manual step, not automatable from this repository:** the old root-owned
 `cloudflared` service on the development machine still needs uninstalling. It

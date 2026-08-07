@@ -178,7 +178,41 @@ If a claim has no verifier behind it, write that down as a gap instead of
 asserting it. An honest sign-off with three named gaps is useful; a clean one
 that nobody can trace is not.
 
-## Task 7 — release
+## Task 7 — release packaging
+
+Verified against the published `v0.4.0` artifact on 2026-08-07: **74 files
+under `docs/` and `.agents/` ship inside the production plugin ZIP.** The
+`rsync` exclude list in `.github/workflows/release.yml` only drops `.git`,
+`.github`, `build`, `tests`, `node_modules`, `*.zip`, and `.gitignore`.
+
+That means every installed copy carries the implementation plans, the
+editorial roadmap, the ADRs, `AGENTS.md`, `CLAUDE.md`, and `.agents/status.md`
+— which includes the security model, known gaps, verification state, and notes
+about the consuming site's grants. It is bloat and low-grade information
+disclosure in the same breath.
+
+Extend the exclude list with `docs`, `.agents`, `AGENTS.md`, `CLAUDE.md`,
+`.editorconfig`, `phpcs.xml.dist`, `phpstan.neon.dist`, `phpunit.xml.dist`,
+`composer.lock`, and any other development-only root file. Keep `readme.txt`,
+`README.md`, `LICENSE`, the plugin bootstrap, `src/`, and `vendor/`.
+
+Verify by listing the built ZIP, not by reading the workflow:
+
+```
+unzip -l wp-content-bridge.zip | grep -E 'docs/|\.agents/'
+```
+
+The correct result is no matches.
+
+Also fix the release trigger while you are in this file. It currently fires on
+any push to `main` that touches `wp-content-bridge.php` and derives the tag
+from the version header. On 2026-08-07 that published a `v0.4.0` release built
+from the rename commit alone, missing the entire Slice 1A feature set, because
+the follow-up commit did not touch the version line. It also auto-published a
+`v0.3.1` that was never intended as a release. Prefer triggering on tag push
+only, so cutting a release stays a deliberate act.
+
+## Task 8 — release
 
 - `readme.txt`: `Stable tag: 0.4.5` and a `= 0.4.5 =` changelog block;
 - `wp-content-bridge.php`: `Version: 0.4.5` and `WPCB_VERSION`;
@@ -210,6 +244,9 @@ that surface). Nothing else.
 - `list-block-patterns` is either verified or out of the live grant set;
 - the verifier inventory states honestly which checks need the provider
   environment;
+- the built ZIP contains no `docs/` or `.agents/` entries, confirmed by listing
+  the artifact;
+- releases are cut deliberately, not as a side effect of editing a version line;
 - `composer check` green;
 - no public contract broken.
 
