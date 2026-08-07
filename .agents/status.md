@@ -693,6 +693,16 @@ history: it was written without a live check. External MCP allowlists remain
 site infrastructure and must be updated only when new abilities are
 intentionally exposed to a specific principal.
 
+**0.4.5 task 5 done (2026-08-07).** Confirmed by repository-wide search that
+`wpcb_public_base_url` was never read by plugin code — only by the
+already-removed Kormas-only mu-plugin shim documented in
+`docs/setup/CHATGPT_CONNECTOR.md`. Added `uninstall.php` (none existed before)
+that deletes the option, and a bounded one-time cleanup in
+`Installer::activate()` gated by bumping `SCHEMA_VERSION` to 9, so existing
+installs shed the row on their next upgrade without a migration framework.
+The root-owned `cloudflared` service removal remains the user's manual
+`sudo` step, untouched here.
+
 ## Guardrail
 
 Do not start write abilities until Milestones 1–3 pass their security and contract acceptance criteria.
