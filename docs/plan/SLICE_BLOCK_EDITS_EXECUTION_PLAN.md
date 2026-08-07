@@ -288,8 +288,33 @@ client that migrated has nothing to do. Call it out in the changelog under a
 
 ## Task 6 — release
 
+### The changelog must lead with the backslash bug
+
+Found on 2026-08-07 while verifying task 3b, and **shipped in every release
+from 0.1.5 to 0.4.5 inclusive**. `wp_insert_post()` and `wp_update_post()`
+expect slashed data and call `wp_unslash()` on it;
+`WordPressContentMutationRepository` passed raw input, so every backslash
+written through `create-draft` or `update-content` was silently stripped.
+
+`serialize_block()` escapes a double quote inside a block's attribute JSON as
+`"`. Stored unslashed, that became the literal text `u0022`. **Any block
+whose attributes contained a quote was corrupted by any bridge write to that
+post** — including writes that were not meant to touch that block, which is
+exactly the symptom that motivated this whole slice.
+
+Disclose it plainly, and disclose that **the plugin does not repair content
+already damaged this way**. There is no safe automatic repair: `u0022` is
+indistinguishable from text a user legitimately typed. Anyone who wrote through
+the bridge should spot-check posts with custom blocks.
+
+**Decided 2026-08-07: no `0.4.6` patch release.** The fix ships with `0.5.0`.
+The bridge has one operator and writes only against a development site, so
+nobody is exposed while the slice finishes.
+
+### Release steps
+
 - `readme.txt`: `Stable tag: 0.5.0`, a `= 0.5.0 =` block leading with the
-  breaking change;
+  backslash fix, then the breaking `dry_run` removal;
 - `wp-content-bridge.php`: `Version` and `WPCB_VERSION`;
 - `docs/architecture/ABILITIES.md`, `CODE_MAP.md`, `README.md`,
   `docs/setup/MCP_ADAPTER.md` (profile becomes 25), `.agents/status.md`;

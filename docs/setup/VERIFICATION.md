@@ -65,6 +65,7 @@ for v in abilities-runtime-verification \
          writes-mutation-verification \
          trash-content-verification \
          restore-trashed-content-verification \
+         block-edits-verification \
          preview-verification \
          yoast-configured-runtime-verification \
          writes-seo-verification \
@@ -110,6 +111,7 @@ given machine can run the check at all:
 | `writes-mutation-verification.php` | core | `create-draft` / `update-content` authorization matrix, idempotency, concurrency, audit, write invariants |
 | `trash-content-verification.php` | core | Reversible trash, gating, concurrency, audit |
 | `restore-trashed-content-verification.php` | core | Untrash, and that no input restores to `publish` or `future` |
+| `block-edits-verification.php` | core | `get-block-tree` path addressing round-trips byte-identically through `update-block`, single-block edits leave every other block untouched, recursive nested-block validation, `preview-update-block` purity, `update-block-attributes` merge/removal semantics, and the attribute-escaping regression |
 | `preview-verification.php` | core / yoast ² | Both previews are deterministic, mutate nothing, match the subsequent write, and reject stale tokens |
 | `yoast-configured-runtime-verification.php` ¹ | yoast | Configured-value reads and partial-result behaviour |
 | `writes-seo-verification.php` | yoast | `update-seo` authorization matrix, conflict, Free/Premium write and re-read parity, audit |
