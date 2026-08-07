@@ -59,6 +59,7 @@ final class WPCB_Abilities_Runtime_Verification {
 		'wp-content-bridge/update-seo',
 		'wp-content-bridge/preview-update-seo',
 		'wp-content-bridge/trash-content',
+		'wp-content-bridge/restore-trashed-content',
 		'wp-content-bridge/get-service-schema',
 		'wp-content-bridge/preview-update-service-schema',
 		'wp-content-bridge/update-service-schema',

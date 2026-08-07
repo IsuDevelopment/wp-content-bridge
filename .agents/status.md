@@ -1,16 +1,61 @@
 # Project status
 
-**Released version: 0.3.0** (`v0.3.0` = `be3b177`, on `origin`). Static quality
-is green at 234 tests / 596 assertions. Live runtime verification is the open
-gate — see "Next action" and the runtime verification backlog in
-`docs/plan/IMPLEMENTATION_PLAN.md`. Entries below are dated and historical;
-read them as a log, not as current state.
+**Released version: 0.4.0** (`v0.4.0` = `52cb2a2`, on `origin`). Static quality
+is green at 247 tests / 642 assertions. Runtime verification is no longer the
+open gate: the environment was restored on 2026-08-07 and fifteen verifiers
+pass. Work in progress is `0.4.5`, a consolidation release —
+see "Next action" and `docs/plan/RELEASE_0_4_5_PLAN.md`.
+
+Entries below are dated and historical; read them as a log, not as current
+state. Where a dated entry names a version that later moved, the "Release
+numbering" table in `docs/plan/EDITORIAL_OPERATIONS_ROADMAP.md` is
+authoritative.
 
 ## Current phase
 
+**0.4.5 task 1 (`restore-trashed-content`) is code-complete on 2026-08-07.**
+It is the mirror image of `TrashContent`/`TrashAbilities`: registered only
+under the existing `wpcb_writes_enabled` + `wpcb_trash_enabled` gate (no new
+flag), requires `wpcb_delete_content` plus native `delete_post`, the same
+per-post-type Trash policy, and a current `version_token`; it requires the
+target's current status to be exactly `trash` (the inverse of `TrashContent`'s
+check), the non-enumerating failure for any other status. `RestoreInput`
+(Domain) mirrors `TrashInput`; the existing `MutationResult` DTO is reused
+rather than duplicated, since it already carries the resulting `status` the
+contract requires. `ContentTrashRepository` gained an additive `untrash()`
+method; `WordPressContentTrashRepository::untrash()` computes the safe restore
+status from `_wp_trash_meta_status` (`draft`/`pending`/`private` only, `draft`
+otherwise — a `publish`/`future` recorded status, or missing/unparseable meta,
+all fall back to `draft`), forces that exact value through the
+`wp_untrash_post_status` filter rather than trusting `wp_untrash_post()`'s own
+default (documented as version-dependent), and verifies the effective status on
+re-read before returning. No preview intent — it fails the roadmap's preview
+justification test. The closed MCP profile grows to 21 entries (from 20).
+`RestoreTrashedContentAbilities` is a new adapter file (not folded into
+`TrashAbilities`) so the shipped `trash-content-verification.php` needed no
+changes. New runtime verifier
+`tests/Integration/restore-trashed-content-verification.php` covers
+registration/annotations/schema strictness, the two-gate authorization matrix,
+trash-to-draft restore with redacted audit, a `publish` pre-trash fixture
+landing on `draft` (never `publish`/`future`), a stale-token conflict rejected
+before any mutation, and per-type policy denial. The consuming site's
+MU-plugin projection package (`isudev/wp-content-bridge-mcp-server`, separate
+repository) still needs the new ID and a version bump — that is the user's
+action, not part of this change. Tasks 2–8 of `docs/plan/RELEASE_0_4_5_PLAN.md`
+remain outstanding and are explicitly out of scope for this change.
+
 **The post-0.3 editorial operations roadmap was accepted and extended on
 2026-08-03.** It is recorded in
-`docs/plan/EDITORIAL_OPERATIONS_ROADMAP.md`. Version 0.4.0 now contains two
+`docs/plan/EDITORIAL_OPERATIONS_ROADMAP.md`.
+
+> **Superseded 2026-08-07 — version numbers only.** The scope described below
+> stands; its release numbering does not. 0.4.0 shipped the previews alone,
+> llms.txt moved to 0.5.0, status transitions to 0.6.0, and every later slice
+> up one. 0.4.5 was inserted as a consolidation release. Three planned preview
+> Abilities were also cut. See the "Release numbering" and "When a preview
+> Ability is justified" sections of the roadmap.
+
+Version 0.4.0 now contains two
 sequential sub-slices: content/SEO preview followed by native `llms.txt` read,
 preview, configuration, generation, and virtual
 publication informed by the installed LLMagnet 3.4.3 implementation. LLMagnet

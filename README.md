@@ -86,6 +86,7 @@ annotations.
 | `preview-update-custom-schema` | Content writes enabled and Schema Extended 0.3+ active | `wpcb_manage_seo` | Validates prospective Custom Schema without writing; reports save and render eligibility. |
 | `update-custom-schema` | Content writes enabled and Schema Extended 0.3+ active | `wpcb_manage_seo` | Writes validated Custom Schema through the provider's public integration contract. |
 | `trash-content` | Content writes and trash enabled | `wpcb_delete_content` | Moves an authorized object to reversible WordPress trash without exposing permanent deletion. |
+| `restore-trashed-content` | Content writes and trash enabled | `wpcb_delete_content` | Restores a trashed object to its safe pre-trash status; never `publish` or `future`. |
 
 A WPCB capability never grants access by itself. Operations also enforce the
 configured policy and the matching native WordPress type or object capability.
@@ -370,7 +371,30 @@ Moves one current object to reversible WordPress trash. It requires:
 The ability rejects `trash`, `auto-draft`, and `inherit` source states. It also
 fails closed with `wpcb_trash_unavailable` when WordPress trash retention is
 disabled, because `wp_trash_post()` could otherwise fall back to permanent
-deletion. Trash restoration and permanent deletion are not exposed.
+deletion. Permanent deletion is not exposed; trash restoration is a separate
+ability below.
+
+### `wp-content-bridge/restore-trashed-content`
+
+Restores one currently-trashed object. It requires:
+
+- global content writes enabled;
+- the same separate trash switch `trash-content` requires;
+- Read and Trash policy for the object's post type;
+- `wpcb_delete_content`;
+- native `delete_post` for the object;
+- a current `version_token`.
+
+The ability requires the target's current status to be `trash`; any other
+status is the non-enumerating `wpcb_invalid_state` failure. WordPress records
+the pre-trash status in `_wp_trash_meta_status`. The ability restores to that
+recorded status only when it is `draft`, `pending`, or `private`; a missing,
+unparseable, or `publish`/`future` recorded status all fall back to `draft`.
+**It can never restore to `publish` or `future`** — that remains the separate,
+still-unimplemented `transition-content-status` contract, gated behind the
+publication switch and `wpcb_publish_content`. There is no preview intent: the
+caller already holds the one input it sent and gets back one status it could
+not have derived itself, which does not clear the bar for a preview Ability.
 
 ## Write safety and side effects
 

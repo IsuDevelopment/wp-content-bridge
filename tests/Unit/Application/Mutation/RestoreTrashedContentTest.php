@@ -1,6 +1,6 @@
 <?php
 /**
- * Trash-content use-case tests.
+ * Restore-trashed-content use-case tests.
  *
  * @package IsuDev\WPContentBridgeTests
  */
@@ -18,7 +18,7 @@ use IsuDev\WPContentBridge\Application\Mutation\ContentTrashRepository;
 use IsuDev\WPContentBridge\Application\Mutation\MutationConflict;
 use IsuDev\WPContentBridge\Application\Mutation\MutationForbidden;
 use IsuDev\WPContentBridge\Application\Mutation\MutationInvalidState;
-use IsuDev\WPContentBridge\Application\Mutation\TrashContent;
+use IsuDev\WPContentBridge\Application\Mutation\RestoreTrashedContent;
 use IsuDev\WPContentBridge\Application\Mutation\TrashUnavailable;
 use IsuDev\WPContentBridge\Domain\ContentAccess\ContentTypeDefinition;
 use IsuDev\WPContentBridge\Domain\Mutation\MutationResult;
@@ -29,24 +29,24 @@ use PHPUnit\Framework\TestCase;
 /**
  * Verifies policy, state, concurrency, availability, write, and audit ordering.
  */
-final class TrashContentTest extends TestCase {
+final class RestoreTrashedContentTest extends TestCase {
 
 	private const CURRENT = 'abcdef0123456789:2026-07-21 12:00:00';
 	private const STALE   = '0000000000000000:2026-07-20 12:00:00';
 
 	/**
-	 * A permitted current target is trashed and audited once.
+	 * A permitted trashed target is restored and audited once.
 	 *
 	 * @return void
 	 */
-	public function test_trashes_current_target_and_records_success(): void {
-		$repository = $this->repository( 'draft', true );
+	public function test_restores_trashed_target_and_records_success(): void {
+		$repository = $this->repository( 'trash', true );
 		$audit      = $this->audit();
-		$result     = ( new TrashContent( $this->manager( true ), $repository, $audit ) )->execute( $this->input(), 7 );
+		$result     = ( new RestoreTrashedContent( $this->manager( true ), $repository, $audit ) )->execute( $this->input(), 7 );
 
-		self::assertSame( 'trash', $result->status );
+		self::assertSame( 'draft', $result->status );
 		self::assertSame( array( 'status' ), $result->changed_fields );
-		self::assertSame( 1, $repository->trash_calls );
+		self::assertSame( 1, $repository->untrash_calls );
 		self::assertCount( 1, $audit->events );
 		self::assertSame( 'success', $audit->events[0]->outcome );
 		self::assertSame( array( 'status' ), $audit->events[0]->changed_fields );
@@ -58,14 +58,14 @@ final class TrashContentTest extends TestCase {
 	 * @return void
 	 */
 	public function test_policy_denial_prevents_write(): void {
-		$repository = $this->repository( 'draft', true );
+		$repository = $this->repository( 'trash', true );
 		$audit      = $this->audit();
 		$this->expectException( MutationForbidden::class );
 
 		try {
-			( new TrashContent( $this->manager( false ), $repository, $audit ) )->execute( $this->input(), 7 );
+			( new RestoreTrashedContent( $this->manager( false ), $repository, $audit ) )->execute( $this->input(), 7 );
 		} finally {
-			self::assertSame( 0, $repository->trash_calls );
+			self::assertSame( 0, $repository->untrash_calls );
 			self::assertSame( 'denied', $audit->events[0]->outcome );
 		}
 	}
@@ -76,28 +76,28 @@ final class TrashContentTest extends TestCase {
 	 * @return void
 	 */
 	public function test_stale_token_conflicts(): void {
-		$repository = $this->repository( 'draft', true );
+		$repository = $this->repository( 'trash', true );
 		$audit      = $this->audit();
 		$this->expectException( MutationConflict::class );
 
 		try {
-			( new TrashContent( $this->manager( true ), $repository, $audit ) )->execute( $this->input( self::STALE ), 7 );
+			( new RestoreTrashedContent( $this->manager( true ), $repository, $audit ) )->execute( $this->input( self::STALE ), 7 );
 		} finally {
-			self::assertSame( 0, $repository->trash_calls );
+			self::assertSame( 0, $repository->untrash_calls );
 			self::assertSame( 'conflict', $audit->events[0]->outcome );
 		}
 	}
 
 	/**
-	 * Already-trashed and internal states are rejected.
+	 * Any state other than `trash` is rejected.
 	 *
 	 * @return void
 	 */
 	public function test_rejects_invalid_source_state(): void {
-		$repository = $this->repository( 'trash', true );
+		$repository = $this->repository( 'draft', true );
 		$this->expectException( MutationInvalidState::class );
 
-		( new TrashContent( $this->manager( true ), $repository, $this->audit() ) )->execute( $this->input(), 7 );
+		( new RestoreTrashedContent( $this->manager( true ), $repository, $this->audit() ) )->execute( $this->input(), 7 );
 	}
 
 	/**
@@ -106,14 +106,14 @@ final class TrashContentTest extends TestCase {
 	 * @return void
 	 */
 	public function test_disabled_wordpress_trash_fails_closed(): void {
-		$repository = $this->repository( 'draft', false );
+		$repository = $this->repository( 'trash', false );
 		$audit      = $this->audit();
 		$this->expectException( TrashUnavailable::class );
 
 		try {
-			( new TrashContent( $this->manager( true ), $repository, $audit ) )->execute( $this->input(), 7 );
+			( new RestoreTrashedContent( $this->manager( true ), $repository, $audit ) )->execute( $this->input(), 7 );
 		} finally {
-			self::assertSame( 0, $repository->trash_calls );
+			self::assertSame( 0, $repository->untrash_calls );
 			self::assertSame( 'wpcb_trash_unavailable', $audit->events[0]->error_code );
 		}
 	}
@@ -179,16 +179,16 @@ final class TrashContentTest extends TestCase {
 	 *
 	 * @param string $status    Current status.
 	 * @param bool   $supported Whether reversible trash is enabled.
-	 * @return ContentTrashRepository&object{trash_calls: int}
+	 * @return ContentTrashRepository&object{untrash_calls: int}
 	 */
 	private function repository( string $status, bool $supported ): ContentTrashRepository {
 		return new class( $status, $supported, self::CURRENT ) implements ContentTrashRepository {
 			/**
-			 * Number of trash writes.
+			 * Number of untrash writes.
 			 *
 			 * @var int
 			 */
-			public int $trash_calls = 0;
+			public int $untrash_calls = 0;
 
 			/**
 			 * Creates the deterministic repository fake.
@@ -219,24 +219,24 @@ final class TrashContentTest extends TestCase {
 			}
 
 			/**
-			 * Records one trash call and returns its result.
-			 *
-			 * @param int $post_id Target post ID.
-			 * @return MutationResult
-			 */
-			public function trash( int $post_id ): MutationResult {
-				++$this->trash_calls;
-
-				return new MutationResult( $post_id, 'post', 'trash', new VersionToken( 'fedcba9876543210', '2026-07-21 12:01:00' ), array( 'status' ), false );
-			}
-
-			/**
 			 * Unused by this use case; present only to satisfy the port.
 			 *
 			 * @param int $post_id Target post ID.
 			 * @return MutationResult
 			 */
+			public function trash( int $post_id ): MutationResult {
+				return new MutationResult( $post_id, 'post', 'trash', new VersionToken( 'fedcba9876543210', '2026-07-21 12:01:00' ), array( 'status' ), false );
+			}
+
+			/**
+			 * Records one untrash call and returns its result.
+			 *
+			 * @param int $post_id Target post ID.
+			 * @return MutationResult
+			 */
 			public function untrash( int $post_id ): MutationResult {
+				++$this->untrash_calls;
+
 				return new MutationResult( $post_id, 'post', 'draft', new VersionToken( 'fedcba9876543210', '2026-07-21 12:01:00' ), array( 'status' ), false );
 			}
 		};

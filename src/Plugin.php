@@ -15,6 +15,7 @@ use IsuDev\WPContentBridge\Adapter\Abilities\CustomSchemaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\MediaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\MutationAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\PatternAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\RestoreTrashedContentAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\SeoAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\ServiceSchemaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\TrashAbilities;
@@ -30,6 +31,7 @@ use IsuDev\WPContentBridge\Application\Mutation\PreviewContentUpdate;
 use IsuDev\WPContentBridge\Application\Mutation\PreviewCustomSchema;
 use IsuDev\WPContentBridge\Application\Mutation\PreviewSeoUpdate;
 use IsuDev\WPContentBridge\Application\Mutation\PreviewServiceSchema;
+use IsuDev\WPContentBridge\Application\Mutation\RestoreTrashedContent;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateContent;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateCustomSchema;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateSeo;
@@ -192,8 +194,12 @@ final class Plugin {
 			}
 
 			if ( get_option( Installer::TRASH_ENABLED_OPTION ) ) {
+				$trash_repository = new WordPressContentTrashRepository();
 				( new TrashAbilities(
-					new TrashContent( $manager, new WordPressContentTrashRepository(), $audit_log )
+					new TrashContent( $manager, $trash_repository, $audit_log )
+				) )->register_hooks();
+				( new RestoreTrashedContentAbilities(
+					new RestoreTrashedContent( $manager, $trash_repository, $audit_log )
 				) )->register_hooks();
 			}
 		}

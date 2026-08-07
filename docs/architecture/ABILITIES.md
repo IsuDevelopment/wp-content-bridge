@@ -213,15 +213,17 @@ Annotations: read-only, non-destructive, idempotent.
 
 ## Write abilities
 
-`create-draft`, `update-content`, `update-seo`, `update-service-schema`, and
-`trash-content` are **implemented and reachable** writes. Service-schema read
-and preview are separate read-only intents under the same registration gate.
+`create-draft`, `update-content`, `update-seo`, `update-service-schema`,
+`trash-content`, and `restore-trashed-content` are **implemented and
+reachable** writes. Service-schema read and preview are separate read-only
+intents under the same registration gate.
 The first three writes are
 registered when
 `get_option( Installer::WRITES_ENABLED_OPTION )` (`wpcb_writes_enabled`) is
 truthy. All Service-schema intents additionally require the compatible standalone
-IsuDev Schema Extended public API to be loaded, while `trash-content`
-additionally requires `wpcb_trash_enabled`. An ability
+IsuDev Schema Extended public API to be loaded, while `trash-content` and
+`restore-trashed-content` additionally require `wpcb_trash_enabled` —
+restoration is part of the trash feature, not a separate flag. An ability
 that is not registered is invisible to Abilities discovery and to any MCP
 projection. Every write additionally requires its plugin capability
 (`wpcb_edit_content`, `wpcb_manage_seo`, or `wpcb_delete_content`), the native
@@ -242,8 +244,11 @@ is unsupported.
 `wpcb_custom_schema_unavailable` for an absent, incompatible, or unsupported
 provider and `wpcb_invalid_custom_schema` with bounded diagnostics when enabled
 JSON fails provider validation.
+`restore-trashed-content` shares `trash-content`'s error-code set except
+`wpcb_invalid_blocks`, and reuses `wpcb_invalid_state`/`wpcb_trash_unavailable`
+for a non-`trash` source state and disabled trash retention, respectively.
 
-**MCP projection:** the current reference profile contains all 18 implemented
+**MCP projection:** the current reference profile contains all 21 implemented
 ability IDs and intersects that closed allowlist
 with the abilities registered in the current request. Feature flags therefore
 still remove disabled operations from discovery, and Service/Custom Schema
@@ -514,10 +519,47 @@ fails with `wpcb_trash_unavailable` when WordPress trash retention is disabled,
 so `wp_trash_post()` can never fall back to permanent deletion. Success returns
 the standard mutation envelope with `status: trash` and `changed_fields:
 ["status"]`. WordPress revision saving, redacted audit, and post-scoped cache
-invalidation run through the mutation infrastructure. Restoration and permanent
-deletion are not included.
+invalidation run through the mutation infrastructure. Permanent deletion is not
+included; see `restore-trashed-content` below for the reverse operation.
 
 Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
+
+### `wp-content-bridge/restore-trashed-content`
+
+The mirror image of `trash-content` — same registration gate
+(`wpcb_writes_enabled` and `wpcb_trash_enabled`), same capability shape
+(`wpcb_delete_content` plus native `delete_post`), same per-post-type Trash
+policy, same optimistic-concurrency and audit/cache-invalidation
+infrastructure. It exists to undo `trash-content`, which shipped in 0.1.5 with
+no reverse operation.
+
+Inputs:
+
+- `post_id: integer` (required), currently in `trash`;
+- `version_token: string` (required), from `get-content`.
+
+The ability requires the target's current status to be `trash`; any other
+status is the non-enumerating `wpcb_invalid_state` failure. WordPress stores
+the pre-trash status in `_wp_trash_meta_status`. The ability restores to that
+recorded status only when it is one of `draft`, `pending`, or `private`; a
+missing, unparseable, or `publish`/`future` recorded status all fall back to
+`draft`. **Restoration can never reach `publish` or `future`** — republication
+is a separate, still-unimplemented contract
+(`transition-content-status`, `0.6.0`) gated behind the publication switch and
+`wpcb_publish_content`, and this ability must never become a way around that
+gate. The adapter sets the intended status explicitly through the
+`wp_untrash_post_status` filter rather than relying on `wp_untrash_post()`'s
+own default (which has changed across WordPress versions), and verifies the
+effective status on re-read before returning it. Success returns the standard
+mutation envelope with the resulting `status` (`draft`, `pending`, or
+`private`) and `changed_fields: ["status"]`.
+
+There is no preview intent. A caller already knows the one post ID it is
+sending; the response reports a status it could not have derived or changed
+the value of, which fails the roadmap's preview justification test (see "When
+a preview Ability is justified" in `docs/plan/EDITORIAL_OPERATIONS_ROADMAP.md`).
+
+Annotations: `readonly: false`, `destructive: false`, `idempotent: false`.
 
 ### `wp-content-bridge/transition-content-status` (planned)
 

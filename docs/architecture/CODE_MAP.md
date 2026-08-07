@@ -246,7 +246,7 @@ get-editorial-context Ability
 create-draft / update-content / preview-update-content / update-seo /
 preview-update-seo / get-service-schema / preview-update-service-schema /
 update-service-schema / get-custom-schema / preview-update-custom-schema /
-update-custom-schema / trash-content Ability
+update-custom-schema / trash-content / restore-trashed-content Ability
   -> plugin capability (`wpcb_edit_content`) + native object capability
      (`create_posts`/`edit_posts` or `edit_post`) — MutationAbilities
      permission callback
@@ -312,11 +312,17 @@ Files:
 - `src/Application/Mutation/SeoImageRepository.php` — narrow port that resolves
   an authorized WordPress image attachment ID to its public URL before an SEO
   write; `SeoImageUnavailable` is its non-enumerating failure boundary.
-- `src/Domain/Mutation/TrashInput.php` and `MutationTarget.php` — strict trash
-  request plus current target state/version snapshot.
-- `src/Application/Mutation/ContentTrashRepository.php` and
-  `TrashContent.php` — reversible-trash port and policy/concurrency/audit use
-  case.
+- `src/Domain/Mutation/TrashInput.php`, `RestoreInput.php`, and
+  `MutationTarget.php` — strict trash/restore requests (identical shape: exact
+  `post_id` + `version_token`) plus current target state/version snapshot.
+- `src/Application/Mutation/ContentTrashRepository.php`, `TrashContent.php`,
+  and `RestoreTrashedContent.php` — reversible-trash port
+  (`trash_supported`/`target`/`trash`/`untrash`) and the mirrored
+  policy/concurrency/audit use cases. `RestoreTrashedContent` gates on the same
+  `ContentOperation::TRASH` policy as `TrashContent` — restoration is part of
+  the trash feature, not a new operation — and requires the target's current
+  status to be exactly `trash` (any other status is the non-enumerating
+  `wpcb_invalid_state` failure, the inverse of `TrashContent`'s check).
 - `src/Application/Mutation/IdempotencyStore.php` — port
   (`find`/`remember`) for create-draft's idempotency-key replay.
 - `src/Application/Mutation/MutationForbidden.php` and `MutationWriteFailed.php`
@@ -357,7 +363,12 @@ Files:
   URL without accepting caller-controlled URLs or filesystem paths.
 - `src/Infrastructure/WordPress/WordPressContentTrashRepository.php` — checks
   trash retention before calling `wp_trash_post`, attempts a pre-trash
-  revision, and verifies the resulting `trash` state.
+  revision, and verifies the resulting `trash` state. Its `untrash()` method
+  computes the safe restore status (the recorded `_wp_trash_meta_status` only
+  when it is `draft`/`pending`/`private`, `draft` otherwise), forces that exact
+  status through the `wp_untrash_post_status` filter rather than trusting
+  `wp_untrash_post()`'s own default, and verifies the resulting status is never
+  `publish`/`future` before returning.
 - `src/Infrastructure/WordPress/WordPressTransientIdempotencyStore.php` —
   per-user (`wpcb_idem_{user_id}_{md5(key)}`), 24h-TTL transient; recovers
   both a real int (persistent object-cache backends) and a stringified
@@ -407,11 +418,17 @@ Files:
 - `src/Adapter/Abilities/TrashAbilities.php` — separately registers
   `trash-content` only through the composition root's write+trash flag gate and
   enforces `wpcb_delete_content` plus native `delete_post`.
+- `src/Adapter/Abilities/RestoreTrashedContentAbilities.php` — the mirror image
+  of `TrashAbilities`: same flag gate, same `can_restore` permission shape
+  (`wpcb_delete_content` plus native `delete_post`), same stable `WP_Error`
+  mapping. No preview — it fails the roadmap's preview justification test.
 - `src/Adapter/Abilities/AbilitySchemas.php` — adds
   `create_draft_input/output`, `update_content_input/output`, the
-  additive `version_token` property on `get_output()`, and
-  `preview_content_input/output`/`preview_seo_input/output` (ADR 0021); each
-  preview input schema is exactly its matching update input schema.
+  additive `version_token` property on `get_output()`,
+  `preview_content_input/output`/`preview_seo_input/output` (ADR 0021), and
+  `restore_trashed_content_input/output`; each preview input schema is exactly
+  its matching update input schema, and `restore_trashed_content_input()` is
+  exactly `trash_content_input()`'s shape.
 - `src/Adapter/Admin/ContentAccessSettingsPage.php` — adds the global "Enable
   content writes" checkbox bound to `Installer::WRITES_ENABLED_OPTION`.
 - `tests/Unit/Domain/Mutation/` and `tests/Unit/Application/Mutation/` —
@@ -435,7 +452,7 @@ Files:
   previewed state, and that stale tokens are rejected before any mutation.
 
 **MCP projection:** the current source documents a closed profile containing all
-20 implemented abilities. The reference Kormas site owns this boundary as a
+21 implemented abilities. The reference Kormas site owns this boundary as a
 Composer-installed MU-plugin and passes only profile entries that are currently
 registered. Service and Custom Schema entries therefore disappear automatically
 when their standalone provider contract or global writes are inactive. OAuth grants remain a

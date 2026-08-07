@@ -1436,6 +1436,44 @@ final class AbilitySchemas {
 	}
 
 	/**
+	 * Returns the restore-trashed-content input schema. Identical shape to
+	 * the trash input — same post ID plus concurrency token.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function restore_trashed_content_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'post_id', 'version_token' ),
+			'properties'           => array(
+				'post_id'       => array(
+					'description' => 'Target post ID currently in trash.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+				),
+				'version_token' => array(
+					'description' => 'Optimistic-concurrency token from get-content.',
+					'type'        => 'string',
+					'minLength'   => 18,
+					'maxLength'   => 191,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the restore-trashed-content result schema. The resulting
+	 * `status` is always `draft`, `pending`, or `private` — never `publish`
+	 * or `future`.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function restore_trashed_content_output(): array {
+		return self::mutation_output();
+	}
+
+	/**
 	 * Returns the strict effective Service configuration document.
 	 *
 	 * @return array<string, mixed>

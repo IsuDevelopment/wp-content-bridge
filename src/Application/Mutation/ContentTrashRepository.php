@@ -40,4 +40,15 @@ interface ContentTrashRepository {
 	 * @throws MutationWriteFailed When WordPress rejects or bypasses trash.
 	 */
 	public function trash( int $post_id ): MutationResult;
+
+	/**
+	 * Restores one trashed post and verifies the resulting state is never
+	 * `publish` or `future`.
+	 *
+	 * @param int $post_id Target post ID.
+	 * @return MutationResult
+	 * @throws MutationWriteFailed When WordPress rejects the restore or would
+	 *                              land the post on an unsafe status.
+	 */
+	public function untrash( int $post_id ): MutationResult;
 }
