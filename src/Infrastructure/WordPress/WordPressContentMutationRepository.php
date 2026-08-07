@@ -68,9 +68,9 @@ final class WordPressContentMutationRepository implements ContentMutationReposit
 			array(
 				'post_type'    => $input->post_type,
 				'post_status'  => 'draft',
-				'post_title'   => $input->title,
-				'post_content' => $input->block_markup,
-				'post_excerpt' => (string) $input->excerpt,
+				'post_title'   => self::slashed( $input->title ),
+				'post_content' => self::slashed( $input->block_markup ),
+				'post_excerpt' => self::slashed( (string) $input->excerpt ),
 			),
 			true
 		);
@@ -96,13 +96,13 @@ final class WordPressContentMutationRepository implements ContentMutationReposit
 	public function update( int $post_id, ContentUpdate $update ): MutationResult {
 		$args = array( 'ID' => $post_id );
 		if ( null !== $update->title ) {
-			$args['post_title'] = $update->title;
+			$args['post_title'] = self::slashed( $update->title );
 		}
 		if ( null !== $update->block_markup ) {
-			$args['post_content'] = $update->block_markup;
+			$args['post_content'] = self::slashed( $update->block_markup );
 		}
 		if ( null !== $update->excerpt ) {
-			$args['post_excerpt'] = $update->excerpt;
+			$args['post_excerpt'] = self::slashed( $update->excerpt );
 		}
 
 		$result = wp_update_post( $args, true );
@@ -116,6 +116,22 @@ final class WordPressContentMutationRepository implements ContentMutationReposit
 		}
 
 		return $this->built_result( $post_id, false, $update->changed_fields() );
+	}
+
+	/**
+	 * Slashes a value for the post APIs, which unslash whatever they are given.
+	 *
+	 * `wp_insert_post()` and `wp_update_post()` expect slashed data and call
+	 * `wp_unslash()` on it, so passing raw input silently strips every
+	 * backslash. That corrupts block markup: `serialize_block()` escapes
+	 * quotes inside a block's attribute JSON as `"`, which would be
+	 * stored as a literal `u0022` and read back as broken text.
+	 *
+	 * @param string $value Raw value.
+	 * @return string
+	 */
+	private static function slashed( string $value ): string {
+		return wp_slash( $value );
 	}
 
 	/**

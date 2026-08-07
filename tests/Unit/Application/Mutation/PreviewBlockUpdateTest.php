@@ -445,6 +445,20 @@ final class PreviewBlockUpdateTest extends TestCase {
 
 				return $this->spliced_content;
 			}
+
+			/**
+			 * Not used by these tests.
+			 *
+			 * @param string $content    Unused raw content.
+			 * @param array  $path       Unused path.
+			 * @param array  $attributes Unused attributes overlay.
+			 * @throws RuntimeException Always; this fake is not exercised by these tests.
+			 * @phpstan-param list<int> $path
+			 * @phpstan-param array<int|string, mixed> $attributes
+			 */
+			public function merge_attributes( string $content, array $path, array $attributes ): string {
+				throw new RuntimeException( 'not used' );
+			}
 		};
 	}
 
@@ -486,6 +500,20 @@ final class PreviewBlockUpdateTest extends TestCase {
 			 * @phpstan-param list<int> $path
 			 */
 			public function splice( string $content, array $path, string $block_markup ): string {
+				throw new RuntimeException( 'not used' );
+			}
+
+			/**
+			 * Not used by these tests.
+			 *
+			 * @param string $content    Unused raw content.
+			 * @param array  $path       Unused path.
+			 * @param array  $attributes Unused attributes overlay.
+			 * @throws RuntimeException Always; this fake is not exercised by these tests.
+			 * @phpstan-param list<int> $path
+			 * @phpstan-param array<int|string, mixed> $attributes
+			 */
+			public function merge_attributes( string $content, array $path, array $attributes ): string {
 				throw new RuntimeException( 'not used' );
 			}
 		};

@@ -1,6 +1,6 @@
 <?php
 /**
- * Unit tests for the UpdateBlock use case.
+ * Unit tests for the UpdateBlockAttributes use case.
  *
  * @package IsuDev\WPContentBridge\Tests
  */
@@ -15,17 +15,15 @@ use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessSettingsReposi
 use IsuDev\WPContentBridge\Application\ContentAccess\ContentTypeCatalog;
 use IsuDev\WPContentBridge\Application\Mutation\AuditEvent;
 use IsuDev\WPContentBridge\Application\Mutation\AuditLog;
-use IsuDev\WPContentBridge\Application\Mutation\BlockMarkupValidator;
 use IsuDev\WPContentBridge\Application\Mutation\BlockMismatch;
 use IsuDev\WPContentBridge\Application\Mutation\BlockPathNotFound;
 use IsuDev\WPContentBridge\Application\Mutation\BlockTreeSplicer;
 use IsuDev\WPContentBridge\Application\Mutation\ContentMutationRepository;
 use IsuDev\WPContentBridge\Application\Mutation\ContentSnapshotRepository;
-use IsuDev\WPContentBridge\Application\Mutation\InvalidBlockMarkup;
 use IsuDev\WPContentBridge\Application\Mutation\MutationConflict;
 use IsuDev\WPContentBridge\Application\Mutation\MutationForbidden;
 use IsuDev\WPContentBridge\Application\Mutation\MutationWriteFailed;
-use IsuDev\WPContentBridge\Application\Mutation\UpdateBlock;
+use IsuDev\WPContentBridge\Application\Mutation\UpdateBlockAttributes;
 use IsuDev\WPContentBridge\Domain\Content\BlockPathLookup;
 use IsuDev\WPContentBridge\Domain\ContentAccess\ContentTypeDefinition;
 use IsuDev\WPContentBridge\Domain\Mutation\ContentUpdate;
@@ -37,32 +35,34 @@ use PHPUnit\Framework\TestCase;
 use RuntimeException;
 
 /**
- * Verifies the update-block write flow: policy, optimistic concurrency, path
- * resolution, block-identity assertion, block validation, write, and the
- * exactly-one-audit-row-per-attempt guarantee. A block path must never enter
- * the audit row, which records field names only.
+ * Verifies the update-block-attributes write flow: policy, optimistic
+ * concurrency, path resolution, block-identity assertion, the freeform-node
+ * fail-closed rule, the bounded attributes overlay, and the
+ * exactly-one-audit-row-per-attempt guarantee. Neither a block path nor an
+ * attribute name may ever enter the audit row, which records field names
+ * only.
  */
-final class UpdateBlockTest extends TestCase {
+final class UpdateBlockAttributesTest extends TestCase {
 
 	private const CURRENT = 'abcdef0123456789:2026-07-20 00:00:00';
 	private const STALE   = '0000000000000000:2026-07-19 00:00:00';
-	private const CONTENT = '<!-- wp:paragraph --><p>Old</p><!-- /wp:paragraph -->';
+	private const CONTENT = '<!-- wp:isudev/icon-link {"label":"Old"} /-->';
 
 	/**
 	 * A permitted, valid request with a matching token, valid path, and
-	 * matching block name splices the replacement, writes, and records one
-	 * success row whose changed_fields is exactly ["content"].
+	 * matching block name is handed to the splicer's merge_attributes()
+	 * unchanged, writes, and records one success row whose changed_fields is
+	 * exactly ["content"] — never the path or an attribute name.
 	 */
-	public function test_updates_and_records_success(): void {
+	public function test_merges_and_records_success(): void {
 		$audit      = $this->audit_spy();
 		$repository = $this->repository( self::CURRENT, self::CONTENT );
-		$splicer    = $this->splicer( new BlockPathLookup( 'core/paragraph' ), '<!-- wp:paragraph --><p>New</p><!-- /wp:paragraph -->' );
-		$use_case   = new UpdateBlock(
+		$splicer    = $this->splicer( new BlockPathLookup( 'isudev/icon-link' ), 'merged-content' );
+		$use_case   = new UpdateBlockAttributes(
 			$this->manager_allowing_update( true ),
 			$repository,
 			$repository,
 			$splicer,
-			$this->passing_validator(),
 			$audit
 		);
 
@@ -71,14 +71,16 @@ final class UpdateBlockTest extends TestCase {
 				'post_id'             => 42,
 				'version_token'       => self::CURRENT,
 				'path'                => array( 0 ),
-				'expected_block_name' => 'core/paragraph',
-				'block_markup'        => '<!-- wp:paragraph --><p>New</p><!-- /wp:paragraph -->',
+				'expected_block_name' => 'isudev/icon-link',
+				'attributes'          => array( 'label' => 'New label' ),
 			),
 			5
 		);
 
 		self::assertFalse( $result->created );
 		self::assertSame( array( 'content' ), $result->changed_fields );
+		self::assertSame( 1, $splicer->merge_calls );
+		self::assertSame( array( 'label' => 'New label' ), $splicer->received_attributes );
 		self::assertCount( 1, $audit->events );
 		self::assertSame( 'success', $audit->events[0]->outcome );
 		self::assertSame( array( 'content' ), $audit->events[0]->changed_fields );
@@ -87,52 +89,19 @@ final class UpdateBlockTest extends TestCase {
 	}
 
 	/**
-	 * A freeform node addressed with expected_block_name: null succeeds,
-	 * proving null is a legal assertion, not a missing-value default.
+	 * A null value in the overlay is passed through to the splicer intact,
+	 * proving the use case never strips it: removal is the splicer's
+	 * contract to fulfil, not something the use case may silently drop.
 	 */
-	public function test_freeform_node_asserted_with_null_succeeds(): void {
+	public function test_null_value_removes_a_key(): void {
 		$audit      = $this->audit_spy();
 		$repository = $this->repository( self::CURRENT, self::CONTENT );
-		$splicer    = $this->splicer( new BlockPathLookup( null ), 'replacement' );
-		$use_case   = new UpdateBlock(
+		$splicer    = $this->splicer( new BlockPathLookup( 'isudev/icon-link' ), 'merged-content' );
+		$use_case   = new UpdateBlockAttributes(
 			$this->manager_allowing_update( true ),
 			$repository,
 			$repository,
 			$splicer,
-			$this->passing_validator(),
-			$audit
-		);
-
-		$result = $use_case->execute(
-			array(
-				'post_id'             => 42,
-				'version_token'       => self::CURRENT,
-				'path'                => array( 1 ),
-				'expected_block_name' => null,
-				'block_markup'        => 'replacement',
-			),
-			5
-		);
-
-		self::assertSame( array( 'content' ), $result->changed_fields );
-		self::assertTrue( $repository->updated );
-	}
-
-	/**
-	 * An empty block_markup deletes the subtree and skips validation
-	 * entirely (the validator must not be called for an empty replacement).
-	 */
-	public function test_empty_markup_deletes_and_skips_validation(): void {
-		$audit      = $this->audit_spy();
-		$repository = $this->repository( self::CURRENT, self::CONTENT );
-		$splicer    = $this->splicer( new BlockPathLookup( 'core/paragraph' ), '' );
-		$validator  = $this->passing_validator();
-		$use_case   = new UpdateBlock(
-			$this->manager_allowing_update( true ),
-			$repository,
-			$repository,
-			$splicer,
-			$validator,
 			$audit
 		);
 
@@ -141,14 +110,136 @@ final class UpdateBlockTest extends TestCase {
 				'post_id'             => 42,
 				'version_token'       => self::CURRENT,
 				'path'                => array( 0 ),
-				'expected_block_name' => 'core/paragraph',
-				'block_markup'        => '',
+				'expected_block_name' => 'isudev/icon-link',
+				'attributes'          => array(
+					'label'      => 'Kept',
+					'deprecated' => null,
+				),
 			),
 			5
 		);
 
-		self::assertSame( 0, $validator->validate_calls );
+		self::assertSame(
+			array(
+				'label'      => 'Kept',
+				'deprecated' => null,
+			),
+			$splicer->received_attributes
+		);
 		self::assertTrue( $repository->updated );
+	}
+
+	/**
+	 * A freeform node addressed with expected_block_name: null passes the
+	 * identity assertion (both sides are null) but still fails closed,
+	 * because a freeform node has no attributes to merge into. No write
+	 * occurs.
+	 */
+	public function test_freeform_node_fails_closed(): void {
+		$audit      = $this->audit_spy();
+		$repository = $this->repository( self::CURRENT, self::CONTENT );
+		$splicer    = $this->splicer( new BlockPathLookup( null ), 'unused' );
+		$use_case   = new UpdateBlockAttributes(
+			$this->manager_allowing_update( true ),
+			$repository,
+			$repository,
+			$splicer,
+			$audit
+		);
+
+		try {
+			$use_case->execute(
+				array(
+					'post_id'             => 42,
+					'version_token'       => self::CURRENT,
+					'path'                => array( 1 ),
+					'expected_block_name' => null,
+					'attributes'          => array( 'label' => 'New' ),
+				),
+				5
+			);
+			self::fail( 'Expected BlockMismatch.' );
+		} catch ( BlockMismatch $error ) {
+			self::assertSame( 'wpcb_block_mismatch', $error->error_code() );
+		}
+
+		self::assertFalse( $repository->updated );
+		self::assertSame( 0, $splicer->merge_calls );
+		self::assertSame( 'invalid', $audit->events[0]->outcome );
+		self::assertSame( 'wpcb_block_mismatch', $audit->events[0]->error_code );
+	}
+
+	/**
+	 * A wrong expected_block_name throws BlockMismatch and does not write,
+	 * even though the version token and path both resolved successfully.
+	 */
+	public function test_block_mismatch_does_not_write(): void {
+		$audit      = $this->audit_spy();
+		$repository = $this->repository( self::CURRENT, self::CONTENT );
+		$splicer    = $this->splicer( new BlockPathLookup( 'core/heading' ), 'unused' );
+		$use_case   = new UpdateBlockAttributes(
+			$this->manager_allowing_update( true ),
+			$repository,
+			$repository,
+			$splicer,
+			$audit
+		);
+
+		try {
+			$use_case->execute(
+				array(
+					'post_id'             => 42,
+					'version_token'       => self::CURRENT,
+					'path'                => array( 0 ),
+					'expected_block_name' => 'isudev/icon-link',
+					'attributes'          => array( 'label' => 'New' ),
+				),
+				5
+			);
+			self::fail( 'Expected BlockMismatch.' );
+		} catch ( BlockMismatch $error ) {
+			self::assertSame( 'wpcb_block_mismatch', $error->error_code() );
+		}
+
+		self::assertFalse( $repository->updated );
+		self::assertSame( 'invalid', $audit->events[0]->outcome );
+		self::assertSame( 'wpcb_block_mismatch', $audit->events[0]->error_code );
+	}
+
+	/**
+	 * An out-of-range path throws BlockPathNotFound and does not write.
+	 */
+	public function test_path_not_found_does_not_write(): void {
+		$audit      = $this->audit_spy();
+		$repository = $this->repository( self::CURRENT, self::CONTENT );
+		$splicer    = $this->splicer( null, 'unused' );
+		$use_case   = new UpdateBlockAttributes(
+			$this->manager_allowing_update( true ),
+			$repository,
+			$repository,
+			$splicer,
+			$audit
+		);
+
+		try {
+			$use_case->execute(
+				array(
+					'post_id'             => 42,
+					'version_token'       => self::CURRENT,
+					'path'                => array( 99 ),
+					'expected_block_name' => 'isudev/icon-link',
+					'attributes'          => array( 'label' => 'New' ),
+				),
+				5
+			);
+			self::fail( 'Expected BlockPathNotFound.' );
+		} catch ( BlockPathNotFound $error ) {
+			self::assertSame( 'wpcb_block_path_not_found', $error->error_code() );
+		}
+
+		self::assertFalse( $repository->updated );
+		self::assertSame( 'invalid', $audit->events[0]->outcome );
+		self::assertSame( 'wpcb_block_path_not_found', $audit->events[0]->error_code );
 	}
 
 	/**
@@ -159,12 +250,11 @@ final class UpdateBlockTest extends TestCase {
 		$audit      = $this->audit_spy();
 		$repository = $this->repository( self::CURRENT, self::CONTENT );
 		$splicer    = $this->unused_splicer();
-		$use_case   = new UpdateBlock(
+		$use_case   = new UpdateBlockAttributes(
 			$this->manager_allowing_update( true ),
 			$repository,
 			$repository,
 			$splicer,
-			$this->passing_validator(),
 			$audit
 		);
 
@@ -174,8 +264,8 @@ final class UpdateBlockTest extends TestCase {
 					'post_id'             => 42,
 					'version_token'       => self::STALE,
 					'path'                => array( 0 ),
-					'expected_block_name' => 'core/paragraph',
-					'block_markup'        => 'anything',
+					'expected_block_name' => 'isudev/icon-link',
+					'attributes'          => array( 'label' => 'New' ),
 				),
 				5
 			);
@@ -192,91 +282,15 @@ final class UpdateBlockTest extends TestCase {
 	}
 
 	/**
-	 * An out-of-range path throws BlockPathNotFound and does not write.
-	 */
-	public function test_path_not_found_does_not_write(): void {
-		$audit      = $this->audit_spy();
-		$repository = $this->repository( self::CURRENT, self::CONTENT );
-		$splicer    = $this->splicer( null, 'unused' );
-		$use_case   = new UpdateBlock(
-			$this->manager_allowing_update( true ),
-			$repository,
-			$repository,
-			$splicer,
-			$this->passing_validator(),
-			$audit
-		);
-
-		try {
-			$use_case->execute(
-				array(
-					'post_id'             => 42,
-					'version_token'       => self::CURRENT,
-					'path'                => array( 99 ),
-					'expected_block_name' => 'core/paragraph',
-					'block_markup'        => 'anything',
-				),
-				5
-			);
-			self::fail( 'Expected BlockPathNotFound.' );
-		} catch ( BlockPathNotFound $error ) {
-			self::assertSame( 'wpcb_block_path_not_found', $error->error_code() );
-		}
-
-		self::assertFalse( $repository->updated );
-		self::assertSame( 'invalid', $audit->events[0]->outcome );
-		self::assertSame( 'wpcb_block_path_not_found', $audit->events[0]->error_code );
-	}
-
-	/**
-	 * A wrong expected_block_name throws BlockMismatch and does not write,
-	 * even though the version token and path both resolved successfully.
-	 */
-	public function test_block_mismatch_does_not_write(): void {
-		$audit      = $this->audit_spy();
-		$repository = $this->repository( self::CURRENT, self::CONTENT );
-		$splicer    = $this->splicer( new BlockPathLookup( 'core/heading' ), 'unused' );
-		$use_case   = new UpdateBlock(
-			$this->manager_allowing_update( true ),
-			$repository,
-			$repository,
-			$splicer,
-			$this->passing_validator(),
-			$audit
-		);
-
-		try {
-			$use_case->execute(
-				array(
-					'post_id'             => 42,
-					'version_token'       => self::CURRENT,
-					'path'                => array( 0 ),
-					'expected_block_name' => 'core/paragraph',
-					'block_markup'        => 'anything',
-				),
-				5
-			);
-			self::fail( 'Expected BlockMismatch.' );
-		} catch ( BlockMismatch $error ) {
-			self::assertSame( 'wpcb_block_mismatch', $error->error_code() );
-		}
-
-		self::assertFalse( $repository->updated );
-		self::assertSame( 'invalid', $audit->events[0]->outcome );
-		self::assertSame( 'wpcb_block_mismatch', $audit->events[0]->error_code );
-	}
-
-	/**
 	 * A missing post throws ContentUnavailable and records one invalid row.
 	 */
 	public function test_missing_post_is_unavailable(): void {
 		$audit    = $this->audit_spy();
-		$use_case = new UpdateBlock(
+		$use_case = new UpdateBlockAttributes(
 			$this->manager_allowing_update( true ),
 			$this->repository( null, self::CONTENT ),
 			$this->repository( null, self::CONTENT ),
 			$this->unused_splicer(),
-			$this->passing_validator(),
 			$audit
 		);
 
@@ -288,8 +302,8 @@ final class UpdateBlockTest extends TestCase {
 					'post_id'             => 42,
 					'version_token'       => self::CURRENT,
 					'path'                => array( 0 ),
-					'expected_block_name' => 'core/paragraph',
-					'block_markup'        => 'anything',
+					'expected_block_name' => 'isudev/icon-link',
+					'attributes'          => array( 'label' => 'New' ),
 				),
 				5
 			);
@@ -301,17 +315,17 @@ final class UpdateBlockTest extends TestCase {
 	}
 
 	/**
-	 * Policy denial throws MutationForbidden and records exactly one denied row.
+	 * Policy denial throws MutationForbidden and records exactly one denied
+	 * row.
 	 */
 	public function test_policy_denial_is_forbidden(): void {
 		$audit      = $this->audit_spy();
 		$repository = $this->repository( self::CURRENT, self::CONTENT );
-		$use_case   = new UpdateBlock(
+		$use_case   = new UpdateBlockAttributes(
 			$this->manager_allowing_update( false ),
 			$repository,
 			$repository,
 			$this->unused_splicer(),
-			$this->passing_validator(),
 			$audit
 		);
 
@@ -323,8 +337,8 @@ final class UpdateBlockTest extends TestCase {
 					'post_id'             => 42,
 					'version_token'       => self::CURRENT,
 					'path'                => array( 0 ),
-					'expected_block_name' => 'core/paragraph',
-					'block_markup'        => 'anything',
+					'expected_block_name' => 'isudev/icon-link',
+					'attributes'          => array( 'label' => 'New' ),
 				),
 				5
 			);
@@ -340,12 +354,11 @@ final class UpdateBlockTest extends TestCase {
 	public function test_invalid_input_records_invalid(): void {
 		$audit      = $this->audit_spy();
 		$repository = $this->repository( self::CURRENT, self::CONTENT );
-		$use_case   = new UpdateBlock(
+		$use_case   = new UpdateBlockAttributes(
 			$this->manager_allowing_update( true ),
 			$repository,
 			$repository,
 			$this->unused_splicer(),
-			$this->passing_validator(),
 			$audit
 		);
 
@@ -356,8 +369,8 @@ final class UpdateBlockTest extends TestCase {
 				array(
 					'post_id'             => 42,
 					'version_token'       => self::CURRENT,
-					'expected_block_name' => 'core/paragraph',
-					'block_markup'        => 'anything',
+					'expected_block_name' => 'isudev/icon-link',
+					'attributes'          => array( 'label' => 'New' ),
 				),
 				5
 			);
@@ -369,23 +382,21 @@ final class UpdateBlockTest extends TestCase {
 	}
 
 	/**
-	 * Invalid replacement block markup throws InvalidBlockMarkup and records
-	 * one invalid row.
+	 * Attributes must be a JSON object; a JSON-array-shaped payload is
+	 * rejected before any read or write.
 	 */
-	public function test_invalid_blocks_records_invalid(): void {
+	public function test_attributes_must_be_an_object_not_a_list(): void {
 		$audit      = $this->audit_spy();
 		$repository = $this->repository( self::CURRENT, self::CONTENT );
-		$splicer    = $this->splicer( new BlockPathLookup( 'core/paragraph' ), 'unused' );
-		$use_case   = new UpdateBlock(
+		$use_case   = new UpdateBlockAttributes(
 			$this->manager_allowing_update( true ),
 			$repository,
 			$repository,
-			$splicer,
-			$this->failing_validator( array( 'block 0: unregistered' ) ),
+			$this->unused_splicer(),
 			$audit
 		);
 
-		$this->expectException( InvalidBlockMarkup::class );
+		$this->expectException( InvalidArgumentException::class );
 
 		try {
 			$use_case->execute(
@@ -393,16 +404,87 @@ final class UpdateBlockTest extends TestCase {
 					'post_id'             => 42,
 					'version_token'       => self::CURRENT,
 					'path'                => array( 0 ),
-					'expected_block_name' => 'core/paragraph',
-					'block_markup'        => '<!-- wp:acme/nope /-->',
+					'expected_block_name' => 'isudev/icon-link',
+					'attributes'          => array( 'first', 'second' ),
 				),
 				5
 			);
 		} finally {
 			self::assertFalse( $repository->updated );
-			self::assertCount( 1, $audit->events );
-			self::assertSame( 'invalid', $audit->events[0]->outcome );
-			self::assertSame( 'wpcb_invalid_blocks', $audit->events[0]->error_code );
+			self::assertSame( 'wpcb_invalid_input', $audit->events[0]->error_code );
+		}
+	}
+
+	/**
+	 * An attributes object with more top-level keys than the bound allows
+	 * is rejected before any read or write.
+	 */
+	public function test_attributes_exceeding_key_bound_is_rejected(): void {
+		$audit      = $this->audit_spy();
+		$repository = $this->repository( self::CURRENT, self::CONTENT );
+		$use_case   = new UpdateBlockAttributes(
+			$this->manager_allowing_update( true ),
+			$repository,
+			$repository,
+			$this->unused_splicer(),
+			$audit
+		);
+
+		$attributes = array();
+		for ( $i = 0; $i < 51; $i++ ) {
+			$attributes[ 'key' . $i ] = $i;
+		}
+
+		$this->expectException( InvalidArgumentException::class );
+
+		try {
+			$use_case->execute(
+				array(
+					'post_id'             => 42,
+					'version_token'       => self::CURRENT,
+					'path'                => array( 0 ),
+					'expected_block_name' => 'isudev/icon-link',
+					'attributes'          => $attributes,
+				),
+				5
+			);
+		} finally {
+			self::assertFalse( $repository->updated );
+			self::assertSame( 'wpcb_invalid_input', $audit->events[0]->error_code );
+		}
+	}
+
+	/**
+	 * An attributes object whose canonical JSON encoding exceeds the byte
+	 * bound is rejected before any read or write.
+	 */
+	public function test_attributes_exceeding_byte_bound_is_rejected(): void {
+		$audit      = $this->audit_spy();
+		$repository = $this->repository( self::CURRENT, self::CONTENT );
+		$use_case   = new UpdateBlockAttributes(
+			$this->manager_allowing_update( true ),
+			$repository,
+			$repository,
+			$this->unused_splicer(),
+			$audit
+		);
+
+		$this->expectException( InvalidArgumentException::class );
+
+		try {
+			$use_case->execute(
+				array(
+					'post_id'             => 42,
+					'version_token'       => self::CURRENT,
+					'path'                => array( 0 ),
+					'expected_block_name' => 'isudev/icon-link',
+					'attributes'          => array( 'label' => str_repeat( 'a', 100001 ) ),
+				),
+				5
+			);
+		} finally {
+			self::assertFalse( $repository->updated );
+			self::assertSame( 'wpcb_invalid_input', $audit->events[0]->error_code );
 		}
 	}
 
@@ -413,13 +495,12 @@ final class UpdateBlockTest extends TestCase {
 	public function test_write_failure_records_failure(): void {
 		$audit      = $this->audit_spy();
 		$repository = $this->failing_repository( self::CURRENT, self::CONTENT );
-		$splicer    = $this->splicer( new BlockPathLookup( 'core/paragraph' ), 'unused' );
-		$use_case   = new UpdateBlock(
+		$splicer    = $this->splicer( new BlockPathLookup( 'isudev/icon-link' ), 'unused' );
+		$use_case   = new UpdateBlockAttributes(
 			$this->manager_allowing_update( true ),
 			$repository,
 			$repository,
 			$splicer,
-			$this->passing_validator(),
 			$audit
 		);
 
@@ -431,8 +512,8 @@ final class UpdateBlockTest extends TestCase {
 					'post_id'             => 42,
 					'version_token'       => self::CURRENT,
 					'path'                => array( 0 ),
-					'expected_block_name' => 'core/paragraph',
-					'block_markup'        => 'anything',
+					'expected_block_name' => 'isudev/icon-link',
+					'attributes'          => array( 'label' => 'New' ),
 				),
 				5
 			);
@@ -521,92 +602,16 @@ final class UpdateBlockTest extends TestCase {
 	}
 
 	/**
-	 * Creates a block markup validator that always passes.
-	 *
-	 * @return BlockMarkupValidator&object{validate_calls: int}
-	 */
-	private function passing_validator(): object {
-		return new class() implements BlockMarkupValidator {
-			/**
-			 * Number of validate() calls.
-			 *
-			 * @var int
-			 */
-			public int $validate_calls = 0;
-
-			/**
-			 * Always reports valid markup.
-			 *
-			 * @param string $markup Raw Gutenberg block markup.
-			 * @return list<string>
-			 */
-			public function validate( string $markup ): array {
-				++$this->validate_calls;
-
-				return array();
-			}
-
-			/**
-			 * Not used by these tests.
-			 *
-			 * @param string $markup Unused markup.
-			 * @throws \LogicException Always; this fake is not exercised by these tests.
-			 */
-			public function normalize( string $markup ): string {
-				throw new \LogicException( 'not used' );
-			}
-		};
-	}
-
-	/**
-	 * Creates a block markup validator that always fails with given reasons.
-	 *
-	 * @param array<int, string> $reasons Failure reasons to return.
-	 * @return BlockMarkupValidator
-	 */
-	private function failing_validator( array $reasons ): BlockMarkupValidator {
-		return new class( $reasons ) implements BlockMarkupValidator {
-
-			/**
-			 * Creates a validator that always fails.
-			 *
-			 * @param array<int, string> $reasons Failure reasons to return.
-			 */
-			public function __construct( private array $reasons ) {
-			}
-
-			/**
-			 * Always reports the configured failure reasons.
-			 *
-			 * @param string $markup Raw Gutenberg block markup.
-			 * @return list<string>
-			 */
-			public function validate( string $markup ): array {
-				return $this->reasons;
-			}
-
-			/**
-			 * Not used by these tests.
-			 *
-			 * @param string $markup Unused markup.
-			 * @throws \LogicException Always; this fake is not exercised by these tests.
-			 */
-			public function normalize( string $markup ): string {
-				throw new \LogicException( 'not used' );
-			}
-		};
-	}
-
-	/**
 	 * Creates a splicer that resolves to a fixed lookup (or null for "not
-	 * found") and returns a fixed spliced result.
+	 * found") and returns a fixed merged result, recording the attributes it
+	 * was asked to merge.
 	 *
-	 * @param BlockPathLookup|null $lookup           Fixed resolve() result.
-	 * @param string               $spliced_content  Fixed splice() result.
-	 * @return BlockTreeSplicer&object{resolve_calls: int, splice_calls: int}
+	 * @param BlockPathLookup|null $lookup          Fixed resolve() result.
+	 * @param string               $merged_content  Fixed merge_attributes() result.
+	 * @return BlockTreeSplicer&object{resolve_calls: int, merge_calls: int, received_attributes: array<string, mixed>|null}
 	 */
-	private function splicer( ?BlockPathLookup $lookup, string $spliced_content ): object {
-		return new class( $lookup, $spliced_content ) implements BlockTreeSplicer {
+	private function splicer( ?BlockPathLookup $lookup, string $merged_content ): object {
+		return new class( $lookup, $merged_content ) implements BlockTreeSplicer {
 			/**
 			 * Number of resolve() calls.
 			 *
@@ -615,19 +620,26 @@ final class UpdateBlockTest extends TestCase {
 			public int $resolve_calls = 0;
 
 			/**
-			 * Number of splice() calls.
+			 * Number of merge_attributes() calls.
 			 *
 			 * @var int
 			 */
-			public int $splice_calls = 0;
+			public int $merge_calls = 0;
+
+			/**
+			 * The attributes overlay received by the last merge_attributes() call.
+			 *
+			 * @var array<string, mixed>|null
+			 */
+			public ?array $received_attributes = null;
 
 			/**
 			 * Creates the fake splicer.
 			 *
-			 * @param BlockPathLookup|null $lookup          Fixed resolve() result.
-			 * @param string               $spliced_content Fixed splice() result.
+			 * @param BlockPathLookup|null $lookup         Fixed resolve() result.
+			 * @param string               $merged_content Fixed merge_attributes() result.
 			 */
-			public function __construct( private ?BlockPathLookup $lookup, private string $spliced_content ) {
+			public function __construct( private ?BlockPathLookup $lookup, private string $merged_content ) {
 			}
 
 			/**
@@ -644,31 +656,32 @@ final class UpdateBlockTest extends TestCase {
 			}
 
 			/**
-			 * Returns the fixed spliced content.
+			 * Not used by these tests.
 			 *
 			 * @param string $content      Unused raw content.
 			 * @param array  $path         Unused path.
 			 * @param string $block_markup Unused replacement markup.
+			 * @throws RuntimeException Always; this fake is not exercised by these tests.
 			 * @phpstan-param list<int> $path
 			 */
 			public function splice( string $content, array $path, string $block_markup ): string {
-				++$this->splice_calls;
-
-				return $this->spliced_content;
+				throw new RuntimeException( 'not used' );
 			}
 
 			/**
-			 * Not used by these tests.
+			 * Records the requested overlay and returns the fixed merged content.
 			 *
 			 * @param string $content    Unused raw content.
 			 * @param array  $path       Unused path.
-			 * @param array  $attributes Unused attributes overlay.
-			 * @throws RuntimeException Always; this fake is not exercised by these tests.
+			 * @param array  $attributes Attributes overlay to record.
 			 * @phpstan-param list<int> $path
-			 * @phpstan-param array<int|string, mixed> $attributes
+			 * @phpstan-param array<string, mixed> $attributes
 			 */
 			public function merge_attributes( string $content, array $path, array $attributes ): string {
-				throw new RuntimeException( 'not used' );
+				++$this->merge_calls;
+				$this->received_attributes = $attributes;
+
+				return $this->merged_content;
 			}
 		};
 	}
@@ -722,7 +735,7 @@ final class UpdateBlockTest extends TestCase {
 			 * @param array  $attributes Unused attributes overlay.
 			 * @throws RuntimeException Always; this fake is not exercised by these tests.
 			 * @phpstan-param list<int> $path
-			 * @phpstan-param array<int|string, mixed> $attributes
+			 * @phpstan-param array<string, mixed> $attributes
 			 */
 			public function merge_attributes( string $content, array $path, array $attributes ): string {
 				throw new RuntimeException( 'not used' );

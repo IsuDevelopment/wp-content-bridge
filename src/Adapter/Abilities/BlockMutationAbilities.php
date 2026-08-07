@@ -19,15 +19,17 @@ use IsuDev\WPContentBridge\Application\Mutation\MutationForbidden;
 use IsuDev\WPContentBridge\Application\Mutation\MutationWriteFailed;
 use IsuDev\WPContentBridge\Application\Mutation\PreviewBlockUpdate;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateBlock;
+use IsuDev\WPContentBridge\Application\Mutation\UpdateBlockAttributes;
 use Throwable;
 use WP_Error;
 
 /**
- * Adapter for update-block and its preview. Registered separately from
- * MutationAbilities, following the RestoreTrashedContentAbilities
- * precedent, so this file — not the shared adapter — carries the
- * path-addressed contract. Contains no policy — it maps input/output and
- * errors, and enforces capability gates in its permission callbacks.
+ * Adapter for update-block, its preview, and update-block-attributes.
+ * Registered separately from MutationAbilities, following the
+ * RestoreTrashedContentAbilities precedent, so this file — not the shared
+ * adapter — carries the path-addressed contract. Contains no policy — it
+ * maps input/output and errors, and enforces capability gates in its
+ * permission callbacks.
  */
 final readonly class BlockMutationAbilities {
 
@@ -36,12 +38,14 @@ final readonly class BlockMutationAbilities {
 	/**
 	 * Creates the Abilities projection.
 	 *
-	 * @param UpdateBlock        $update  Update-block use case.
-	 * @param PreviewBlockUpdate $preview Preview-update-block use case.
+	 * @param UpdateBlock           $update            Update-block use case.
+	 * @param PreviewBlockUpdate    $preview           Preview-update-block use case.
+	 * @param UpdateBlockAttributes $update_attributes Update-block-attributes use case.
 	 */
 	public function __construct(
 		private UpdateBlock $update,
 		private PreviewBlockUpdate $preview,
+		private UpdateBlockAttributes $update_attributes,
 	) {
 	}
 
@@ -55,7 +59,8 @@ final readonly class BlockMutationAbilities {
 	}
 
 	/**
-	 * Registers the update-block and preview-update-block abilities.
+	 * Registers the update-block, preview-update-block, and
+	 * update-block-attributes abilities.
 	 *
 	 * @return void
 	 */
@@ -85,6 +90,20 @@ final readonly class BlockMutationAbilities {
 				'permission_callback' => array( $this, 'can_update' ),
 				'execute_callback'    => array( $this, 'execute_preview' ),
 				'meta'                => self::preview_meta(),
+			)
+		);
+
+		wp_register_ability(
+			UpdateBlockAttributes::ABILITY,
+			array(
+				'label'               => __( 'Update block attributes', 'wp-content-bridge' ),
+				'description'         => __( 'Shallow-merges a JSON object into one block\'s attrs, addressed by path, leaving every other block byte-identical. Keys absent from attributes are left untouched; a key set to null is removed from attrs; any other value is set. WordPress performs the JSON encoding via serialize_blocks(), so no delimiter JSON is hand-written by the caller. A matching version_token proves the document did not change but not that the path points at the intended block, so expected_block_name is asserted and the write fails closed with wpcb_block_mismatch when it differs, including when path resolves to a freeform node, which has no attributes to merge into.', 'wp-content-bridge' ),
+				'category'            => self::CATEGORY,
+				'input_schema'        => AbilitySchemas::update_block_attributes_input(),
+				'output_schema'       => AbilitySchemas::update_block_attributes_output(),
+				'permission_callback' => array( $this, 'can_update' ),
+				'execute_callback'    => array( $this, 'execute_update_attributes' ),
+				'meta'                => self::write_meta(),
 			)
 		);
 	}
@@ -144,6 +163,24 @@ final readonly class BlockMutationAbilities {
 	}
 
 	/**
+	 * Executes a block-attributes merge.
+	 *
+	 * @param array<string, mixed> $input Ability input.
+	 * @return array<string, mixed>|WP_Error
+	 */
+	public function execute_update_attributes( array $input ): array|WP_Error {
+		if ( ! $this->can_update( $input ) ) {
+			return self::forbidden();
+		}
+
+		try {
+			return $this->update_attributes->execute( self::normalize_input( $input ), get_current_user_id() )->to_array();
+		} catch ( Throwable $error ) {
+			return $this->to_error( $error );
+		}
+	}
+
+	/**
 	 * Maps a thrown failure to a stable WP_Error.
 	 *
 	 * @param Throwable $error The failure that ended the attempt.
@@ -193,8 +230,10 @@ final readonly class BlockMutationAbilities {
 	}
 
 	/**
-	 * Returns standard write annotations. Destructive because empty
-	 * block_markup deletes the addressed subtree.
+	 * Returns standard write annotations, shared by update-block (empty
+	 * block_markup deletes the addressed subtree) and
+	 * update-block-attributes (a null attribute value removes a key); both
+	 * are destructive for the same reason: either can delete data.
 	 *
 	 * @return array<string, mixed>
 	 */

@@ -1038,6 +1038,62 @@ final class AbilitySchemas {
 	}
 
 	/**
+	 * Returns the update-block-attributes input schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_block_attributes_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'post_id', 'version_token', 'path', 'expected_block_name', 'attributes' ),
+			'properties'           => array(
+				'post_id'             => array(
+					'description' => 'Target post ID.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+				),
+				'version_token'       => array(
+					'description' => 'Optimistic-concurrency token from get-block-tree or get-content.',
+					'type'        => 'string',
+					'minLength'   => 18,
+					'maxLength'   => 191,
+				),
+				'path'                => array(
+					'description' => 'Zero-based indices into successive innerBlocks arrays identifying the block whose attrs to merge into, as returned by get-block-tree. parse_blocks() emits block_name: null freeform nodes for whitespace between blocks, and these occupy real indices that must be counted when building a path.',
+					'type'        => 'array',
+					'minItems'    => 1,
+					'maxItems'    => 20,
+					'items'       => array(
+						'type'    => 'integer',
+						'minimum' => 0,
+					),
+				),
+				'expected_block_name' => array(
+					'description' => 'Registered block name asserted to exist at path. A matching version_token proves the document did not change; it does not prove path points at the intended block, so this fact is asserted separately and the request fails closed with wpcb_block_mismatch when it differs. null asserts a freeform node, but a freeform node has no attributes to merge into, so the request fails closed with wpcb_block_mismatch in that case too.',
+					'type'        => array( 'string', 'null' ),
+					'minLength'   => 1,
+					'maxLength'   => 200,
+				),
+				'attributes'          => array(
+					'description'   => 'Shallow merge into the block\'s existing attrs, applied by WordPress via serialize_blocks() so the caller never hand-writes delimiter JSON. Keys absent here are left untouched. A key present with value null is removed from attrs. A key present with any other JSON value is added or overwritten. Bounded to 50 top-level keys and a 100000-byte canonical JSON encoding.',
+					'type'          => 'object',
+					'maxProperties' => 50,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the update-block-attributes output schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_block_attributes_output(): array {
+		return self::mutation_output();
+	}
+
+	/**
 	 * Returns the update-seo input schema.
 	 *
 	 * @return array<string, mixed>

@@ -68,6 +68,25 @@ final class PhpBlockTreeSplicer implements BlockTreeSplicer {
 	}
 
 	/**
+	 * Merges a shallow attribute overlay into the block at a path and
+	 * re-serializes the whole tree. The other blocks are byte-identical by
+	 * construction: only the addressed index's attrs are ever touched.
+	 *
+	 * @param string $content    Raw post_content to parse.
+	 * @param array  $path       Zero-based indices into successive innerBlocks arrays. Must already
+	 *                            have been confirmed to resolve to a non-freeform node via resolve().
+	 * @param array  $attributes Shallow attrs overlay; a null value removes that key.
+	 * @return string The whole re-serialized post_content.
+	 * @phpstan-param list<int> $path
+	 * @phpstan-param array<int|string, mixed> $attributes
+	 */
+	public function merge_attributes( string $content, array $path, array $attributes ): string {
+		$blocks = $this->as_blocks( parse_blocks( $content ) );
+
+		return serialize_blocks( $this->merge( $blocks, $path, $attributes ) );
+	}
+
+	/**
 	 * Walks down successive innerBlocks arrays to the node at a path,
 	 * re-narrowing at each level rather than trusting a parent's declared
 	 * (necessarily shallow) innerBlocks type.
@@ -127,6 +146,43 @@ final class PhpBlockTreeSplicer implements BlockTreeSplicer {
 	}
 
 	/**
+	 * Merges a shallow attribute overlay into the single element at a path,
+	 * returning a new tree. Every other node, including every other field of
+	 * the addressed node, is unchanged.
+	 *
+	 * @param array $blocks     Normalized sibling entries, top-level or from an innerBlocks array.
+	 * @param array $path       Remaining path indices, outermost first.
+	 * @param array $attributes Shallow attrs overlay; a null value removes that key.
+	 * @return array
+	 * @phpstan-param array<int, ParsedBlock> $blocks
+	 * @phpstan-param list<int> $path
+	 * @phpstan-param array<int|string, mixed> $attributes
+	 * @phpstan-return array<int, ParsedBlock>
+	 */
+	private function merge( array $blocks, array $path, array $attributes ): array {
+		$index = $path[0];
+		if ( ! array_key_exists( $index, $blocks ) ) {
+			// The caller must have already confirmed the path resolves via resolve(); a mismatch here
+			// means the content changed between resolution and merge, so the tree is left untouched.
+			return $blocks;
+		}
+
+		$block = $blocks[ $index ];
+
+		if ( 1 === count( $path ) ) {
+			$block['attrs']   = $this->apply_overlay( $block['attrs'], $attributes );
+			$blocks[ $index ] = $block;
+
+			return $blocks;
+		}
+
+		$block['innerBlocks'] = $this->merge( $this->as_blocks( $block['innerBlocks'] ), array_slice( $path, 1 ), $attributes );
+		$blocks[ $index ]     = $block;
+
+		return $blocks;
+	}
+
+	/**
 	 * Narrows a list of raw sibling entries into their expected shape.
 	 *
 	 * @param array $raw_blocks Raw sibling entries, top-level or from an innerBlocks array.
@@ -163,5 +219,29 @@ final class PhpBlockTreeSplicer implements BlockTreeSplicer {
 			'innerHTML'    => isset( $raw['innerHTML'] ) && is_string( $raw['innerHTML'] ) ? $raw['innerHTML'] : '',
 			'innerContent' => isset( $raw['innerContent'] ) && is_array( $raw['innerContent'] ) ? $raw['innerContent'] : array(),
 		);
+	}
+
+	/**
+	 * Applies a shallow overlay onto a block's existing attrs. A `null`
+	 * overlay value removes the key; any other value sets it; keys absent
+	 * from the overlay are left untouched.
+	 *
+	 * @param array $attrs      Existing attrs.
+	 * @param array $attributes Shallow attrs overlay; a null value removes that key.
+	 * @return array
+	 * @phpstan-param array<int|string, mixed> $attrs
+	 * @phpstan-param array<int|string, mixed> $attributes
+	 * @phpstan-return array<int|string, mixed>
+	 */
+	private function apply_overlay( array $attrs, array $attributes ): array {
+		foreach ( $attributes as $key => $value ) {
+			if ( null === $value ) {
+				unset( $attrs[ $key ] );
+			} else {
+				$attrs[ $key ] = $value;
+			}
+		}
+
+		return $attrs;
 	}
 }

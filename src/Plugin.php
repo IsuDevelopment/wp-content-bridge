@@ -36,6 +36,7 @@ use IsuDev\WPContentBridge\Application\Mutation\PreviewSeoUpdate;
 use IsuDev\WPContentBridge\Application\Mutation\PreviewServiceSchema;
 use IsuDev\WPContentBridge\Application\Mutation\RestoreTrashedContent;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateBlock;
+use IsuDev\WPContentBridge\Application\Mutation\UpdateBlockAttributes;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateContent;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateCustomSchema;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateSeo;
@@ -185,7 +186,8 @@ final class Plugin {
 			$block_splicer = new PhpBlockTreeSplicer();
 			( new BlockMutationAbilities(
 				new UpdateBlock( $manager, $mutation_repository, $mutation_repository, $block_splicer, $block_validator, $audit_log ),
-				new PreviewBlockUpdate( $manager, $mutation_repository, $mutation_repository, $block_splicer, $block_validator )
+				new PreviewBlockUpdate( $manager, $mutation_repository, $mutation_repository, $block_splicer, $block_validator ),
+				new UpdateBlockAttributes( $manager, $mutation_repository, $mutation_repository, $block_splicer, $audit_log )
 			) )->register_hooks();
 
 			$service_schema_writer = new SchemaExtendedServiceSchemaWriter();
