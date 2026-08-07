@@ -28,7 +28,7 @@ Install a packaged release or run Composer before activating a source checkout.
 
 Deleting the plugin removes its options, its dedicated `wpcb_*` capabilities from every role and from any user granted them directly, and its transient caches.
 
-The `{prefix}wpcb_audit` table is deliberately left in place. It is an append-only record of who changed what through the bridge, and destroying that history silently on delete is not the plugin's call to make. Remove the table deliberately if you want it gone.
+The `{prefix}wpcb_audit` table is deliberately left in place. It records who changed what through the bridge — field names only, never values — as a rolling window of the most recent 5,000 mutation attempts. Destroying that record silently on delete is not the plugin's call to make. Remove the table deliberately if you want it gone.
 
 == Changelog ==
 

@@ -124,7 +124,9 @@ foreach ( array( 'wpcb_idem_', 'wpcb_seo_ld_' ) as $wpcb_prefix ) {
 /*
  * The `{prefix}wpcb_audit` table is deliberately NOT dropped.
  *
- * It is an append-only record of who changed what through the bridge. Roadmap
+ * It records who changed what through the bridge — field names only, never
+ * values — as a rolling window of the most recent 5,000 mutation attempts
+ * (`WordPressAuditLog::$max_rows`), pruned oldest-first on every write. Roadmap
  * Slice 7 (`docs/plan/EDITORIAL_OPERATIONS_ROADMAP.md`) requires an accepted
  * ADR for audit retention and erasure before that store becomes a supported
  * read model, and states the ADR must say what happens to rows already

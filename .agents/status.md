@@ -2,14 +2,81 @@
 
 **Released version: 0.4.0** (`v0.4.0` = `52cb2a2`, on `origin`). Static quality
 is green at 247 tests / 648 assertions. Runtime verification is no longer the
-open gate: the environment was restored on 2026-08-07 and fifteen verifiers
-pass. Work in progress is `0.4.5`, a consolidation release —
-see "Next action" and `docs/plan/RELEASE_0_4_5_PLAN.md`.
+open gate: all 18 verifiers ran green on 2026-08-07 and the inventory is now
+defined in `docs/setup/VERIFICATION.md`. Work in progress is `0.4.5`, a
+consolidation release — tasks 1 through 7 are done and only the release itself
+(task 8) remains. See "Next action" and `docs/plan/RELEASE_0_4_5_PLAN.md`.
 
 Entries below are dated and historical; read them as a log, not as current
 state. Where a dated entry names a version that later moved, the "Release
 numbering" table in `docs/plan/EDITORIAL_OPERATIONS_ROADMAP.md` is
 authoritative.
+
+## Milestone 5 security sign-off — 2026-08-07 (0.4.5 task 6)
+
+Signed off against the write surface as it actually exists at 0.4.5, on
+WordPress 7.0.2 / PHP 8.4 with Yoast Free 28.2, Local 15.8, and Schema Extended
+0.3.0. All 18 runtime verifiers were run green on this date; the inventory and
+commands are in `docs/setup/VERIFICATION.md`.
+
+Write surface: `create-draft`, `update-content`, `update-seo`,
+`update-service-schema`, `update-custom-schema`, `trash-content`,
+`restore-trashed-content`. Read-only mirrors: `preview-update-content`,
+`preview-update-seo`, `preview-update-service-schema`,
+`preview-update-custom-schema`.
+
+Each claim below names the verifier that evidences it. A claim without one is
+not listed here — it is listed under "Gaps".
+
+| Control | Evidence |
+|---|---|
+| Every write ability is unreachable until `wpcb_writes_enabled` is on; trash additionally needs `wpcb_trash_enabled` | `writes-foundation-verification` (flags default off), `trash-content-verification` and `restore-trashed-content-verification` (absent while the gate is off, present when on) |
+| The dedicated `wpcb_*` capability, the native object capability, and the per-post-type policy are **independently** required | `writes-mutation-verification` (full matrix), `writes-seo-verification`, `restore-trashed-content-verification` (two-gate matrix plus per-type policy denial) |
+| A stale `version_token` is rejected before any mutation | `writes-mutation-verification`, `writes-seo-verification`, `trash-content-verification`, `restore-trashed-content-verification`, `preview-verification`, `schema-service-verification`, `schema-custom-verification` |
+| Exactly one audit row per attempt, recording field **names** and never values | `writes-seo-verification::verify_audit_redaction` — writes a deliberately identifiable string and asserts it is absent from `changed_fields`; `restore-trashed-content-verification` asserts `["status"]` exactly |
+| Previews take no `AuditLog` dependency and cannot write | `preview-verification` — audit-row baseline unchanged, `post_modified_gmt` unchanged, no revision created, repeated calls byte-identical |
+| A preview followed by the matching write yields exactly the previewed state | `preview-verification` |
+| Writes never reach `publish` or `future` | `writes-mutation-verification` (no-publish invariant); `restore-trashed-content-verification` (a `publish` pre-trash status still restores to `draft`) |
+| A rejected input leaves no partial write | `writes-seo-verification` — an invalid social-image ID leaves `_yoast_wpseo_title` untouched |
+| Provider writes are verified by re-read, not by trusting the provider | `writes-seo-verification` (write/re-read parity); `schema-service-verification` and `schema-custom-verification` assert the **rendered front-end JSON-LD graph** rather than the provider's own re-read |
+| Successful mutations invalidate only the affected post's cache; provider failure is contained after commit | `cache-invalidation-verification` |
+| No response field discloses a server filesystem path | `block-patterns-verification` (ADR 0013, pattern `filePath`); `http-url-runtime-verification` (Open Graph image paths) |
+| MCP projection intersects a closed profile with currently-registered abilities and grants no authority of its own | `abilities-runtime-verification` (closed-profile guard); `mcp-smoke-verification` as the least-privilege `wpcb-bridge-reader` principal |
+| Bounds hold under load | `block-patterns-verification` (2 MiB, fails atomically); `http-url-runtime-verification`; 500-block fixture at 103,898 encoded bytes |
+
+### Gaps
+
+Named rather than asserted. None blocks 0.4.5; each is a real hole in the
+evidence and should be read as such.
+
+1. **`SchemaExtendedServiceSchemaWriter::rollback()` has no coverage at any
+   level** — no unit test and no verifier. It restores metadata keys already
+   written when a later key fails mid-write, so it only executes on a provider
+   failure no test induces. The most security-relevant untested path in the
+   write surface: a defect leaves a post with half-applied Service schema.
+2. **Audit pruning is untested.** `WordPressAuditLog` prunes to 5,000 rows
+   oldest-first on every write. Nothing verifies the cap, so a defect would
+   silently discard audit rows — failing open on exactly the record used to
+   reconstruct what an agent did.
+3. **Concurrency is only verified serially.** Every check writes, then reuses
+   the now-stale token. No verifier issues two simultaneous requests, so
+   protection against a real lost update is argued from the token design, not
+   demonstrated.
+4. **`uninstall.php` has never been executed.** Added 2026-08-07 and verified
+   only by static analysis and by confirming it ships in the ZIP. It removes
+   capabilities from users directly, so a defect is destructive.
+5. **LiteSpeed purge is verified against a simulated listener**, not the real
+   plugin — LiteSpeed Cache is installed but inactive on the reference site.
+   The hook contract is proven; integration with the actual plugin is not.
+6. **Multisite is untested at runtime.** The settings page refuses multisite in
+   code; only single-site has ever been exercised.
+7. **External grant drift is undetected.** The 2026-08-07 audit found the live
+   miniOrange grant set contradicted this file in both directions — it granted
+   `create-draft` to a read-only principal and omitted three reads. Layered
+   defense held, but nothing detects drift automatically; it remains a manual
+   check against site configuration outside this repository.
+8. **`wpcb_publish_enabled` is registered and consumed by nothing.** It is a
+   flag with no ability behind it until `transition-content-status` (0.6.0).
 
 ## Current phase
 
@@ -557,10 +624,13 @@ verified.
   `restore-trashed-content` is built in 0.4.5, pulled forward out of roadmap
   Slice 3 because the destructive half is already live. It must never reach
   `publish` or `future`; see `docs/plan/RELEASE_0_4_5_PLAN.md` task 1.
-- A reproducible verification environment. Runtime sign-off still depends on one
-  machine's Local instance. Scheduled for 0.4.5 task 4, with an explicit split
-  between verifiers that run anywhere and those that need the licensed Yoast
-  and Schema Extended providers.
+- A second verification environment. Runtime sign-off depends on one machine's
+  Local instance and will continue to. **Decided 2026-08-07 (0.4.5 task 4):** a
+  containerised environment was tried and rejected. It reproduces only the
+  WordPress-core half — Yoast Premium/Local are licensed and Schema Extended is
+  private, so neither can be committed — and green on it would read as coverage
+  while a third of the surface went unchecked. The blackout's actual cause was
+  the absence of a defined inventory, now `docs/setup/VERIFICATION.md`.
 - Role-management UI beyond the capability grant.
 - Agents API integration.
 
@@ -625,10 +695,14 @@ The MCP projection gap and the miniOrange grants were both closed on
    is off, present when on), the capability/native-access authorization
    matrix, metadata-default with no filesystem-path leak (ADR 0013), the
    2 MiB complete-content bound, and deterministic filters/pagination.
-4. Reproducible verification environment — task 4. `.wp-env.json` already
-   exists in the app repo.
-5. Retire the inert `wpcb_public_base_url` option — task 5.
-6. Milestone 5 security sign-off — task 6.
+4. Verification run book — task 4. **Done 2026-08-07.**
+   `docs/setup/VERIFICATION.md` defines the full 18-verifier inventory, what
+   each proves, its hardest dependency, the commands, and a dated log of
+   complete runs. A containerised environment was tried and rejected; see
+   "Not implemented".
+5. Retire the inert `wpcb_public_base_url` option — task 5. **Done 2026-08-07.**
+6. Milestone 5 security sign-off — task 6. **Done 2026-08-07**, recorded at the
+   top of this file with eight named gaps.
 7. Release packaging — task 7. Verified on 2026-08-07: 74 files under `docs/`
    and `.agents/` ship inside the production plugin ZIP, including the security
    model, known gaps, and notes about the consuming site's grants. The same
