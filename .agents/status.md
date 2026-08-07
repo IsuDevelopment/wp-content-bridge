@@ -543,7 +543,9 @@ verified.
   implemented. Public and scheduled transitions are part of that future
   contract; the old `publish-content` plan is superseded by ADR 0015.
   `list-block-patterns`, `update-seo`, `create-draft`, and `update-content` are
-  implemented; pattern runtime sign-off is pending.
+  implemented. `list-block-patterns` passed its runtime sign-off on
+  2026-08-07 (`tests/Integration/block-patterns-verification.php`, 0.4.5
+  task 3).
 - Media P1 writes are not implemented: `update-media`, upload, featured-image
   assignment/removal, and remote import remain separately gated future work.
 - Runtime verification of the current official Adapter profile and explicit
@@ -617,8 +619,12 @@ The MCP projection gap and the miniOrange grants were both closed on
    `dry_run: true`, the 0.4.0 previews report `writes_performed: false`. One
    concept, two names, opposite polarity. Fixed additively; `dry_run` is
    removed in `0.5.0`.
-3. `list-block-patterns` runtime sign-off — task 3. It is code-complete, in the
-   closed profile, and in a live grant set, but has never been exercised.
+3. `list-block-patterns` runtime sign-off — task 3. **Done 2026-08-07.**
+   `tests/Integration/block-patterns-verification.php` passes against the
+   Kormas site: registration gate (absent while `wpcb_pattern_reads_enabled`
+   is off, present when on), the capability/native-access authorization
+   matrix, metadata-default with no filesystem-path leak (ADR 0013), the
+   2 MiB complete-content bound, and deterministic filters/pagination.
 4. Reproducible verification environment — task 4. `.wp-env.json` already
    exists in the app repo.
 5. Retire the inert `wpcb_public_base_url` option — task 5.
@@ -667,6 +673,20 @@ independently gated behind `wpcb_pattern_reads_enabled` and
 `wpcb_read_patterns`, and Plan 4a has never had a runtime sign-off. Revisiting
 it now would block the 0.4.0 release on an unrelated verification; 0.4.5 should
 either complete that sign-off or drop the grant.
+
+**Resolved 2026-08-07 (0.4.5 task 3): the runtime sign-off is complete and
+`list-block-patterns` stays in the grant.**
+`tests/Integration/block-patterns-verification.php` passed against the
+running Kormas site: the ability is absent while `wpcb_pattern_reads_enabled`
+is off and present when it is on; a principal with native editor access but
+without `wpcb_read_patterns` is denied, and granting exactly that capability
+is what authorizes the same principal; metadata-only is the default and no
+response field — metadata or complete-content — ever exposed the fixture's
+`filePath`; requesting complete content over the 2 MiB bound failed
+atomically with `wpcb_pattern_content_too_large` while metadata-only for the
+same oversized pattern was unaffected; and repeated identical filter and
+pagination calls returned byte-identical results. No product defect was
+found; the ability was already correctly implemented.
 
 Treat the earlier "no `mosmcp/*` write grants remain" note as unverified
 history: it was written without a live check. External MCP allowlists remain
