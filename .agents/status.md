@@ -484,16 +484,49 @@ verified.
   configuration and must not use a wildcard or enable unrelated `mosmcp/*`
   tools.
 - Restore-from-trash. `trash-content` shipped in 0.1.5 as reversible, but no
-  ability undoes it; recovery requires wp-admin. No roadmap slice covers it yet.
+  ability undoes it; recovery requires wp-admin. **Decided 2026-08-07:**
+  `restore-trashed-content` is built in 0.4.5, pulled forward out of roadmap
+  Slice 3 because the destructive half is already live. It must never reach
+  `publish` or `future`; see `docs/plan/RELEASE_0_4_5_PLAN.md` task 1.
 - A reproducible verification environment. Runtime sign-off still depends on one
-  machine's Local instance.
+  machine's Local instance. Scheduled for 0.4.5 task 4, with an explicit split
+  between verifiers that run anywhere and those that need the licensed Yoast
+  and Schema Extended providers.
 - Role-management UI beyond the capability grant.
 - Agents API integration.
 
 ## Next action
 
-Released state: **0.3.0**, tagged `v0.3.0` (`be3b177`) on `origin`. Versions
-0.2.0 through 0.3.0 all shipped.
+Released state: **0.4.0**, tagged `v0.4.0` on `origin`. Versions 0.2.0 through
+0.4.0 all shipped.
+
+**Next release is `0.4.5`, a consolidation release.** It is not a roadmap
+slice. Its executable plan is `docs/plan/RELEASE_0_4_5_PLAN.md` and it contains
+seven tasks: `restore-trashed-content`, unifying the preview response flag,
+`list-block-patterns` runtime sign-off, a reproducible verification
+environment, retiring the inert `wpcb_public_base_url` option, the Milestone 5
+security sign-off, and the release itself. Nothing in it is breaking.
+
+Slice 1B (llms.txt) is `0.5.0`, not `0.4.0`. That split was decided on
+2026-08-07: Slice 1A was small, low-risk, and verified, and holding it behind
+the heaviest slice in the roadmap would have delayed it for nothing. The full
+renumbering is in the "Release numbering" table of
+`docs/plan/EDITORIAL_OPERATIONS_ROADMAP.md`.
+
+**Three planned preview Abilities were cut on 2026-08-07**:
+`preview-transition-content-status`, `preview-update-media`, and
+`preview-update-featured-image`. The roadmap now carries an explicit test for
+when a preview is justified — it must answer something the caller cannot get
+from the matching `get-*` read plus the payload it already holds. Echoing back
+a sanitized string the caller just sent is not a preview. The test also records
+that of the two shipped in 0.4.0, `preview-update-content` clears it
+comfortably (block round-trip plus replace-not-merge warnings) while
+`preview-update-seo` is close to an echo and is kept for symmetry rather than
+because it earns its keep.
+
+### Historical note
+
+Before 0.4.0 the released state was **0.3.0**, tagged `v0.3.0` (`be3b177`).
 
 **Verification environment restored on 2026-08-07 and all eleven PHP runtime
 verifiers pass** against WordPress 7.0.2, PHP 8.4, Yoast Free 28.2, and Premium
@@ -503,30 +536,35 @@ its domain. Details, including the four drifted verifiers repaired during the
 run and the one real schema defect found, are in the "Runtime verification
 backlog" section of `docs/plan/IMPLEMENTATION_PLAN.md`.
 
-Thirteen runtime verifiers now pass, including two new ones written on
-2026-08-07 for the Service and Custom Schema slices, and the MCP discovery
-smoke against the official Adapter.
+Fourteen runtime verifiers now pass, including two written on 2026-08-07 for
+the Service and Custom Schema slices, one for the 0.4.0 previews, and the MCP
+discovery smoke against the official Adapter.
 
 The MCP projection gap and the miniOrange grants were both closed on
-2026-08-07; see "MCP exposure and grants" below. Remaining:
+2026-08-07; see "MCP exposure and grants" below. Remaining, all scheduled into
+`0.4.5` (`docs/plan/RELEASE_0_4_5_PLAN.md`):
 
-1. Add a reproducible verification environment so sign-off stops depending on
-   one machine's Local instance; `.wp-env.json` already exists in the app repo.
-2. Record the Milestone 5 security sign-off, which is still outstanding.
-3. Delete the now-inert `wpcb_public_base_url` option and uninstall the old
-   root-owned cloudflared service; the dev-only MU shim has already been removed.
-4. ~~Start roadmap Slice 1A (content and SEO preview) for 0.4.0.~~ **Done
-   2026-08-07** — see the Slice 1A entry above. The consuming site's MU-plugin
-   projection package still needs a version bump for the two new IDs (user
-   action, different repository).
-5. Start roadmap Slice 1B (llms.txt read, preview, configuration, and
-   generation), also targeted at `0.4.0` per
-   `docs/plan/EDITORIAL_OPERATIONS_ROADMAP.md`. It is the heaviest slice in the
-   roadmap and introduces the plugin's first public unauthenticated route; it
-   needs its own threat model before implementation starts.
+1. `restore-trashed-content` — task 1. Closes the live asymmetry where a
+   connector can trash but not untrash.
+2. Unify the preview response flag — task 2. The 0.3.0 previews report
+   `dry_run: true`, the 0.4.0 previews report `writes_performed: false`. One
+   concept, two names, opposite polarity. Fixed additively; `dry_run` is
+   removed in `0.5.0`.
+3. `list-block-patterns` runtime sign-off — task 3. It is code-complete, in the
+   closed profile, and in a live grant set, but has never been exercised.
+4. Reproducible verification environment — task 4. `.wp-env.json` already
+   exists in the app repo.
+5. Retire the inert `wpcb_public_base_url` option — task 5.
+6. Milestone 5 security sign-off — task 6.
 
-Plan 4c `transition-content-status` is **not** the next action. It is Slice 2
-(`0.5.0`), after the 0.4.0 preview and llms.txt slices.
+**Open manual step, not automatable from this repository:** the old root-owned
+`cloudflared` service on the development machine still needs uninstalling. It
+is a `sudo`-level operation outside the repo. The dev-only MU shim has already
+been removed.
+
+Slice 1B (llms.txt) is `0.5.0` and starts after 0.4.5. Slice 2
+`transition-content-status` is `0.6.0`; it is not the next action and never
+was 0.5.0 under the current numbering.
 
 ## MCP exposure and grants
 

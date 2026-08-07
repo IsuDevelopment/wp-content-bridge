@@ -414,8 +414,8 @@ Exit gate:
 Status: **in progress.** Plans 1, 2, and 3 are merged and released; Plans 3b,
 3c, 3d, 4a, and 4b are released but not runtime-verified (see the backlog
 above); Plan 4c (`transition-content-status`) is not started and has moved to
-Slice 2 / `0.5.0` of the editorial operations roadmap, behind the `0.4.0`
-preview and llms.txt slices.
+Slice 2 / `0.6.0` of the editorial operations roadmap, behind `0.4.0`
+(previews, shipped), `0.4.5` (consolidation), and `0.5.0` (llms.txt).
 
 During brainstorming (2026-07-20) the write scope originally spread across
 Milestones 5–7 was folded into a single Milestone 5, planned as four sequential
@@ -623,11 +623,14 @@ was unavailable, so WordPress did not bootstrap and no fixture mutation ran.
 
 ### Plan 4c — `transition-content-status`
 
-Status: **not started; rescheduled.** This plan is now Slice 2 (`0.5.0`) of
-`docs/plan/EDITORIAL_OPERATIONS_ROADMAP.md` and runs after the `0.4.0` preview
-and llms.txt slices. It must not be pulled forward into an earlier release. The
-roadmap adds `get-status-transitions` and `preview-status-transition` alongside
-the write, so the contract below is the minimum, not the final scope.
+Status: **not started; rescheduled.** This plan is now Slice 2 (`0.6.0`) of
+`docs/plan/EDITORIAL_OPERATIONS_ROADMAP.md` and runs after `0.4.0` (previews,
+shipped), `0.4.5` (consolidation), and `0.5.0` (llms.txt). It must not be
+pulled forward into an earlier release. The roadmap adds
+`get-status-transitions` alongside the write, so the contract below is the
+minimum, not the final scope. The previously planned
+`preview-transition-content-status` was cut on 2026-08-07; prospective-state
+reporting belongs in `get-status-transitions`.
 
 ADR 0015 replaces the never-released `publish-content` plan with a controlled
 status-workflow ability:

@@ -54,7 +54,8 @@ compounds the risk that this roadmap's own gates are meant to prevent.
 `preview-update-seo` are implemented per ADR 0021, `composer check` is green,
 and `tests/Integration/preview-verification.php` plus the closed-profile
 guard both pass on Kormas local. See `.agents/status.md` for the full record.
-Slice 1B (below) is next.
+`0.4.5` (consolidation, `docs/plan/RELEASE_0_4_5_PLAN.md`) comes next, then
+Slice 1B as `0.5.0`.
 
 Goal: let clients validate and review prospective content and SEO changes before
 the existing mutation Abilities are called.
@@ -293,8 +294,11 @@ form `post_status` field to content updates.
 Abilities:
 
 - `wp-content-bridge/get-status-transitions`
-- `wp-content-bridge/preview-transition-content-status`
 - `wp-content-bridge/transition-content-status`
+
+`preview-transition-content-status` was cut on 2026-08-07; see "When a preview
+Ability is justified". `get-status-transitions` already returns the allowed
+set, so any prospective-state reporting belongs in that read.
 
 Implementation follows ADR 0015:
 
@@ -335,14 +339,19 @@ Abilities:
 - `wp-content-bridge/preview-restore-content-revision`
 - `wp-content-bridge/restore-content-revision`
 
-Also decide here: `trash-content` shipped in 0.1.5 as an explicitly reversible
-operation, but nothing in this roadmap reverses it. A connector can trash an
-object and cannot undo it without wp-admin. Either add a bounded
-`restore-trashed-content` intent to this recovery slice — same feature flag
-family, `wpcb_delete_content` or a dedicated capability, current token, native
-`delete_post`, verified post-restore status — or record untrash as a deliberate
-administrator-only operation outside MCP. Leaving it undecided is the one thing
-that should not happen, because the destructive half is already live.
+**Decided 2026-08-07: `restore-trashed-content` is built, and it is pulled
+forward out of this slice into `0.4.5`.** `trash-content` has been live since
+0.1.5, so the asymmetry — a connector can trash an object and cannot undo it
+without wp-admin — is a present risk, not a future one. Waiting for `0.7.0`
+would leave it open across four releases to buy nothing; the ability itself is
+small (`wp_untrash_post()`, the existing trash feature-flag family, a
+dedicated capability, current token, native `delete_post`, verified
+post-restore status). It is specified in `docs/plan/RELEASE_0_4_5_PLAN.md`.
+
+Restoring to the pre-trash status rather than an unconditional `draft` is the
+part that needs care: WordPress records `_wp_trash_meta_status`, but it can be
+absent or stale, and the fallback must be the safe direction. Publication must
+not be reachable through untrash when the publication gate is off.
 
 Contract requirements:
 
@@ -375,10 +384,15 @@ without introducing upload or remote import yet.
 
 Abilities:
 
-- `wp-content-bridge/preview-update-media`
 - `wp-content-bridge/update-media`
-- `wp-content-bridge/preview-update-featured-image`
 - `wp-content-bridge/update-featured-image`
+
+`preview-update-media` and `preview-update-featured-image` were cut on
+2026-08-07; see "When a preview Ability is justified". Media metadata is
+sanitized strings echoed back, and attachment readability is already
+answerable through `get-media-by-id`. The pre-write snapshot, post-write
+verification, and rollback requirements below are unaffected — they are
+properties of the write, not of a preview.
 
 Contract requirements:
 
@@ -602,6 +616,87 @@ Three decisions were due before the first Slice 1A commit:
    `preview-` plus the exact ID of the write it mirrors; the two shipped
    `preview-*` IDs were renamed accordingly. Slice 1A shipped against this
    convention with no further rename;
-3. whether Slice 1A and Slice 1B share the 0.4.0 release or the llms.txt work
-   gets its own version, with later slices renumbered — **still open**; decide
-   this before starting Slice 1B.
+3. ~~whether Slice 1A and Slice 1B share the 0.4.0 release or the llms.txt work
+   gets its own version~~ — **decided 2026-08-07: they split.** Slice 1A
+   shipped alone as 0.4.0 because it was small, low-risk, and verified;
+   holding it behind the heaviest slice in the roadmap would have been the
+   worst of both. llms.txt takes its own version and everything after it moves
+   up one. See "Release numbering" below.
+
+## Release numbering
+
+Decided 2026-08-07, superseding the version in each slice heading:
+
+| Version | Content | State |
+|---|---|---|
+| `0.4.0` | Slice 1A — content and SEO preview | shipped |
+| `0.4.5` | Consolidation and debt (see below) | next |
+| `0.5.0` | Slice 1B — llms.txt | planned |
+| `0.6.0` | Slice 2 — controlled status workflow | planned |
+| `0.7.0` | Slice 3 — revision inspection and recovery | planned |
+| `0.8.0` | Slice 4 — media metadata and featured image | planned |
+| `0.9.0+` | Slice 5 — permalinks and redirects | planned |
+| `0.10.0+` | Slice 6 — targeted block editing | planned |
+| `0.11.0+` | Slice 7 — connector mutation history | planned |
+| `0.12.0+` | Slice 8 — bounded multi-object inventory | planned |
+
+`0.4.5` is not a roadmap slice. It is a deliberate consolidation release that
+pays down debt accumulated through 0.4.0 before the llms.txt slice adds a new
+domain, a new persistence model, and the plugin's first unauthenticated public
+route. Its contents are in `docs/plan/RELEASE_0_4_5_PLAN.md`. Nothing in it is
+breaking, so the patch-level number is honest.
+
+## When a preview Ability is justified
+
+Added 2026-08-07 after Slice 1A shipped, because the pattern was being applied
+reflexively.
+
+A preview costs a public Ability ID, a schema pair, an MCP profile entry, a use
+case, tests, and a permanent compatibility obligation. It is only worth that
+when it answers a question **the caller cannot answer from the matching `get-*`
+read plus the request it already holds.**
+
+The test: *if the caller diffed its own payload against the current read, would
+the preview tell it anything more?*
+
+- **Yes → build it.** The server transforms the input in a way the caller
+  cannot reproduce (WordPress block parsing, document generation, slug
+  collision resolution), or the write's effect is not a simple field
+  assignment (replace-not-merge semantics, redirect loops, revision diffs).
+- **No → do not build it.** Echoing back a sanitized string the caller just
+  sent is not a preview. The matching write already reports policy denial,
+  stale tokens, and provider unavailability before its first mutation, so a
+  preview that only surfaces those adds an approval-free probe, not new
+  information.
+
+Applying the test to this roadmap retires three planned previews:
+
+- `preview-transition-content-status` — **cut.** `get-status-transitions`
+  already returns the allowed transitions; the caller picks one from that list
+  and knows exactly what it asked for. Fold any prospective-state reporting
+  into `get-status-transitions`.
+- `preview-update-media` — **cut.** Title, ALT, caption, and description are
+  sanitized strings echoed back.
+- `preview-update-featured-image` — **cut.** Attachment readability and
+  usability are already answerable through `get-media-by-id`.
+
+The previews that survive the test and remain planned:
+`preview-update-llms-txt` (generates a whole document from site content),
+`preview-restore-content-revision` (diffs a revision against the current
+parent), `preview-update-permalink` (uniqueness, canonical URLs, redirect
+disposition), `preview-update-block` (subtree hash and sibling byte-stability),
+`preview-create-redirect` and `preview-update-redirect` (loop, chain, and
+duplicate detection against existing rules).
+
+The two shipped in 0.4.0 both stay, but they are not equal.
+`preview-update-content` clears the test comfortably: the
+`parse_blocks()`/`serialize_blocks()` round-trip can change what would actually
+be stored, and the `content_replaced` / `content_deleted` /
+`taxonomies_replaced` warnings state that `update-content` and taxonomy
+assignment **replace rather than merge** — the single most destructive property
+of the write and one no caller can infer from its own payload.
+`preview-update-seo` is close to an echo; its narrow real value is `canonical`
+normalization through `esc_url_raw` and social-image attachment resolution,
+which can fail with `SeoImageUnavailable`. It is kept for symmetry with the
+write pair and because the surface already shipped, not because it earns its
+keep as strongly.
