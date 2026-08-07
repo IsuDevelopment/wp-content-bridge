@@ -196,7 +196,12 @@ One file, `tests/Integration/llms-txt-verification.php`, modelled on
 9. `regenerate-llms-txt` is idempotent for unchanged source and configuration;
 10. a synthetic physical `llms.txt` is reported as a blocking ownership conflict
     and no response field contains a filesystem path; remove the file in the
-    `finally`;
+    `finally`. **Write it to the directory serving the home URL, not to
+    `ABSPATH`** — on a subdirectory install those differ, and a probe aimed at
+    `ABSPATH` returns false while a real file wins routing. That false negative
+    was found and fixed on 2026-08-07; this assertion is its regression. Also
+    assert the inverse: a file in `ABSPATH` on a subdirectory install is **not**
+    reported, because it does not win routing;
 11. bounds truncate deterministically and record a warning rather than failing.
 
 Add its row to `docs/setup/VERIFICATION.md`, `Needs` = `core`.
