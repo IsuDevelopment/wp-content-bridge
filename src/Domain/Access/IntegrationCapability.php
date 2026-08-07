@@ -21,4 +21,5 @@ enum IntegrationCapability: string {
 	case MANAGE_SEO      = 'wpcb_manage_seo';
 	case PUBLISH_CONTENT = 'wpcb_publish_content';
 	case DELETE_CONTENT  = 'wpcb_delete_content';
+	case MANAGE_LLMS     = 'wpcb_manage_llms';
 }

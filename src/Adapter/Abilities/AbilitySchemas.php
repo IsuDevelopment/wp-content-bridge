@@ -2470,4 +2470,380 @@ final class AbilitySchemas {
 			),
 		);
 	}
+
+	/**
+	 * Returns the get-llms-txt input contract. No field here requires the
+	 * publication flag; that is the point of this ability.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function get_llms_txt_input(): array {
+		return array(
+			'type'                 => 'object',
+			'properties'           => array(
+				'verify_public_endpoint' => array(
+					'description' => 'When true, additionally performs a bounded same-site GET of the public /llms.txt path to confirm what actually serves it. Ignored when no configuration has been saved yet.',
+					'type'        => 'boolean',
+					'default'     => false,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the get-llms-txt output contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function get_llms_txt_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'schema_version', 'config', 'artifact', 'ownership', 'version_token', 'provenance' ),
+			'properties'           => array(
+				'schema_version' => array( 'type' => 'string' ),
+				'config'         => self::nullable_object( self::llms_config_schema() ),
+				'artifact'       => self::nullable_object( self::llms_artifact_summary_schema() ),
+				'ownership'      => self::llms_ownership_schema(),
+				'version_token'  => array( 'type' => 'string' ),
+				'provenance'     => self::provenance(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the update-llms-txt input contract. preview-update-llms-txt
+	 * shares it exactly, so a validated preview result can be resubmitted to
+	 * update-llms-txt unchanged. Every field except `version_token`,
+	 * `introduction`, and `curated_links` must be supplied: the stored
+	 * configuration is always replaced whole, never merged.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_llms_txt_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'version_token', 'site_title', 'site_summary', 'enabled_post_types', 'sections', 'group_by_section', 'show_excerpts', 'excerpt_length', 'max_items_per_section' ),
+			'properties'           => array(
+				'version_token'         => array(
+					'description' => 'Optimistic-concurrency token from get-llms-txt.',
+					'type'        => 'string',
+					'minLength'   => 18,
+					'maxLength'   => 191,
+				),
+				'site_title'            => array(
+					'description' => 'Document "# " title.',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 200,
+				),
+				'site_summary'          => array(
+					'description' => 'Document "> " one-sentence summary.',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 300,
+				),
+				'introduction'          => array(
+					'description' => 'Optional introduction paragraph. Omitted or empty clears it.',
+					'type'        => array( 'string', 'null' ),
+					'maxLength'   => 2000,
+				),
+				'enabled_post_types'    => array(
+					'description' => 'Post types eligible for selection.',
+					'type'        => 'array',
+					'minItems'    => 1,
+					'maxItems'    => 50,
+					'uniqueItems' => true,
+					'items'       => array(
+						'type'    => 'string',
+						'pattern' => '^[a-z0-9_-]{1,20}$',
+					),
+				),
+				'sections'              => array(
+					'description' => 'Ordered section key/label pairs.',
+					'type'        => 'array',
+					'minItems'    => 1,
+					'maxItems'    => 20,
+					'items'       => array(
+						'type'                 => 'object',
+						'required'             => array( 'key', 'label' ),
+						'properties'           => array(
+							'key'   => array(
+								'type'    => 'string',
+								'pattern' => '^[a-z0-9_-]{1,64}$',
+							),
+							'label' => array(
+								'type'      => 'string',
+								'minLength' => 1,
+								'maxLength' => 100,
+							),
+						),
+						'additionalProperties' => false,
+					),
+				),
+				'group_by_section'      => array(
+					'description' => 'Whether entries group by their own section, or collapse into one.',
+					'type'        => 'boolean',
+				),
+				'show_excerpts'         => array(
+					'description' => 'Whether excerpts are ever emitted.',
+					'type'        => 'boolean',
+				),
+				'excerpt_length'        => array(
+					'description' => 'Configured excerpt character limit.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 200,
+				),
+				'max_items_per_section' => array(
+					'description' => 'Configured per-section item limit.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 100,
+				),
+				'curated_links'         => array(
+					'description' => 'Optional same-site curated links. Omitted or empty clears them.',
+					'type'        => 'array',
+					'maxItems'    => 200,
+					'items'       => array(
+						'type'                 => 'object',
+						'required'             => array( 'title', 'url' ),
+						'properties'           => array(
+							'title'   => array(
+								'type'      => 'string',
+								'minLength' => 1,
+								'maxLength' => 200,
+							),
+							'url'     => array(
+								'description' => 'Canonical same-site absolute URL.',
+								'type'        => 'string',
+							),
+							'section' => array(
+								'description' => 'Configured section key this link belongs to, or null to use the default section.',
+								'type'        => array( 'string', 'null' ),
+							),
+						),
+						'additionalProperties' => false,
+					),
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the preview-update-llms-txt input contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function preview_update_llms_txt_input(): array {
+		return self::update_llms_txt_input();
+	}
+
+	/**
+	 * Returns the preview-update-llms-txt output contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function preview_update_llms_txt_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'schema_version', 'writes_performed', 'version_token', 'current_config', 'current_artifact', 'prospective_config', 'prospective_artifact', 'diff', 'provenance' ),
+			'properties'           => array(
+				'schema_version'       => array( 'type' => 'string' ),
+				'writes_performed'     => array( 'type' => 'boolean' ),
+				'version_token'        => array( 'type' => 'string' ),
+				'current_config'       => self::nullable_object( self::llms_config_schema() ),
+				'current_artifact'     => self::nullable_object( self::llms_artifact_summary_schema() ),
+				'prospective_config'   => self::llms_config_schema(),
+				'prospective_artifact' => self::llms_artifact_summary_schema(),
+				'diff'                 => array(
+					'type'                 => 'object',
+					'required'             => array( 'added_sections', 'removed_sections', 'changed_sections' ),
+					'properties'           => array(
+						'added_sections'   => self::string_array( 20 ),
+						'removed_sections' => self::string_array( 20 ),
+						'changed_sections' => self::string_array( 20 ),
+					),
+					'additionalProperties' => false,
+				),
+				'provenance'           => self::provenance(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the update-llms-txt output contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_llms_txt_output(): array {
+		return self::llms_mutation_output();
+	}
+
+	/**
+	 * Returns the regenerate-llms-txt input contract. Accepts no fields:
+	 * regeneration always rebuilds from the already-stored configuration and
+	 * live site content, never from caller-supplied paths or content.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function regenerate_llms_txt_input(): array {
+		return array(
+			'type'                 => 'object',
+			'properties'           => array(),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the regenerate-llms-txt output contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function regenerate_llms_txt_output(): array {
+		return self::llms_mutation_output();
+	}
+
+	/**
+	 * Returns the shared update/regenerate-llms-txt output shape.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function llms_mutation_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'schema_version', 'version_token', 'config', 'artifact', 'changed_fields', 'provenance' ),
+			'properties'           => array(
+				'schema_version' => array( 'type' => 'string' ),
+				'version_token'  => array( 'type' => 'string' ),
+				'config'         => self::llms_config_schema(),
+				'artifact'       => self::llms_artifact_summary_schema(),
+				'changed_fields' => self::string_array( 20 ),
+				'provenance'     => self::provenance(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the effective llms.txt configuration document, matching
+	 * `LlmsConfig::to_array()`.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function llms_config_schema(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'site_url', 'site_title', 'site_summary', 'introduction', 'enabled_post_types', 'sections', 'group_by_section', 'show_excerpts', 'excerpt_length', 'max_items_per_section', 'curated_links' ),
+			'properties'           => array(
+				'site_url'              => array( 'type' => 'string' ),
+				'site_title'            => array( 'type' => 'string' ),
+				'site_summary'          => array( 'type' => 'string' ),
+				'introduction'          => array( 'type' => array( 'string', 'null' ) ),
+				'enabled_post_types'    => self::string_array( 50 ),
+				'sections'              => array(
+					'type'     => 'array',
+					'maxItems' => 20,
+					'items'    => array(
+						'type'                 => 'object',
+						'required'             => array( 'key', 'label' ),
+						'properties'           => array(
+							'key'   => array( 'type' => 'string' ),
+							'label' => array( 'type' => 'string' ),
+						),
+						'additionalProperties' => false,
+					),
+				),
+				'group_by_section'      => array( 'type' => 'boolean' ),
+				'show_excerpts'         => array( 'type' => 'boolean' ),
+				'excerpt_length'        => array( 'type' => 'integer' ),
+				'max_items_per_section' => array( 'type' => 'integer' ),
+				'curated_links'         => array(
+					'type'     => 'array',
+					'maxItems' => 200,
+					'items'    => array(
+						'type'                 => 'object',
+						'required'             => array( 'title', 'url', 'section' ),
+						'properties'           => array(
+							'title'   => array( 'type' => 'string' ),
+							'url'     => array( 'type' => 'string' ),
+							'section' => array( 'type' => array( 'string', 'null' ) ),
+						),
+						'additionalProperties' => false,
+					),
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the artifact summary document — every field of
+	 * `LlmsArtifact::to_array()` except `content`, matching
+	 * `LlmsArtifact::to_summary_array()`.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function llms_artifact_summary_schema(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'content_hash', 'generated_at', 'byte_count', 'link_count', 'warnings' ),
+			'properties'           => array(
+				'content_hash' => array( 'type' => 'string' ),
+				'generated_at' => array( 'type' => 'string' ),
+				'byte_count'   => array( 'type' => 'integer' ),
+				'link_count'   => array( 'type' => 'integer' ),
+				'warnings'     => self::string_array( 50 ),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the ownership-state document, matching
+	 * `LlmsOwnershipState::to_array()`. Never contains a filesystem path.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function llms_ownership_schema(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'owner', 'physical_artifact_exists', 'yoast_llms_txt_enabled', 'bridge_publication_enabled', 'public_verification', 'conflict', 'administrator_action' ),
+			'properties'           => array(
+				'owner'                      => array(
+					'type' => 'string',
+					'enum' => array( 'bridge', 'yoast', 'third_party', 'none' ),
+				),
+				'physical_artifact_exists'   => array( 'type' => 'boolean' ),
+				'yoast_llms_txt_enabled'     => array( 'type' => 'boolean' ),
+				'bridge_publication_enabled' => array( 'type' => 'boolean' ),
+				'public_verification'        => array(
+					'type' => 'string',
+					'enum' => array( 'served_by_bridge', 'served_by_other', 'not_found', 'unknown' ),
+				),
+				'conflict'                   => array(
+					'type' => array( 'string', 'null' ),
+					'enum' => array( 'yoast_llms_txt_enabled', 'physical_artifact_present', null ),
+				),
+				'administrator_action'       => array( 'type' => 'string' ),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Widens an object schema to also accept `null`.
+	 *
+	 * @param array $schema Object schema to widen.
+	 * @return array<string, mixed>
+	 * @phpstan-param array<string, mixed> $schema
+	 */
+	private static function nullable_object( array $schema ): array {
+		$schema['type'] = array( 'object', 'null' );
+
+		return $schema;
+	}
 }

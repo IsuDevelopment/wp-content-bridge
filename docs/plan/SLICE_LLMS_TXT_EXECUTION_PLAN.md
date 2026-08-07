@@ -167,6 +167,57 @@ enqueue — nothing reachable anonymously, directly or by cache-busting.
 **Mind the staleness window the ADR names:** a post leaving `publish` stays in
 the snapshot until this runs. Debouncing must not make that window unbounded.
 
+### What the reference implementation gets wrong — do not copy it
+
+LLMagnet 3.4.3's `Generator::maybe_regenerate()` was read on 2026-08-08. It
+hooks `save_post` and opens with:
+
+```php
+if ( 'publish' !== $post->post_status ) {
+    return;
+}
+```
+
+**Un-publishing therefore never triggers regeneration.** A post moved to draft,
+private, or trash keeps its entry in the public artifact until an unrelated
+daily cron happens to run — a staleness window of up to 24 hours on exactly the
+transition where staleness means exposing content the author just withdrew.
+
+Hook **`transition_post_status`**, not `save_post`, and enqueue on transitions
+**out of** an eligible state as well as into one. `$old_status` is what makes
+this decidable and `save_post` does not provide it. Guard
+`wp_is_post_autosave()` and `wp_is_post_revision()` — LLMagnet does, and it is
+necessary.
+
+Note also that LLMagnet's inline comment calls this "debounced" while the code
+regenerates synchronously on every save; it narrows the *unit of work* rather
+than collapsing repeated triggers in time. Our requirement is the real thing:
+collapse repeated triggers into one queued run.
+
+### What the reference implementation gets right — adopt it
+
+Its cursor-based batching is a genuinely good answer to a site too large for one
+cron tick, and this plan previously had no answer at all:
+
+- store `['offset', 'started']` in a non-autoloaded option;
+- process a bounded batch per tick (theirs: 200, filterable);
+- self-reschedule with `wp_schedule_single_event( time() + MINUTE_IN_SECONDS, … )`
+  while work remains;
+- enforce a hard ceiling per run (theirs: 1,000 posts, filterable) as a safety
+  valve for very large sites;
+- clear the cursor when the run completes.
+
+Adopt that shape. Two differences follow from ADR 0023 and are deliberate: the
+batch must assemble into the **stored snapshot**, replaced atomically at the
+end, never a partially written public artifact; and we need none of LLMagnet's
+orphan-file pruning, because one option holds one document. Their
+`finish_batched_generation()` exists only to delete stale per-post `.md` files
+left by a physical-file design — a whole class of problem the virtual endpoint
+avoids.
+
+Record this study and preserve both projects' GPL obligations. Take no code,
+no storage keys, and no class dependency.
+
 ## Task 7 — threat model
 
 Extend `docs/architecture/SECURITY.md` with an "Unauthenticated public surface"

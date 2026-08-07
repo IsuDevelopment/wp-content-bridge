@@ -36,6 +36,9 @@ foreach ( array(
 	'wpcb_media_reads_enabled',
 	'wpcb_pattern_reads_enabled',
 	'wpcb_trash_enabled',
+	'wpcb_llms_enabled',
+	'wpcb_llms_config',
+	'wpcb_llms_artifact',
 	'wpcb_integration_user_id',
 	'wpcb_public_base_url',
 ) as $wpcb_option ) {
@@ -56,6 +59,7 @@ $wpcb_capabilities = array(
 	'wpcb_manage_seo',
 	'wpcb_publish_content',
 	'wpcb_delete_content',
+	'wpcb_manage_llms',
 );
 
 $wpcb_roles = wp_roles();

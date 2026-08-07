@@ -118,19 +118,25 @@ final readonly class LlmsConfig {
 	/**
 	 * Builds a validated configuration from untrusted Ability input.
 	 *
-	 * @param array<string, mixed> $input Raw input.
+	 * `site_url` is a fact about the site, not caller input: it is taken as
+	 * an explicit parameter derived from `home_url()` by the caller, never
+	 * from `$input`. Any `site_url` key present in `$input` is ignored
+	 * rather than honored — it is tolerated only because the stored
+	 * configuration option (see {@see self::to_array()}) round-trips one.
+	 *
+	 * @param array<string, mixed> $input    Raw input.
+	 * @param string               $site_url Canonical absolute site origin, used for same-site link checks.
 	 * @return self
 	 * @throws InvalidArgumentException When input is malformed or out of bounds.
 	 */
-	public static function from_input( array $input ): self {
+	public static function from_input( array $input, string $site_url ): self {
 		foreach ( array_keys( $input ) as $key ) {
 			if ( ! in_array( $key, self::ALLOWED_KEYS, true ) ) {
 				throw new InvalidArgumentException( 'Llms configuration input contains an unsupported field.' );
 			}
 		}
 
-		$site_url = $input['site_url'] ?? null;
-		if ( ! is_string( $site_url ) || self::MAX_SITE_URL_LENGTH < strlen( $site_url ) || null === self::parse_absolute_http_url( $site_url ) ) {
+		if ( self::MAX_SITE_URL_LENGTH < strlen( $site_url ) || null === self::parse_absolute_http_url( $site_url ) ) {
 			throw new InvalidArgumentException( 'site_url must be an absolute HTTP URL.' );
 		}
 

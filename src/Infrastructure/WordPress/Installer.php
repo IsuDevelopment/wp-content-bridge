@@ -14,7 +14,7 @@ namespace IsuDev\WPContentBridge\Infrastructure\WordPress;
  */
 final class Installer {
 
-	private const SCHEMA_VERSION = 9;
+	private const SCHEMA_VERSION = 10;
 	private const VERSION_OPTION = 'wpcb_schema_version';
 
 	public const WRITES_ENABLED_OPTION        = 'wpcb_writes_enabled';
@@ -23,6 +23,13 @@ final class Installer {
 	public const PATTERN_READS_ENABLED_OPTION = 'wpcb_pattern_reads_enabled';
 	public const TRASH_ENABLED_OPTION         = 'wpcb_trash_enabled';
 	public const INTEGRATION_USER_OPTION      = 'wpcb_integration_user_id';
+
+	/**
+	 * Non-autoloaded llms.txt publication flag. Gates the three llms.txt
+	 * write Abilities and, in a later slice, the virtual `/llms.txt` route;
+	 * see ADR 0023. `get-llms-txt` deliberately does not depend on this flag.
+	 */
+	public const LLMS_ENABLED_OPTION = 'wpcb_llms_enabled';
 
 	/**
 	 * Retired dev-only proxy-base shim option; the plugin never read it.
@@ -45,6 +52,7 @@ final class Installer {
 		add_option( self::MEDIA_READS_ENABLED_OPTION, false, '', false );
 		add_option( self::PATTERN_READS_ENABLED_OPTION, false, '', false );
 		add_option( self::TRASH_ENABLED_OPTION, false, '', false );
+		add_option( self::LLMS_ENABLED_OPTION, false, '', false );
 		add_option( self::INTEGRATION_USER_OPTION, 0, '', false );
 		delete_option( self::LEGACY_PUBLIC_BASE_URL_OPTION );
 		self::create_audit_table();
@@ -104,6 +112,7 @@ final class Installer {
 			'wpcb_manage_seo',
 			'wpcb_publish_content',
 			'wpcb_delete_content',
+			'wpcb_manage_llms',
 		) as $capability ) {
 			$administrator->add_cap( $capability );
 		}

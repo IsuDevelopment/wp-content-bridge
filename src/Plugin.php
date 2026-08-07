@@ -13,6 +13,7 @@ use IsuDev\WPContentBridge\Adapter\Admin\ContentAccessSettingsPage;
 use IsuDev\WPContentBridge\Adapter\Abilities\BlockMutationAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\ContentAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\CustomSchemaAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\LlmsAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\MediaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\MutationAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\PatternAbilities;
@@ -26,6 +27,10 @@ use IsuDev\WPContentBridge\Application\Content\GetContent;
 use IsuDev\WPContentBridge\Application\Content\SearchContent;
 use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessManager;
 use IsuDev\WPContentBridge\Application\Editorial\GetEditorialContext;
+use IsuDev\WPContentBridge\Application\Llms\GetLlmsTxt;
+use IsuDev\WPContentBridge\Application\Llms\PreviewUpdateLlmsTxt;
+use IsuDev\WPContentBridge\Application\Llms\RegenerateLlmsTxt;
+use IsuDev\WPContentBridge\Application\Llms\UpdateLlmsTxt;
 use IsuDev\WPContentBridge\Application\Mutation\CreateDraft;
 use IsuDev\WPContentBridge\Application\Mutation\GetCustomSchema;
 use IsuDev\WPContentBridge\Application\Mutation\GetServiceSchema;
@@ -52,6 +57,7 @@ use IsuDev\WPContentBridge\Application\Seo\GetSeo;
 use IsuDev\WPContentBridge\Application\Seo\SameSiteSeoTargetFactory;
 use IsuDev\WPContentBridge\Application\Seo\SeoProvider;
 use IsuDev\WPContentBridge\Application\Seo\SeoProviderRegistry;
+use IsuDev\WPContentBridge\Domain\Llms\LlmsDocumentBuilder;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\Installer;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\PhpBlockMarkupValidator;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\PhpBlockTreeSplicer;
@@ -65,6 +71,9 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentTrashReposit
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentTypeCatalog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressEditorialContextRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressIntegrationAccessRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressLlmsArtifactStore;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressLlmsOwnershipInspector;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressLlmsSourceSelector;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressMediaRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressPostCacheInvalidator;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentRepository;
@@ -145,6 +154,25 @@ final class Plugin {
 		( new SeoAbilities(
 			new GetSeo( $seo_providers, new WordPressSeoTargetAccess( $manager, $content_repository ) ),
 			new SameSiteSeoTargetFactory( home_url( '/' ) )
+		) )->register_hooks();
+
+		/*
+		 * llms.txt: get-llms-txt must remain available regardless of
+		 * wpcb_llms_enabled, so this registers unconditionally rather than
+		 * being gated the way the write-only feature areas below are.
+		 * LlmsAbilities itself withholds the three writes while the flag is
+		 * off (ADR 0023).
+		 */
+		$llms_store     = new WordPressLlmsArtifactStore();
+		$llms_selector  = new WordPressLlmsSourceSelector( $seo_providers );
+		$llms_builder   = new LlmsDocumentBuilder();
+		$llms_audit_log = new WordPressAuditLog();
+
+		( new LlmsAbilities(
+			new GetLlmsTxt( $llms_store, new WordPressLlmsOwnershipInspector() ),
+			new PreviewUpdateLlmsTxt( $llms_store, $llms_selector, $llms_builder, home_url( '/' ) ),
+			new UpdateLlmsTxt( $llms_store, $llms_selector, $llms_builder, $llms_audit_log, home_url( '/' ) ),
+			new RegenerateLlmsTxt( $llms_store, $llms_selector, $llms_builder, $llms_audit_log )
 		) )->register_hooks();
 
 		$media_access = new MediaAccessManager( (bool) get_option( Installer::MEDIA_READS_ENABLED_OPTION ) );

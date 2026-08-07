@@ -126,6 +126,17 @@ final readonly class ContentAccessSettingsPage {
 				'show_in_rest'      => false,
 			)
 		);
+
+		register_setting(
+			self::OPTION_GROUP,
+			Installer::LLMS_ENABLED_OPTION,
+			array(
+				'type'              => 'boolean',
+				'default'           => false,
+				'sanitize_callback' => array( self::class, 'sanitize_checkbox' ),
+				'show_in_rest'      => false,
+			)
+		);
 	}
 
 	/**
@@ -277,6 +288,23 @@ final readonly class ContentAccessSettingsPage {
 					</tbody>
 				</table>
 				<p id="wpcb-trash-enabled-help" class="description"><?php echo esc_html__( 'Content writes, the per-type Trash policy, Delete content capability, native delete_post permission, and reversible WordPress trash must also be available.', 'wp-content-bridge' ); ?></p>
+
+				<h2><?php echo esc_html__( 'llms.txt publication', 'wp-content-bridge' ); ?></h2>
+				<table class="widefat striped" aria-describedby="wpcb-llms-enabled-help">
+					<tbody>
+						<tr>
+							<th scope="row"><?php echo esc_html__( 'Publish llms.txt', 'wp-content-bridge' ); ?></th>
+							<td>
+								<input type="hidden" name="<?php echo esc_attr( Installer::LLMS_ENABLED_OPTION ); ?>" value="0">
+								<label>
+									<input type="checkbox" name="<?php echo esc_attr( Installer::LLMS_ENABLED_OPTION ); ?>" value="1" <?php checked( (bool) get_option( Installer::LLMS_ENABLED_OPTION ) ); ?>>
+									<?php echo esc_html__( 'Enable preview-update-llms-txt, update-llms-txt, and regenerate-llms-txt, and the public /llms.txt endpoint once configured (master switch, off by default).', 'wp-content-bridge' ); ?>
+								</label>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+				<p id="wpcb-llms-enabled-help" class="description"><?php echo esc_html__( 'get-llms-txt remains available without this switch, so review its reported configuration and ownership-conflict state before enabling publication.', 'wp-content-bridge' ); ?></p>
 
 				<?php submit_button(); ?>
 			</form>
@@ -468,6 +496,7 @@ final readonly class ContentAccessSettingsPage {
 			IntegrationCapability::MANAGE_SEO->value      => esc_html__( 'Update supported SEO fields', 'wp-content-bridge' ),
 			IntegrationCapability::PUBLISH_CONTENT->value => esc_html__( 'Publish or schedule through status transition (reserved; not implemented)', 'wp-content-bridge' ),
 			IntegrationCapability::DELETE_CONTENT->value  => esc_html__( 'Move authorized content to trash', 'wp-content-bridge' ),
+			IntegrationCapability::MANAGE_LLMS->value     => esc_html__( 'Read, preview, update, and regenerate llms.txt configuration and publication', 'wp-content-bridge' ),
 		);
 	}
 

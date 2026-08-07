@@ -53,4 +53,23 @@ final readonly class LlmsArtifact {
 			'warnings'     => $this->warnings,
 		);
 	}
+
+	/**
+	 * Serializes an artifact summary: every field except the document body
+	 * itself. Abilities that report on the current or a prospective snapshot
+	 * do not necessarily need to return the whole document, so this omits
+	 * `content` while keeping `content_hash` — the same hash the virtual
+	 * endpoint's `ETag` will be derived from — for correlation.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function to_summary_array(): array {
+		return array(
+			'content_hash' => $this->content_hash,
+			'generated_at' => $this->generated_at,
+			'byte_count'   => $this->byte_count,
+			'link_count'   => $this->link_count,
+			'warnings'     => $this->warnings,
+		);
+	}
 }

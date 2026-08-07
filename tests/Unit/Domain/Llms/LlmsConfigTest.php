@@ -20,13 +20,19 @@ use PHPUnit\Framework\TestCase;
 final class LlmsConfigTest extends TestCase {
 
 	/**
+	 * Site origin passed to `from_input()` as the explicit, non-input parameter.
+	 *
+	 * @var string
+	 */
+	private const SITE_URL = 'https://example.com';
+
+	/**
 	 * A minimal valid wire document, reused and overridden per test.
 	 *
 	 * @return array<string, mixed>
 	 */
 	private function valid_input(): array {
 		return array(
-			'site_url'              => 'https://example.com',
 			'site_title'            => 'Example Site',
 			'site_summary'          => 'A site about examples.',
 			'introduction'          => 'Welcome to the site.',
@@ -59,7 +65,7 @@ final class LlmsConfigTest extends TestCase {
 	 * A complete, valid document is accepted and round-trips through `to_array()`.
 	 */
 	public function test_builds_complete_configuration(): void {
-		$config = LlmsConfig::from_input( $this->valid_input() );
+		$config = LlmsConfig::from_input( $this->valid_input(), self::SITE_URL );
 
 		self::assertSame( 'https://example.com', $config->site_url );
 		self::assertSame( 'Example Site', $config->site_title );
@@ -67,7 +73,7 @@ final class LlmsConfigTest extends TestCase {
 		self::assertCount( 2, $config->sections );
 		self::assertCount( 1, $config->curated_links );
 
-		$rebuilt = LlmsConfig::from_input( $config->to_array() );
+		$rebuilt = LlmsConfig::from_input( $config->to_array(), self::SITE_URL );
 		self::assertEquals( $config, $rebuilt );
 	}
 
@@ -79,11 +85,11 @@ final class LlmsConfigTest extends TestCase {
 		$input = $this->valid_input();
 		unset( $input['introduction'], $input['curated_links'] );
 
-		$config = LlmsConfig::from_input( $input );
+		$config = LlmsConfig::from_input( $input, self::SITE_URL );
 
 		self::assertNull( $config->introduction );
 		self::assertSame( array(), $config->curated_links );
-		self::assertEquals( $config, LlmsConfig::from_input( $config->to_array() ) );
+		self::assertEquals( $config, LlmsConfig::from_input( $config->to_array(), self::SITE_URL ) );
 	}
 
 	/**
@@ -95,7 +101,40 @@ final class LlmsConfigTest extends TestCase {
 
 		$this->expectException( InvalidArgumentException::class );
 
-		LlmsConfig::from_input( $input );
+		LlmsConfig::from_input( $input, self::SITE_URL );
+	}
+
+	/**
+	 * A `site_url` key in the input array is ignored rather than honored:
+	 * `site_url` is a fact about the site, taken only from the explicit
+	 * parameter, never from caller-controlled input.
+	 */
+	public function test_ignores_site_url_key_in_input(): void {
+		$input             = $this->valid_input();
+		$input['site_url'] = 'https://attacker.example';
+
+		$config = LlmsConfig::from_input( $input, self::SITE_URL );
+
+		self::assertSame( self::SITE_URL, $config->site_url );
+	}
+
+	/**
+	 * A curated link whose origin differs from the supplied `site_url`
+	 * parameter is rejected outright, even when the input array's own
+	 * (ignored) `site_url` key claims that foreign origin as home. A caller
+	 * cannot launder a cross-origin link into the document by supplying a
+	 * `site_url` that matches the link: only the caller-independent
+	 * parameter decides same-site-ness.
+	 */
+	public function test_rejects_curated_link_foreign_to_the_supplied_site_url(): void {
+		$input                              = $this->valid_input();
+		$input['site_url']                  = 'https://evil.example';
+		$input['curated_links'][0]['title'] = 'Zaufana oferta';
+		$input['curated_links'][0]['url']   = 'https://evil.example/phish/';
+
+		$this->expectException( InvalidArgumentException::class );
+
+		LlmsConfig::from_input( $input, self::SITE_URL );
 	}
 
 	/**
@@ -108,7 +147,7 @@ final class LlmsConfigTest extends TestCase {
 
 		$this->expectException( InvalidArgumentException::class );
 
-		LlmsConfig::from_input( $input );
+		LlmsConfig::from_input( $input, self::SITE_URL );
 	}
 
 	/**
@@ -120,7 +159,7 @@ final class LlmsConfigTest extends TestCase {
 
 		$this->expectException( InvalidArgumentException::class );
 
-		LlmsConfig::from_input( $input );
+		LlmsConfig::from_input( $input, self::SITE_URL );
 	}
 
 	/**
@@ -132,7 +171,7 @@ final class LlmsConfigTest extends TestCase {
 
 		$this->expectException( InvalidArgumentException::class );
 
-		LlmsConfig::from_input( $input );
+		LlmsConfig::from_input( $input, self::SITE_URL );
 	}
 
 	/**
@@ -147,7 +186,7 @@ final class LlmsConfigTest extends TestCase {
 
 		$this->expectException( InvalidArgumentException::class );
 
-		LlmsConfig::from_input( $input );
+		LlmsConfig::from_input( $input, self::SITE_URL );
 	}
 
 	/**
@@ -168,7 +207,7 @@ final class LlmsConfigTest extends TestCase {
 
 		$this->expectException( InvalidArgumentException::class );
 
-		LlmsConfig::from_input( $input );
+		LlmsConfig::from_input( $input, self::SITE_URL );
 	}
 
 	/**
@@ -180,7 +219,7 @@ final class LlmsConfigTest extends TestCase {
 
 		$this->expectException( InvalidArgumentException::class );
 
-		LlmsConfig::from_input( $input );
+		LlmsConfig::from_input( $input, self::SITE_URL );
 	}
 
 	/**
@@ -192,7 +231,7 @@ final class LlmsConfigTest extends TestCase {
 
 		$this->expectException( InvalidArgumentException::class );
 
-		LlmsConfig::from_input( $input );
+		LlmsConfig::from_input( $input, self::SITE_URL );
 	}
 
 	/**
@@ -203,7 +242,7 @@ final class LlmsConfigTest extends TestCase {
 		$input               = $this->valid_input();
 		$input['site_title'] = "Example\nSite";
 
-		$config = LlmsConfig::from_input( $input );
+		$config = LlmsConfig::from_input( $input, self::SITE_URL );
 
 		self::assertSame( 'Example Site', $config->site_title );
 	}
@@ -217,7 +256,7 @@ final class LlmsConfigTest extends TestCase {
 
 		$this->expectException( InvalidArgumentException::class );
 
-		LlmsConfig::from_input( $input );
+		LlmsConfig::from_input( $input, self::SITE_URL );
 	}
 
 	/**

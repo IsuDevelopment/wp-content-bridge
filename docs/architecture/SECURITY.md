@@ -33,12 +33,13 @@ Plugin capabilities:
 - `wpcb_manage_seo`
 - `wpcb_publish_content`
 - `wpcb_delete_content`
+- `wpcb_manage_llms`
 - `wpcb_manage_settings`
 
 An ability requires both its plugin capability and the native object capability.
 Administrators receive management capabilities on activation. On single-site
 installations, an administrator with `wpcb_manage_settings`, `promote_users`,
-and per-target `edit_user` may explicitly manage the seven operational WPCB
+and per-target `edit_user` may explicitly manage the eight operational WPCB
 capabilities for one dedicated, non-administrator integration user from the
 plugin settings page. The surface never grants native WordPress capabilities or
 `wpcb_manage_settings`, rejects unknown capability tokens, requires native
@@ -196,6 +197,68 @@ a source checkout. Composer/deployment-managed sites can fail closed with
 `wp_content_bridge_self_updates_enabled` filter. Release builds lock the updater
 dependency, include production `vendor/`, exclude Git metadata/tests, and must
 pass Composer advisory review plus artifact inventory (ADR 0018).
+
+## The unauthenticated public surface (`/llms.txt`)
+
+Added 2026-08-08 in `0.6.0`. **Every rule in this document above this section
+assumes a capability-gated Ability behind a permission callback and a native
+WordPress capability check. This route has none of that, by design.** It is the
+one exception, and it is stated here rather than left to be inferred.
+
+Boundary 1 in "Trust boundaries" does not apply: there is no authentication step
+to cross. The mitigation is not authorization but a drastically reduced
+capability — the route can do almost nothing.
+
+### What the route may do
+
+Exactly one thing: read the stored snapshot option and write those bytes. Per
+ADR 0023 it must never query posts, call an SEO provider, generate, or write.
+No stored snapshot means `404`; it never builds one to satisfy a request.
+
+This is what makes the surface safe. It is not "a cheap endpoint" — it is an
+endpoint whose cost is constant and independent of site size, so it cannot be
+turned into an amplification vector by traffic the plugin does not control.
+
+### The four conditions the roadmap set, and how each is met
+
+| Condition | How |
+|---|---|
+| No synchronous generation on a front-end request | Generation exists only inside an authenticated Ability or a scheduled event. The request path has no code path that can generate. |
+| No unbounded regeneration triggerable by public traffic | Only Abilities and cron may enqueue. A cache-busting query string changes nothing, because the handler never regenerates regardless of what it is asked. |
+| Cache-header and ETag correctness under shared caches | Strong `ETag` from the snapshot's own content hash, not a timestamp; `Last-Modified` from generation time; bounded `Cache-Control: public`. `Vary: Cookie` is deliberately absent because the response is identical for every requester — see ADR 0023, and revisit it if that ever stops being true. |
+| Unpublished, private, password-protected and `noindex` content cannot reach the artifact | Enforced in `WordPressLlmsSourceSelector` at generation time: `publish` only, no `post_password`, a public non-attachment type re-checked against WordPress rather than trusted from configuration, and not `noindex` per the SEO provider port. Verified on a live install, 5 of 5. |
+
+### Off by default, and invisible when off
+
+`wpcb_llms_enabled` defaults to false. While it is off the rewrite rule is not
+registered and the path answers `404` — indistinguishable from a path that was
+never claimed. An install that does not use the feature gains no new surface at
+all.
+
+### Residual risks, accepted and named
+
+**Eventual consistency.** The artifact is a snapshot, so content that leaves
+public view remains in it until regeneration runs. Transitions out of an
+eligible state enqueue a debounced regeneration, but the window is real and
+non-zero. It is bounded by the debounce interval; debouncing must never be
+allowed to make it unbounded.
+
+**Ownership conflict.** A physical `/llms.txt` at the web root is served by the
+web server before WordPress runs, so the bridge's artifact silently stops being
+what the public sees. The plugin detects this and refuses to claim its artifact
+is public; it never deletes or overwrites another tool's file. Detection reports
+existence as a boolean and **never returns a filesystem path** in any field.
+
+**The conflict path has not fired against a real conflict.** On the reference
+site there is no physical artifact and Yoast's llms.txt feature is off, so the
+blocking gate ships exercised only against a synthetic conflict built by the
+verifier. That is a gap, not coverage.
+
+**Generated content is untrusted.** Titles and excerpts come from site content
+and land in a document written to be read by language models. They are emitted
+as literal Markdown and must never read as instructions; a title cannot break
+out of its link to another origin. This is boundary 5 in "Trust boundaries",
+reached without any authentication in front of it.
 
 ## Audit events
 

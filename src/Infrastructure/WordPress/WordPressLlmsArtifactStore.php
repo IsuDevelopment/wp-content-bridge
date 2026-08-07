@@ -49,7 +49,7 @@ final class WordPressLlmsArtifactStore implements LlmsArtifactStore {
 		}
 
 		try {
-			return LlmsConfig::from_input( $input );
+			return LlmsConfig::from_input( $input, home_url( '/' ) );
 		} catch ( InvalidArgumentException ) {
 			return null;
 		}

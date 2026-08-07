@@ -25,6 +25,7 @@
                 <element value="wpcb_manage_seo" />
                 <element value="wpcb_publish_content" />
                 <element value="wpcb_delete_content" />
+                <element value="wpcb_manage_llms" />
             </property>
         </properties>
     </rule>

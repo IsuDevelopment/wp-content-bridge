@@ -44,6 +44,29 @@ final readonly class VersionToken {
 	}
 
 	/**
+	 * Derives a token from an effective llms.txt configuration snapshot plus
+	 * its generated artifact's content hash, so a regeneration that changes
+	 * the document — or an administrator changing the configuration —
+	 * invalidates a caller's previously read token.
+	 *
+	 * Unlike {@see self::for_content()}, both inputs may be absent: nothing
+	 * may have been configured or generated yet. Deterministic sentinels keep
+	 * the token stable and well-formed at that state instead of requiring a
+	 * special-cased "unconfigured" token shape.
+	 *
+	 * @param array<string, mixed>|null $config_snapshot       Effective `LlmsConfig::to_array()`, or null when unconfigured.
+	 * @param string|null               $artifact_content_hash Stored artifact's content hash, or null when none has been generated.
+	 * @return self
+	 */
+	public static function for_llms( ?array $config_snapshot, ?string $artifact_content_hash ): self {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- domain code must not depend on WordPress being loaded.
+		$encoded_config = null === $config_snapshot ? '' : (string) json_encode( $config_snapshot );
+		$hash           = substr( hash( 'sha256', $encoded_config . '|' . ( $artifact_content_hash ?? '' ) ), 0, 16 );
+
+		return new self( $hash, $artifact_content_hash ?? 'none' );
+	}
+
+	/**
 	 * Parses the wire form `{content_hash}:{modified_gmt}`.
 	 *
 	 * @param string $value Serialized token.
