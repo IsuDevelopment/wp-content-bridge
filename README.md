@@ -12,6 +12,9 @@ It gives an authenticated integration a typed interface for:
 - finding media by ID, URL, filename, or text;
 - reading registered block patterns;
 - creating drafts and updating Gutenberg content;
+- reading a post's block structure and editing or removing one block, or
+  merging attributes into it, by tree path without rewriting the whole
+  document;
 - updating an allowlisted set of Yoast SEO fields;
 - configuring a structured Service entity, local service areas, brands, and an
   offer catalog when IsuDev Schema Extended is active;
@@ -68,6 +71,7 @@ annotations.
 |---|---|---|---|
 | `search-content` | Always | `wpcb_read_content` | Authorization-aware content search with content type, status, author, taxonomy, date, ordering, and pagination filters. |
 | `get-content` | Always | `wpcb_read_content` | One content object with selected representations, relationships, featured-image ID and URL, and a concurrency token. |
+| `get-block-tree` | Always | `wpcb_read_content` | One content object's Gutenberg structure as a flat, path-addressed node list, without full block markup. |
 | `get-url-seo` | Always | `wpcb_read_content` | Normalized configured and resolved SEO for one readable post ID or same-origin URL. |
 | `get-editorial-context` | Always | `wpcb_read_content` | Bounded post types, taxonomies, terms, authors, recent content, and public Local SEO entities. |
 | `get-diagnostics` | Always | `wpcb_read_content` | Safe compatibility and availability information without secrets or server paths. |
@@ -77,6 +81,9 @@ annotations.
 | `create-draft` | Content writes enabled | `wpcb_edit_content` | Creates a draft with Gutenberg markup, excerpt, taxonomies, and optional idempotency. |
 | `update-content` | Content writes enabled | `wpcb_edit_content` | Updates selected content fields with optimistic concurrency and a WordPress revision. |
 | `preview-update-content` | Content writes enabled | `wpcb_edit_content` | Returns current and prospective title/content/excerpt/taxonomies for an update without writing. |
+| `update-block` | Content writes enabled | `wpcb_edit_content` | Replaces exactly one block subtree, addressed by path, leaving every other block byte-identical; empty markup deletes it. |
+| `preview-update-block` | Content writes enabled | `wpcb_edit_content` | Returns the whole `post_content` that `update-block` would store, without writing. |
+| `update-block-attributes` | Content writes enabled | `wpcb_edit_content` | Shallow-merges a JSON object into one block's attrs, addressed by path, without hand-written delimiter JSON. |
 | `update-seo` | Content writes enabled | `wpcb_manage_seo` | Updates supported Yoast fields and returns the effective SEO document after the write. |
 | `preview-update-seo` | Content writes enabled | `wpcb_manage_seo` | Returns the current resolved SEO document and sanitized prospective field values without writing. |
 | `get-service-schema` | Content writes enabled and Schema Extended active | `wpcb_manage_seo` | Reads the independently saved Service, areaServed, brand, and OfferCatalog configuration. |
@@ -126,6 +133,29 @@ and `featured_image_url`, avoiding attachment-ID guessing.
 
 Selected representations have a combined 2 MiB limit. Oversized content fails
 explicitly instead of returning truncated Gutenberg markup.
+
+### `wp-content-bridge/get-block-tree`
+
+Returns one readable post's Gutenberg structure as a flat, path-addressed list
+of nodes instead of its full markup. Same sensitivity as `get-content`: always
+registered, and requires `wpcb_read_content`, native `read_post`, and the post
+type's Read policy.
+
+Each node carries its `path` (zero-based indices into successive
+`innerBlocks` arrays), `block_name`, an `inner_blocks` child count, a bounded
+`text` preview, and `text_source` (`inner_html`, `attrs`, or `null`) recording
+where that preview came from. `parse_blocks()` emits `block_name: null`
+freeform nodes for whitespace between blocks; these occupy real indices that a
+later write mutates, so they are always included, never skipped.
+
+Optional `path` returns a subtree instead of the whole document, and
+`max_depth` bounds how deep it is walked. Raw `attrs` are opt-in via
+`include_attrs` — omitted by default, since emitting them for a whole document
+can produce a response larger than the content it replaces — and are
+individually withheld (`attrs_omitted: true`) above a 512-byte encoded bound
+per node. The response is capped at 500 nodes, with `truncated: true` when the
+cap stops traversal early, and returns a `version_token` to pass to
+`update-block`, `preview-update-block`, or `update-block-attributes`.
 
 ### `wp-content-bridge/get-url-seo`
 
@@ -264,6 +294,58 @@ taxonomy assignments, `changed_fields`, and bounded machine-readable
 `taxonomies_replaced` when taxonomies are present). The response reports
 `writes_performed: false`. See ADR 0021.
 
+### `wp-content-bridge/update-block`
+
+Replaces exactly one block subtree, addressed by the `path` returned by
+`get-block-tree`, leaving every other block byte-identical by construction —
+the rest of the document is never re-emitted by the caller and never
+re-parsed from its output. Shares `update-content`'s gates exactly: content
+writes enabled, `wpcb_edit_content`, native `edit_post`, the post type's
+Update policy, and optimistic concurrency.
+
+Inputs are `post_id`, `version_token`, `path`, `expected_block_name` — the
+registered block name asserted to exist at `path`, or `null` to assert a
+freeform node; **required**, not optional — and `block_markup` (an empty
+string deletes the subtree). A matching `version_token` proves the document
+did not change; it does not prove `path` points at the block the caller
+believes it does, so `expected_block_name` is asserted separately and the
+write fails closed with `wpcb_block_mismatch` when it differs. An
+out-of-range `path` fails with `wpcb_block_path_not_found`; invalid
+replacement markup fails with `wpcb_invalid_blocks`, checked recursively
+including nested blocks; a stale token fails with `wpcb_conflict` before any
+mutation.
+
+Output is the standard mutation envelope; `changed_fields` is always
+`["content"]` — the block path is positional detail and never enters the
+audit row.
+
+### `wp-content-bridge/preview-update-block`
+
+Mirrors `update-block`'s exact input contract, policy, and concurrency check,
+and reports what the whole `post_content` would become after the same
+parse/splice/serialize round trip, without writing. Returns
+`writes_performed: false`, `current_content`, and `preview_content`. It takes
+no audit dependency at all, so it cannot record a mutation row even by
+accident. See ADR 0021 and ADR 0022.
+
+### `wp-content-bridge/update-block-attributes`
+
+Shallow-merges a JSON object into one block's `attrs`, addressed by `path`,
+leaving every other block — and every other field of the addressed block —
+byte-identical. `serialize_blocks()` performs the JSON encoding, so the caller
+never hand-writes delimiter JSON, which is where escaping mistakes live.
+
+Shares `update-block`'s input contract except `block_markup` is replaced by
+`attributes`, a JSON object bounded to 50 keys and a 100,000-byte canonical
+encoding. A key absent from `attributes` is left untouched; a key present with
+`null` is removed from `attrs`; any other value is set. `expected_block_name`
+is required exactly as for `update-block`, and a freeform node — which has no
+`attrs` to merge into — fails closed with `wpcb_block_mismatch` even when
+`expected_block_name: null` correctly identifies it. There is no preview: the
+caller already holds the current attributes from `get-block-tree` with
+`include_attrs: true`, and a documented shallow merge is something it can
+compute itself; see ADR 0022.
+
 ### `wp-content-bridge/update-seo`
 
 Updates a fixed, version-tested allowlist of Yoast editor fields on one existing
@@ -317,8 +399,8 @@ current `version_token` for preview and update.
 configuration plus the current `version_token`. `preview-update-service-schema`
 requires `post_id`, `version_token`, and at least one proposed field; it returns
 the current and provider-sanitized prospective configurations with
-`dry_run: true`. It performs no metadata write, audit mutation, or cache purge.
-`update-service-schema` remains the only mutating operation.
+`writes_performed: false`. It performs no metadata write, audit mutation, or
+cache purge. `update-service-schema` remains the only mutating operation.
 
 The input is a fixed normalized document: `enabled`, `name`, `service_type`,
 `description`, typed `areas` (`City`, `AdministrativeArea`, or `Country`),
@@ -339,8 +421,9 @@ writes are enabled and Schema Extended's compatible `Integration_API` contract
 is active. `get-custom-schema` reads the saved `enabled` flag, editable JSON,
 normalized nodes, and diagnostics. `preview-update-custom-schema` requires `post_id`,
 the current `version_token`, and at least one of `enabled` or `source`; it
-returns current and prospective configurations with `dry_run: true` and cannot
-write. `update-custom-schema` uses the same input and is the only mutation.
+returns current and prospective configurations with `writes_performed: false`
+and cannot write. `update-custom-schema` uses the same input and is the only
+mutation.
 
 JSON source is limited to 100,000 bytes. Schema Extended validates a single
 Schema.org object, a node list, or an `@graph` wrapper with at most 20 nodes and
@@ -460,7 +543,7 @@ The plugin registers domain abilities; it does not provide MCP transport or
 authentication. Install the official WordPress MCP Adapter separately and
 explicitly allow only the abilities required by a client.
 
-The current source defines a closed 21-ability projection profile covering
+The current source defines a closed 25-ability projection profile covering
 every implemented ability. The reference site-level MCP server intersects
 that profile with the abilities registered in the current request, so disabled
 media, pattern, write, Schema Extended, and trash features remain absent from

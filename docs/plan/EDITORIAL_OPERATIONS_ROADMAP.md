@@ -631,14 +631,23 @@ Decided 2026-08-07, superseding the version in each slice heading:
 |---|---|---|
 | `0.4.0` | Slice 1A — content and SEO preview | shipped |
 | `0.4.5` | Consolidation and debt (see below) | next |
-| `0.5.0` | Slice 1B — llms.txt | planned |
-| `0.6.0` | Slice 2 — controlled status workflow | planned |
-| `0.7.0` | Slice 3 — revision inspection and recovery | planned |
-| `0.8.0` | Slice 4 — media metadata and featured image | planned |
-| `0.9.0+` | Slice 5 — permalinks and redirects | planned |
-| `0.10.0+` | Slice 6 — targeted block editing | planned |
-| `0.11.0+` | Slice 7 — connector mutation history | planned |
-| `0.12.0+` | Slice 8 — bounded multi-object inventory | planned |
+| `0.5.0` | Block-level edits — path-addressed `get-block-tree`/`update-block`/`preview-update-block`/`update-block-attributes` (ADR 0022) | shipped |
+| `0.6.0` | Slice 1B — llms.txt | planned |
+| `0.7.0` | Slice 2 — controlled status workflow | planned |
+| `0.8.0` | Slice 3 — revision inspection and recovery | planned |
+| `0.9.0` | Slice 4 — media metadata and featured image | planned |
+| `0.10.0+` | Slice 5 — permalinks and redirects | planned |
+| `0.11.0+` | Slice 6 — targeted block editing | planned |
+| `0.12.0+` | Slice 7 — connector mutation history | planned |
+| `0.13.0+` | Slice 8 — bounded multi-object inventory | planned |
+
+`0.5.0` was inserted ahead of the sequence above and is not one of its
+numbered slices; it shipped the block-level editing work specified in
+`docs/plan/SLICE_BLOCK_EDITS_EXECUTION_PLAN.md` and ADR 0022, addressing part
+of what Slice 6 below still lists as a `0.11.0+` research gate (stable block
+identity for nested/reusable/dynamic blocks, hash-based staleness detection,
+editor-semantic validation parity). Every slice from Slice 1B onward moved up
+one version to make room for it.
 
 `0.4.5` is not a roadmap slice. It is a deliberate consolidation release that
 pays down debt accumulated through 0.4.0 before the llms.txt slice adds a new

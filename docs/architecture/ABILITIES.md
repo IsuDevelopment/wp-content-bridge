@@ -134,6 +134,52 @@ effective `bounds`, `provenance`, and bounded `warnings`.
 
 Annotations: read-only, non-destructive, idempotent.
 
+### `wp-content-bridge/get-block-tree`
+
+Purpose: return one readable content object's Gutenberg structure as a flat,
+path-addressed node list, without full block markup. Same sensitivity as
+`get-content`, so the same gates: always registered, requires
+`wpcb_read_content`, native `read_post`, and the post type's Read policy.
+
+Inputs:
+
+- `post_id: integer` (required).
+- `max_depth?: integer` (minimum 1) — maximum node depth returned, counted
+  from the returned root; omit for unbounded depth, still subject to the
+  500-node cap.
+- `path?: integer[]` (1–20 items, each ≥ 0) — zero-based indices into
+  successive `innerBlocks` arrays identifying a subtree root; returns that
+  node and its descendants instead of the whole document.
+- `include_attrs?: boolean` (default `false`).
+
+Each output node is `{ path, block_name, inner_blocks, text, text_source,
+attrs?, attrs_omitted? }`. `path` and `block_name` are `list<int>` and
+`string|null`; `block_name` is `null` for the freeform whitespace nodes
+`parse_blocks()` emits between blocks — they occupy real indices in the array
+`update-block` mutates and are always included, never skipped, and
+`expected_block_name: null` legitimately targets one. `text` tries the node's
+own `innerHTML` first (`wp_strip_all_tags()`, trimmed, at most 120 characters);
+when that is empty it falls back to the node's own prose-bearing string
+attributes (whitespace-containing values at least 3 characters long,
+concatenated in attribute-name order). `text_source` records which:
+`inner_html`, `attrs`, or `null` when `text` is `null` — a block whose
+`text_source` is `attrs` is edited by changing an attribute, not by replacing
+markup.
+
+`attrs` are opt-in via `include_attrs` (default `false`); when `false` they
+are omitted entirely and `attrs_omitted` is never set, since absence is then
+the request's own contract, not a size omission. When `include_attrs` is
+`true`, one node's `attrs` is still withheld with `attrs_omitted: true` above
+a 512-byte encoded bound, so one pathological block cannot dominate the
+response.
+
+Output: `schema_version`, `post_id`, `post_type`, `version_token` (to pass to
+`update-block`, `preview-update-block`, or `update-block-attributes`),
+`nodes` (at most 500), `truncated` (`true` when the node cap stopped
+traversal before every node was returned), and `provenance`.
+
+Annotations: read-only, non-destructive, idempotent.
+
 ### `wp-content-bridge/get-diagnostics`
 
 Purpose: report safe compatibility status for support and client setup.
@@ -213,11 +259,12 @@ Annotations: read-only, non-destructive, idempotent.
 
 ## Write abilities
 
-`create-draft`, `update-content`, `update-seo`, `update-service-schema`,
-`trash-content`, and `restore-trashed-content` are **implemented and
-reachable** writes. Service-schema read and preview are separate read-only
-intents under the same registration gate.
-The first three writes are
+`create-draft`, `update-content`, `update-block`, `update-block-attributes`,
+`update-seo`, `update-service-schema`, `trash-content`, and
+`restore-trashed-content` are **implemented and reachable** writes.
+Service-schema read and preview are separate read-only intents under the same
+registration gate.
+The first five writes are
 registered when
 `get_option( Installer::WRITES_ENABLED_OPTION )` (`wpcb_writes_enabled`) is
 truthy. All Service-schema intents additionally require the compatible standalone
@@ -237,6 +284,13 @@ Stable error codes shared by `create-draft`/`update-content`:
 `update-seo` shares the same set except `wpcb_invalid_blocks`, and adds
 `wpcb_seo_field_unsupported` (a field outside the writable allowlist rejects
 the whole request).
+`update-block` and `preview-update-block` share that same set and add
+`wpcb_block_path_not_found` (no block exists at `path`) and
+`wpcb_block_mismatch` (the block at `path` is not `expected_block_name`).
+`update-block-attributes` uses the same two block-addressing codes but never
+`wpcb_invalid_blocks`, since it never accepts raw block markup; a freeform
+node targeted by `path` — which has no `attrs` to merge into — is also
+reported as `wpcb_block_mismatch`.
 `update-service-schema` uses the SEO gate and adds
 `wpcb_service_schema_unavailable` when the optional provider or target post type
 is unsupported.
@@ -248,7 +302,7 @@ JSON fails provider validation.
 `wpcb_invalid_blocks`, and reuses `wpcb_invalid_state`/`wpcb_trash_unavailable`
 for a non-`trash` source state and disabled trash retention, respectively.
 
-**MCP projection:** the current reference profile contains all 21 implemented
+**MCP projection:** the current reference profile contains all 25 implemented
 ability IDs and intersects that closed allowlist
 with the abilities registered in the current request. Feature flags therefore
 still remove disabled operations from discovery, and Service/Custom Schema
@@ -399,6 +453,100 @@ set to an empty string.
 
 Annotations: `readonly: true`, `destructive: false`, `idempotent: true`.
 
+### `wp-content-bridge/update-block`
+
+Replaces exactly one block subtree, addressed by tree `path`, leaving every
+other block byte-identical by construction — the rest of the document is
+never re-emitted by the caller and never re-parsed from its output (ADR
+0022). Shares `update-content`'s gates exactly: `wpcb_writes_enabled`,
+`wpcb_edit_content`, native `edit_post`, the post type's Update policy, and
+optimistic concurrency.
+
+Inputs:
+
+- `post_id: integer` (required).
+- `version_token: string` (required) — from a prior `get-block-tree` or
+  `get-content` call; a stale token is rejected with `wpcb_conflict` before
+  any mutation.
+- `path: integer[]` (required, 1–20 items, each ≥ 0) — zero-based indices
+  into successive `innerBlocks` arrays, as returned by `get-block-tree`.
+  `parse_blocks()` emits `block_name: null` freeform nodes for whitespace
+  between blocks, and these occupy real indices that must be counted when
+  building a path.
+- `expected_block_name: string|null` (**required**) — the registered block
+  name asserted to exist at `path`, or `null` to assert a freeform node. A
+  matching `version_token` proves the document did not change; it does not
+  prove `path` points at the block the caller believes it does, so this fact
+  is asserted separately and the request fails closed with
+  `wpcb_block_mismatch` when it differs.
+- `block_markup: string` (required, ≤ 500,000 bytes) — replacement markup for
+  the subtree at `path`; an empty string deletes it.
+
+Behaviour: resolve `path` against the current content, assert
+`expected_block_name`, validate `block_markup` recursively (nested blocks
+included), splice the parsed replacement into the tree, and
+`serialize_blocks()` the whole tree through the existing
+`ContentMutationRepository`. An out-of-range `path` fails with the
+non-enumerating `wpcb_block_path_not_found`.
+
+Output: the standard mutation envelope. `changed_fields` is always
+`["content"]` — a block path is positional detail and must not enter the
+audit row, which records field names only.
+
+Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
+
+### `wp-content-bridge/preview-update-block`
+
+Accepts the exact `update-block` input contract and applies the same policy,
+concurrency check, path resolution, `expected_block_name` assertion, and
+block-markup validation, but never writes. Returns bounded current/prospective
+`post_content` and `writes_performed: false`. It takes no `AuditLog`
+dependency at all, so it cannot record a mutation row even by accident
+(ADR 0021).
+
+Output (`schema_version, writes_performed, post_id, post_type, version_token,
+changed_fields, current_content, preview_content, provenance`):
+`current_content`/`preview_content` are each the whole `post_content` — before
+and after the parse/splice/serialize round trip — since that round trip can
+itself change what would actually be stored, and block-type registration is
+specific to the site.
+
+Annotations: `readonly: true`, `destructive: false`, `idempotent: true`.
+
+### `wp-content-bridge/update-block-attributes`
+
+Shallow-merges a JSON object into one block's `attrs`, addressed by tree
+`path`, leaving every other block — and every other field of the addressed
+block — byte-identical by construction. `serialize_blocks()` performs the
+JSON encoding, so the caller never hand-writes delimiter JSON, which is where
+escaping mistakes live (ADR 0022). Shares `update-block`'s gates exactly.
+
+Inputs are identical to `update-block` except `block_markup` is replaced by:
+
+- `attributes: object` (required, ≤ 50 top-level keys, ≤ 100,000 bytes of
+  canonical JSON encoding) — a shallow overlay onto the block's existing
+  `attrs`. A key absent from `attributes` is left untouched; a key present
+  with value `null` removes that key from `attrs`; any other value sets it.
+
+`expected_block_name` is required exactly as for `update-block`. A freeform
+node has no `attrs` to merge into, so the request fails closed with
+`wpcb_block_mismatch` even when `expected_block_name: null` correctly
+identifies it. There is no preview: `get-block-tree` with `include_attrs:
+true` already returns the current attributes, the caller holds the new
+values, and a documented shallow merge is something it can compute itself —
+this is the same preview-justification test that cut three previews before
+0.4.0.
+
+Output: the standard mutation envelope; `changed_fields` is always
+`["content"]`.
+
+Error codes: `wpcb_invalid_input`, `wpcb_conflict`, `wpcb_forbidden`,
+`wpcb_content_unavailable`, `wpcb_block_path_not_found`,
+`wpcb_block_mismatch`, `wpcb_write_failed`, `wpcb_internal_error`. Never
+`wpcb_invalid_blocks` — it never accepts raw block markup.
+
+Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
+
 ### `wp-content-bridge/get-service-schema`
 
 Reads the independently saved provider configuration for one target. It
@@ -415,13 +563,8 @@ Accepts the exact `update-service-schema` input contract, including required
 `post_id` and current `version_token`, and at least one mutable field. It checks
 policy, provider support, and optimistic concurrency, then returns
 `current_service_schema`, provider-sanitized `preview_service_schema`,
-`changed_fields`, `dry_run: true`, and `writes_performed: false`. No metadata,
+`changed_fields`, and `writes_performed: false`. No metadata,
 audit row, revision, or cache state is changed.
-
-`dry_run` is deprecated as of 0.4.5; it is kept only for backward
-compatibility alongside the newer `writes_performed`, which is now the shared
-flag across all four preview Abilities. `dry_run` is scheduled for removal in
-`0.5.0`.
 
 Annotations: `readonly: true`, `destructive: false`, `idempotent: true`.
 
@@ -480,15 +623,10 @@ Accepts the exact `update-custom-schema` input contract: required `post_id` and
 current `version_token`, plus at least one of `enabled` or `source`. Omitted
 fields retain their current saved values. The preview checks policy and
 optimistic concurrency, validates the prospective source through the provider,
-and returns current plus prospective configurations with `dry_run: true` and
+and returns current plus prospective configurations with
 `writes_performed: false`. Invalid source is reported rather than thrown so an
 agent can repair it. No metadata, audit row, revision, or cache state is
 changed.
-
-`dry_run` is deprecated as of 0.4.5; it is kept only for backward
-compatibility alongside the newer `writes_performed`, which is now the shared
-flag across all four preview Abilities. `dry_run` is scheduled for removal in
-`0.5.0`.
 
 Annotations: `readonly: true`, `destructive: false`, `idempotent: true`.
 
@@ -556,7 +694,7 @@ recorded status only when it is one of `draft`, `pending`, or `private`; a
 missing, unparseable, or `publish`/`future` recorded status all fall back to
 `draft`. **Restoration can never reach `publish` or `future`** — republication
 is a separate, still-unimplemented contract
-(`transition-content-status`, `0.6.0`) gated behind the publication switch and
+(`transition-content-status`, `0.7.0`) gated behind the publication switch and
 `wpcb_publish_content`, and this ability must never become a way around that
 gate. The adapter sets the intended status explicitly through the
 `wp_untrash_post_status` filter rather than relying on `wp_untrash_post()`'s

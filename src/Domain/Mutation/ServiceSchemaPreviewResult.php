@@ -42,7 +42,6 @@ final readonly class ServiceSchemaPreviewResult {
 	public function to_array(): array {
 		return array(
 			'schema_version'         => '1.0',
-			'dry_run'                => true,
 			'writes_performed'       => false,
 			'post_id'                => $this->post_id,
 			'post_type'              => $this->post_type,

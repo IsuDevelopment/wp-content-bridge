@@ -452,12 +452,151 @@ Files:
   previewed state, and that stale tokens are rejected before any mutation.
 
 **MCP projection:** the current source documents a closed profile containing all
-21 implemented abilities. The reference Kormas site owns this boundary as a
+25 implemented abilities. The reference Kormas site owns this boundary as a
 Composer-installed MU-plugin and passes only profile entries that are currently
 registered. Service and Custom Schema entries therefore disappear automatically
 when their standalone provider contract or global writes are inactive. OAuth grants remain a
 separate site configuration; see
 `docs/setup/MCP_ADAPTER.md`.
+
+## Block-level edit feature
+
+ADR 0022. Addresses one block subtree by its position in the parsed tree
+instead of replacing the whole document, so a single-paragraph edit costs
+~174 characters instead of ~12,000 and cannot damage a block the caller never
+sends.
+
+```text
+get-block-tree Ability
+  -> wpcb_read_content capability
+  -> GetBlockTree application service
+     -> ContentAccessManager (READ policy)
+     -> BlockTreeRepository port
+     -> WordPressBlockTreeRepository
+        -> parse_blocks(), bounded flat projection
+  -> BlockTree DTO -> Ability output schema validation
+
+update-block / preview-update-block / update-block-attributes Ability
+  -> wpcb_edit_content capability + native edit_post — BlockMutationAbilities
+     permission callback
+  -> UpdateBlock / PreviewBlockUpdate / UpdateBlockAttributes application use case
+     -> ContentAccessManager per-post-type UPDATE policy
+     -> ContentSnapshotRepository (current block_markup read)
+     -> BlockTreeSplicer port
+        -> PhpBlockTreeSplicer (resolve / splice / merge_attributes via
+           parse_blocks() / serialize_blocks())
+     -> BlockMarkupValidator (update-block and its preview only; recursive
+        registration + full-depth round-trip check)
+     -> ContentMutationRepository port -> WordPressContentMutationRepository
+     -> AuditLog: exactly one redacted row per attempt (update-block and
+        update-block-attributes only; the preview takes no AuditLog
+        dependency at all)
+     -> WordPressPostCacheInvalidator (post-scoped, on success)
+  -> MutationResult / BlockUpdatePreviewResult DTO -> Ability output schema
+     validation
+```
+
+Rules for this flow:
+
+- `get-block-tree` is registered in `ContentAbilities` alongside the other
+  always-on reads rather than in a new adapter, so it shares `can_read`'s
+  permission callback; it needs no new flag and no new capability.
+- `update-block`, `preview-update-block`, and `update-block-attributes` are
+  registered in a dedicated `BlockMutationAbilities` adapter rather than
+  folded into `MutationAbilities`, following the
+  `RestoreTrashedContentAbilities` precedent, so `writes-mutation-verification.php`
+  stays untouched.
+- `expected_block_name` (string or `null`) is mandatory on every block write
+  and preview. A matching `version_token` proves the document did not
+  change; it does not prove `path` points at the block the caller believes
+  it does, so this fact is asserted separately and the request fails closed
+  with `wpcb_block_mismatch` when it differs.
+- `parse_blocks()` emits `block_name: null` freeform nodes for whitespace
+  between blocks. They occupy real indices in the array a write mutates, so
+  `get-block-tree` always includes them and `expected_block_name: null`
+  legitimately targets one. `update-block-attributes` still rejects a
+  freeform target with `wpcb_block_mismatch`, since it has no `attrs` to
+  merge into.
+- A block `path` is positional detail, not a field name, and never enters the
+  audit row; `changed_fields` is always `["content"]` for all three writes.
+- `update-block-attributes` has no preview. `get-block-tree` with
+  `include_attrs: true` already returns the current attributes, the caller
+  holds the new values, and a documented shallow merge is something it can
+  compute itself — the same preview-justification test that cut three other
+  previews before `0.4.0`.
+- Domain DTOs (`BlockTree`, `BlockTreeNode`, `BlockPathLookup`, `BlockUpdate`,
+  `BlockAttributesUpdate`, `BlockUpdatePreviewResult`) do not call WordPress
+  or know about MCP.
+
+Files:
+
+- `src/Domain/Content/BlockTree.php` and `BlockTreeNode.php` — immutable,
+  flat, path-addressed block-tree result and one node; each node carries
+  `text`/`text_source` (falling back from `innerHTML` to a prose-bearing
+  string attribute) and opt-in, size-bounded `attrs`.
+- `src/Domain/Content/BlockPathLookup.php` — the block name found at a
+  resolved path; a `null` value legally means a freeform node was found
+  there, distinct from resolution failure (a `null` lookup itself).
+- `src/Application/Content/BlockTreeRepository.php` — read-only port,
+  deliberately separate from `ContentRepository`: a different projection of
+  the same post, not an extension of the whole-document read.
+- `src/Application/Content/GetBlockTree.php` — the `get-block-tree` use
+  case; mirrors `GetContent`'s gates exactly (policy, native `read_post`,
+  non-enumerating denial).
+- `src/Infrastructure/WordPress/WordPressBlockTreeRepository.php` — projects
+  `parse_blocks()` into the bounded node list: 500-node cap with
+  `truncated`, 120-character `text`, and a 512-byte per-node encoded `attrs`
+  bound (`attrs_omitted` above it).
+- `src/Domain/Mutation/BlockUpdate.php` — validated `update-block`/
+  `preview-update-block` input (`post_id`, `version_token`, `path`,
+  `expected_block_name`, `block_markup`); `block_markup` may be empty to
+  delete the addressed subtree.
+- `src/Domain/Mutation/BlockAttributesUpdate.php` — validated
+  `update-block-attributes` input; `attributes` replaces `block_markup` and
+  is bounded to 50 keys and a 100,000-byte canonical JSON encoding.
+- `src/Domain/Mutation/BlockUpdatePreviewResult.php` — preview DTO scoped to
+  the one field (`content`) a block-level edit can ever change; wire field is
+  `writes_performed: false`.
+- `src/Application/Mutation/BlockTreeSplicer.php` — port for `resolve()`
+  (path lookup without mutation), `splice()` (subtree replace/delete), and
+  `merge_attributes()` (shallow `attrs` overlay); backs both `UpdateBlock`
+  and `UpdateBlockAttributes`.
+- `src/Application/Mutation/BlockPathNotFound.php` and `BlockMismatch.php` —
+  typed failures (`wpcb_block_path_not_found`, `wpcb_block_mismatch`).
+- `src/Application/Mutation/UpdateBlock.php` — validate, resolve `path`,
+  assert `expected_block_name`, validate `block_markup` recursively, splice,
+  write, audit; same exactly-once-audit structure as `UpdateContent`.
+- `src/Application/Mutation/PreviewBlockUpdate.php` — mirrors `UpdateBlock`'s
+  validation and concurrency check exactly (ADR 0021) and takes no `AuditLog`
+  dependency at all, so it structurally cannot audit.
+- `src/Application/Mutation/UpdateBlockAttributes.php` — validate, resolve
+  `path`, assert `expected_block_name`, reject a freeform target, merge
+  attributes, write, audit; no block-markup validation, since it never
+  accepts raw markup.
+- `src/Infrastructure/WordPress/PhpBlockTreeSplicer.php` — `parse_blocks()`/
+  `serialize_blocks()`-backed implementation. Every level `replace()` or
+  `merge()` descends into is re-narrowed rather than trusted from a parent's
+  declared (necessarily shallow) `innerBlocks` type, so nested entries are
+  always safe to hand back to `serialize_blocks()`.
+- `src/Adapter/Abilities/BlockMutationAbilities.php` — registers
+  `update-block`, `preview-update-block`, and `update-block-attributes`;
+  owns `WP_Error` mapping and the shared `can_update` permission callback,
+  and carries no policy of its own.
+- `src/Adapter/Abilities/AbilitySchemas.php` — adds
+  `get_block_tree_input/output`, `update_block_input/output` (shared
+  verbatim by `preview-update-block` per ADR 0021),
+  `preview_update_block_output`, and
+  `update_block_attributes_input/output`.
+- `tests/Unit/Application/Mutation/UpdateBlockTest.php`,
+  `PreviewBlockUpdateTest.php`, and `UpdateBlockAttributesTest.php` — one
+  unit test file per use case.
+- `tests/Integration/block-edits-verification.php` — the runtime verifier:
+  path round-trip byte-identity, sibling/subtree isolation,
+  `expected_block_name` mismatch and out-of-range path rejection (no write in
+  either case), stale-token rejection, the task 1 nested-block-validation
+  regression asserted through the public surface, preview determinism (no
+  audit/revision/`post_modified_gmt` change), freeform-node addressing, and
+  `update-block-attributes` shallow-merge/removal/escaping.
 
 ## Specification routes
 
@@ -478,6 +617,8 @@ separate site configuration; see
   `docs/adr/0014-premium-keyphrases-use-a-normalized-versioned-write-contract.md`.
 - Status workflow and trash boundary:
   `docs/adr/0015-content-status-transitions-and-trash-are-separate-intents.md`.
+- Block-level edit path-addressing decision:
+  `docs/adr/0022-block-level-edits-are-addressed-by-tree-path.md`.
 - Agent procedures: `.agents/instructions/`.
 - Milestone 1B evidence: `docs/verification/ABILITIES_VERIFICATION.md`.
 

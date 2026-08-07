@@ -1,10 +1,48 @@
 # Project status
 
-**Released version: 0.4.5.** Static quality is green at 247 tests / 648
-assertions. Runtime verification is no longer the open gate: all 18 verifiers
-ran green on 2026-08-07 and the inventory is now defined in
-`docs/setup/VERIFICATION.md`. The consolidation release `0.4.5` is complete;
-next is `0.5.0`, Slice 1B (llms.txt). See "Next action".
+**Released version: 0.5.0.** Static quality is green at 288 tests / 783
+assertions. Runtime verification is no longer the open gate: the inventory is
+defined in `docs/setup/VERIFICATION.md` and ran green on 2026-08-07. `0.5.0`
+adds block-level editing and fixes a data-corruption defect that shipped in
+every release from 0.1.5 onward; see "Block-level edits" below. Next is
+`0.6.0`, Slice 1B (llms.txt).
+
+## Block-level edits — 0.5.0, 2026-08-07
+
+`update-content` replaced the whole document, so an agent asked to change one
+paragraph had to re-emit every block and drifted on the ones it was never meant
+to touch. ADR 0022 replaces that with path addressing: `get-block-tree` returns
+the structure as a flat list of nodes carrying their tree `path`, and
+`update-block` / `update-block-attributes` change exactly one subtree. Blocks
+the caller never sends cannot be damaged, because they are never re-parsed from
+caller output. A single-block edit costs ~174 characters against ~12,000.
+
+Every block write requires `expected_block_name` alongside `version_token`. The
+token proves the document did not change; it does not prove the path points
+where the caller believes, and an off-by-one would otherwise replace the wrong
+block silently.
+
+Verified on real content (a 77-node page): **all 77 paths round-trip
+byte-identically**, a wrong `expected_block_name` and an out-of-range path both
+fail closed without writing, and preview writes nothing.
+`tests/Integration/block-edits-verification.php` holds eleven properties.
+
+**A pre-existing data-corruption bug was found while verifying this and is
+fixed here.** `wp_insert_post()`/`wp_update_post()` expect slashed data and call
+`wp_unslash()`; `WordPressContentMutationRepository` passed raw input, so every
+backslash written through `create-draft` or `update-content` was stripped —
+shipped from 0.1.5 to 0.4.5. `serialize_block()` writes a quote inside attribute
+JSON as a backslash-u escape, so any block with a quoted attribute was corrupted
+by any bridge write to that post. Fixed by `slashed()`, regression-guarded by
+assertion 11 of the new verifier. **No automatic repair exists** — the damaged
+form is indistinguishable from deliberate text. A scan of the reference site on
+2026-08-07 found zero affected rows, because bridge writes there only ever hit
+disposable fixtures. **No `0.4.6` was cut**: the bridge has one operator writing
+only against a development site.
+
+Also in this release: recursive block-markup validation (an unregistered
+*nested* block previously passed), and the removal of the deprecated `dry_run`
+preview field promised in 0.4.5.
 
 Entries below are dated and historical; read them as a log, not as current
 state. Where a dated entry names a version that later moved, the "Release
@@ -640,7 +678,13 @@ verified.
 
 ## Next action
 
-Released state: **0.4.5**. Versions 0.2.0 through 0.4.5 all shipped.
+Released state: **0.5.0**. Versions 0.2.0 through 0.5.0 all shipped.
+
+**Next release is `0.6.0` — Slice 1B (llms.txt).** It moved from `0.5.0` when
+the block-edits slice took that number on 2026-08-07. It remains the heaviest
+slice in the roadmap, adds the plugin's first unauthenticated public route, and
+needs its own threat model before any code. `transition-content-status` is now
+`0.7.0`.
 
 **0.4.5 is complete.** All eight tasks of `docs/plan/RELEASE_0_4_5_PLAN.md` are
 done: `restore-trashed-content`, unifying the preview response flag,
@@ -657,6 +701,12 @@ version bump, making the profile 21 entries.
 This is hygiene, not a blocker — see "Two MCP servers, one projection" below.
 An earlier draft of this entry claimed the ability was "unreachable over MCP"
 until the bump. That is wrong and was corrected on 2026-08-07.
+
+> **Superseded 2026-08-07 — version numbers only.** The two paragraphs below
+> assigned `0.5.0` to Slice 1B. The block-edits slice took that number later the
+> same day; llms.txt is now `0.6.0` and `transition-content-status` is `0.7.0`.
+> The `dry_run` removal shipped in `0.5.0` as promised, just in a different
+> release than the one anticipated here.
 
 **Next release is `0.5.0` — Slice 1B (llms.txt).** It is the heaviest slice in
 the roadmap, adds the plugin's first unauthenticated public route, and needs its

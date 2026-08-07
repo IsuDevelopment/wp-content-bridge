@@ -15,6 +15,11 @@
 > Abilities. `dry_run` is deprecated and scheduled for removal in `0.5.0`; see
 > `docs/architecture/ABILITIES.md`.
 
+> **Amended 2026-08-07 — removed `dry_run`.** The decision below is unchanged.
+> `dry_run` is removed from the output in `0.5.0`; `writes_performed: false`,
+> present on all four preview Abilities since `0.4.5`, is now the only flag.
+> This is a breaking change for any client still reading `dry_run`.
+
 ## Context
 
 The fixed Service contract is appropriate for common local-service markup but

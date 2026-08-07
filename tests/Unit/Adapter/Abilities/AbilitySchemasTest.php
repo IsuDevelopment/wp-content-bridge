@@ -187,7 +187,6 @@ final class AbilitySchemasTest extends TestCase {
 		self::assertContains( 'current_service_schema', $preview_output['required'] );
 		self::assertContains( 'preview_service_schema', $preview_output['required'] );
 		self::assertContains( 'writes_performed', $preview_output['required'] );
-		self::assertSame( 'boolean', $preview_output['properties']['dry_run']['type'] );
 		self::assertSame( 'boolean', $preview_output['properties']['writes_performed']['type'] );
 		self::assertFalse( $output['properties']['effective_service_schema']['additionalProperties'] );
 		self::assertFalse( $output['properties']['effective_service_schema']['properties']['provider']['additionalProperties'] );

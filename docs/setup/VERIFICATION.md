@@ -132,14 +132,15 @@ driven by the shell verifiers, not verifiers themselves.
 
 ## Last full run
 
-**2026-08-07 — 18 of 18 green**, against the environment above at 0.4.5-dev.
+**2026-08-07 — 19 of 19 green**, against the environment above at 0.5.0.
 
 Record a dated line here on every release. A release whose line is missing
 shipped unverified, and that should be visible rather than reconstructable.
 
 | Date | Result | Notes |
 |---|---|---|
-| 2026-08-07 | 18/18 | First complete inventory run since 2026-07-21. Covers Slice 1A previews and `restore-trashed-content`. |
+| 2026-08-07 | 19/19 | 0.5.0. Adds `block-edits-verification`, whose escaping assertion found a backslash-stripping defect shipped since 0.1.5. |
+| 2026-08-07 | 18/18 | 0.4.5. First complete inventory run since 2026-07-21. Covers Slice 1A previews and `restore-trashed-content`. |
 
 ## Keeping this current
 

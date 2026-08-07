@@ -21,11 +21,12 @@ allowlists and credentials.
 
 ## Projection profile for current source
 
-The complete WP Content Bridge profile contains 21 potential abilities:
+The complete WP Content Bridge profile contains 25 potential abilities:
 
 ```text
 wp-content-bridge/search-content
 wp-content-bridge/get-content
+wp-content-bridge/get-block-tree
 wp-content-bridge/get-url-seo
 wp-content-bridge/get-editorial-context
 wp-content-bridge/get-diagnostics
@@ -35,6 +36,9 @@ wp-content-bridge/list-block-patterns
 wp-content-bridge/create-draft
 wp-content-bridge/update-content
 wp-content-bridge/preview-update-content
+wp-content-bridge/update-block
+wp-content-bridge/preview-update-block
+wp-content-bridge/update-block-attributes
 wp-content-bridge/update-seo
 wp-content-bridge/preview-update-seo
 wp-content-bridge/get-service-schema
@@ -47,12 +51,15 @@ wp-content-bridge/trash-content
 wp-content-bridge/restore-trashed-content
 ```
 
-The first five are always registered. The remaining abilities enter the
+The first six are always registered. The remaining abilities enter the
 WordPress registry only when their WP Content Bridge feature flags are enabled:
 
 - media reads: `wpcb_media_reads_enabled`;
 - block patterns: `wpcb_pattern_reads_enabled`;
-- draft/content/SEO writes and their previews: `wpcb_writes_enabled`;
+- draft/content/SEO/block writes and their previews: `wpcb_writes_enabled`
+  (block reads, `get-block-tree`, are always registered — same gates as
+  `get-content` — while block writes need this flag exactly like the other
+  content writes);
 - Service schema: `wpcb_writes_enabled` plus a loaded, compatible standalone
   IsuDev Schema Extended plugin;
 - Custom Schema: `wpcb_writes_enabled` plus Schema Extended's compatible public
@@ -103,6 +110,7 @@ use WP\MCP\Transport\HttpTransport;
 $wpcb_profile = array(
 	'wp-content-bridge/search-content',
 	'wp-content-bridge/get-content',
+	'wp-content-bridge/get-block-tree',
 	'wp-content-bridge/get-url-seo',
 	'wp-content-bridge/get-editorial-context',
 	'wp-content-bridge/get-diagnostics',
@@ -112,6 +120,9 @@ $wpcb_profile = array(
 	'wp-content-bridge/create-draft',
 	'wp-content-bridge/update-content',
 	'wp-content-bridge/preview-update-content',
+	'wp-content-bridge/update-block',
+	'wp-content-bridge/preview-update-block',
+	'wp-content-bridge/update-block-attributes',
 	'wp-content-bridge/update-seo',
 	'wp-content-bridge/preview-update-seo',
 	'wp-content-bridge/get-service-schema',
@@ -121,6 +132,7 @@ $wpcb_profile = array(
 	'wp-content-bridge/preview-update-custom-schema',
 	'wp-content-bridge/update-custom-schema',
 	'wp-content-bridge/trash-content',
+	'wp-content-bridge/restore-trashed-content',
 );
 
 add_action(
@@ -161,11 +173,11 @@ tools from entering the server accidentally.
 Use a dedicated WordPress user. In **Settings → WP Content Bridge**, assign only
 the capabilities required by that integration:
 
-- `wpcb_read_content` for the five core reads;
+- `wpcb_read_content` for the six core reads, including `get-block-tree`;
 - `wpcb_read_media` for media reads;
 - `wpcb_read_patterns` plus native editor access for block patterns;
 - `wpcb_edit_content` plus native create/edit capabilities for draft/content
-  writes;
+  writes, including `update-block` and `update-block-attributes`;
 - `wpcb_manage_seo` plus native `edit_post` for SEO, structured Service, and
   Custom Schema writes; Schema operations also require provider support;
 - `wpcb_delete_content` plus native `delete_post` for trash.
@@ -180,7 +192,7 @@ the same operation.
 First verify registration inside WordPress:
 
 ```bash
-wp eval 'foreach (array("search-content","get-content","get-url-seo","get-editorial-context","get-diagnostics","get-media","get-media-by-id","list-block-patterns","create-draft","update-content","preview-update-content","update-seo","preview-update-seo","get-service-schema","preview-update-service-schema","update-service-schema","get-custom-schema","preview-update-custom-schema","update-custom-schema","trash-content") as $name) { $id = "wp-content-bridge/" . $name; echo $id, "=", (int) (function_exists("wp_has_ability") && wp_has_ability($id)), PHP_EOL; }'
+wp eval 'foreach (array("search-content","get-content","get-block-tree","get-url-seo","get-editorial-context","get-diagnostics","get-media","get-media-by-id","list-block-patterns","create-draft","update-content","preview-update-content","update-block","preview-update-block","update-block-attributes","update-seo","preview-update-seo","get-service-schema","preview-update-service-schema","update-service-schema","get-custom-schema","preview-update-custom-schema","update-custom-schema","trash-content","restore-trashed-content") as $name) { $id = "wp-content-bridge/" . $name; echo $id, "=", (int) (function_exists("wp_has_ability") && wp_has_ability($id)), PHP_EOL; }'
 ```
 
 Then run the client-agnostic smoke test. `WPCB_EXPECTED_TOOLS` controls the
@@ -191,7 +203,7 @@ executes write or destructive tools.
 WPCB_SITE_URL=https://example.test \
 WPCB_WP_ROOT=/absolute/path/to/site/public \
 WPCB_MCP_PATH=/wp-json/wpcb-mcp/mcp \
-WPCB_EXPECTED_TOOLS=search-content,get-content,get-url-seo,get-editorial-context,get-diagnostics,get-media,get-media-by-id,list-block-patterns,create-draft,update-content,preview-update-content,update-seo,preview-update-seo,get-service-schema,preview-update-service-schema,update-service-schema,get-custom-schema,preview-update-custom-schema,update-custom-schema,trash-content \
+WPCB_EXPECTED_TOOLS=search-content,get-content,get-block-tree,get-url-seo,get-editorial-context,get-diagnostics,get-media,get-media-by-id,list-block-patterns,create-draft,update-content,preview-update-content,update-block,preview-update-block,update-block-attributes,update-seo,preview-update-seo,get-service-schema,preview-update-service-schema,update-service-schema,get-custom-schema,preview-update-custom-schema,update-custom-schema,trash-content,restore-trashed-content \
 tests/Integration/mcp-smoke-verification.sh
 ```
 

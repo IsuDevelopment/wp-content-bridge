@@ -62,7 +62,6 @@ final class CustomSchemaUseCasesTest extends TestCase {
 			)
 		)->to_array();
 
-		self::assertTrue( $result['dry_run'] );
 		self::assertFalse( $result['writes_performed'] );
 		self::assertFalse( $result['preview_custom_schema']['validation']['valid'] );
 		self::assertFalse( $result['preview_custom_schema']['save_allowed'] );

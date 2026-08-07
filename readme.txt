@@ -4,7 +4,7 @@ Tags: abilities, mcp, ai, content, seo, yoast
 Requires at least: 7.0
 Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.4.5
+Stable tag: 0.5.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -14,7 +14,9 @@ Provider-neutral WordPress content and SEO abilities for MCP and other agent cli
 
 The read-only content core exposes access-aware search, content detail, provider-neutral SEO, and safe diagnostics through the WordPress Abilities API. Responses use strict schemas, native WordPress object permissions, per-post-type policy, bounded search, and an explicit content payload limit. A Yoast SEO adapter covers Yoast Free / Premium / Local 28.x.
 
-Safe write abilities (create draft, update content, update SEO, optional structured Service and bounded Custom Schema, and reversible trash with a matching restore) are also available behind off-by-default feature flags, per-post-type write policy, dedicated capabilities, native object checks, and optimistic concurrency. Update content and update SEO each have a matching read-only preview ability that shares the write's exact input contract and never mutates. Schema Extended integrations additionally provide read-before-write and read-only preview abilities when their compatible public contracts are loaded. Publication and other status transitions are not yet supported.
+Individual Gutenberg blocks can be read and edited by tree path, so changing one paragraph does not require rewriting the whole document.
+
+Safe write abilities (create draft, update content, update SEO, single-block edits, optional structured Service and bounded Custom Schema, and reversible trash with a matching restore) are also available behind off-by-default feature flags, per-post-type write policy, dedicated capabilities, native object checks, and optimistic concurrency. Update content and update SEO each have a matching read-only preview ability that shares the write's exact input contract and never mutates. Schema Extended integrations additionally provide read-before-write and read-only preview abilities when their compatible public contracts are loaded. Publication and other status transitions are not yet supported.
 
 MCP transport is provided separately by the official WordPress MCP Adapter and is not bundled with this plugin.
 
@@ -31,6 +33,17 @@ Deleting the plugin removes its options, its dedicated `wpcb_*` capabilities fro
 The `{prefix}wpcb_audit` table is deliberately left in place. It records who changed what through the bridge — field names only, never values — as a rolling window of the most recent 5,000 mutation attempts. Destroying that record silently on delete is not the plugin's call to make. Remove the table deliberately if you want it gone.
 
 == Changelog ==
+
+= 0.5.0 =
+* **Fixed a data-corruption defect present in every release from 0.1.5 to 0.4.5.** `wp_insert_post()` and `wp_update_post()` expect slashed data and call `wp_unslash()` on it; the plugin passed raw input, so every backslash written through `create-draft` or `update-content` was silently stripped. Gutenberg escapes a double quote inside a block's attribute JSON as a backslash-u escape, which was therefore stored as the literal text `u0022`. **Any block whose attributes contained a quote was corrupted by any bridge write to that post** — including blocks the write was never meant to touch. The plugin does **not** repair content already damaged this way: the damaged form is indistinguishable from text a user typed deliberately. If you have written through the bridge, spot-check posts built from blocks that keep text in attributes.
+* **Breaking:** removed the deprecated `dry_run` field from `preview-update-service-schema` and `preview-update-custom-schema`. It was deprecated in 0.4.5, where `writes_performed` was added to all four previews additively; a client that migrated then has nothing to do. All previews now report `writes_performed` and nothing reports `dry_run`.
+* Added `wp-content-bridge/get-block-tree`, a read returning a post's Gutenberg structure as a flat list of nodes carrying their tree `path`, block name, child count, and a short text label — without the document's bulk. Block attributes are opt-in through `include_attrs`.
+* Added `wp-content-bridge/update-block` and its read-only mirror `preview-update-block`, which replace exactly one block subtree addressed by `path`. Everything outside that subtree is unchanged by construction rather than by validation, because the caller never sends it. An agent editing one paragraph no longer re-emits the whole document, which is what caused edits to damage untouched blocks.
+* Added `wp-content-bridge/update-block-attributes`, which shallow-merges a JSON object into one block's attributes so WordPress performs the delimiter encoding; a `null` value removes a key.
+* Every block write requires `expected_block_name` in addition to `version_token`. A matching token proves the document did not change; it does not prove the path points at the block the caller believes, and an off-by-one would otherwise silently replace the wrong block.
+* Block markup validation is now recursive. An unregistered block nested inside another block previously passed validation, because only the top level was checked.
+* Added a runtime verifier asserting that every path returned by `get-block-tree` round-trips byte-identically through `update-block`, alongside the escaping regression for the fix above.
+* Expanded the closed MCP profile to 25 potential abilities.
 
 = 0.4.5 =
 * Added `wp-content-bridge/restore-trashed-content`, the missing inverse of `trash-content`. Until now an agent could perform a destructive operation it could not reverse. It is gated behind the existing `wpcb_trash_enabled` flag rather than a new one, requires `wpcb_delete_content` plus native `delete_post`, and requires the target to currently be in trash. It restores the recorded pre-trash status only when that status is `draft`, `pending`, or `private`, and falls back to `draft` in every other case — a post trashed while published comes back as a draft. Untrash can never reach `publish` or `future`; republication stays behind the publication gate.
