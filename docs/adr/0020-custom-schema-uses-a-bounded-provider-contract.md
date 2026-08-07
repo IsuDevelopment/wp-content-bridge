@@ -9,6 +9,12 @@
 > exact ID of the write it mirrors. The rename landed in 0.4.0, while the
 > surface was one release old with a single connector.
 
+> **Amended 2026-08-07 — added `writes_performed`.** The decision below is
+> unchanged. `writes_performed: false` was added to the output alongside the
+> existing `dry_run: true` so one client code path can read all four preview
+> Abilities. `dry_run` is deprecated and scheduled for removal in `0.5.0`; see
+> `docs/architecture/ABILITIES.md`.
+
 ## Context
 
 The fixed Service contract is appropriate for common local-service markup but

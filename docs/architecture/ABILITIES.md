@@ -415,8 +415,13 @@ Accepts the exact `update-service-schema` input contract, including required
 `post_id` and current `version_token`, and at least one mutable field. It checks
 policy, provider support, and optimistic concurrency, then returns
 `current_service_schema`, provider-sanitized `preview_service_schema`,
-`changed_fields`, and `dry_run: true`. No metadata, audit row, revision, or
-cache state is changed.
+`changed_fields`, `dry_run: true`, and `writes_performed: false`. No metadata,
+audit row, revision, or cache state is changed.
+
+`dry_run` is deprecated as of 0.4.5; it is kept only for backward
+compatibility alongside the newer `writes_performed`, which is now the shared
+flag across all four preview Abilities. `dry_run` is scheduled for removal in
+`0.5.0`.
 
 Annotations: `readonly: true`, `destructive: false`, `idempotent: true`.
 
@@ -475,9 +480,15 @@ Accepts the exact `update-custom-schema` input contract: required `post_id` and
 current `version_token`, plus at least one of `enabled` or `source`. Omitted
 fields retain their current saved values. The preview checks policy and
 optimistic concurrency, validates the prospective source through the provider,
-and returns current plus prospective configurations with `dry_run: true`.
-Invalid source is reported rather than thrown so an agent can repair it. No
-metadata, audit row, revision, or cache state is changed.
+and returns current plus prospective configurations with `dry_run: true` and
+`writes_performed: false`. Invalid source is reported rather than thrown so an
+agent can repair it. No metadata, audit row, revision, or cache state is
+changed.
+
+`dry_run` is deprecated as of 0.4.5; it is kept only for backward
+compatibility alongside the newer `writes_performed`, which is now the shared
+flag across all four preview Abilities. `dry_run` is scheduled for removal in
+`0.5.0`.
 
 Annotations: `readonly: true`, `destructive: false`, `idempotent: true`.
 

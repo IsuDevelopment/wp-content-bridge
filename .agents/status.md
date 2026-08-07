@@ -1,7 +1,7 @@
 # Project status
 
 **Released version: 0.4.0** (`v0.4.0` = `52cb2a2`, on `origin`). Static quality
-is green at 247 tests / 642 assertions. Runtime verification is no longer the
+is green at 247 tests / 648 assertions. Runtime verification is no longer the
 open gate: the environment was restored on 2026-08-07 and fifteen verifiers
 pass. Work in progress is `0.4.5`, a consolidation release —
 see "Next action" and `docs/plan/RELEASE_0_4_5_PLAN.md`.
@@ -43,6 +43,28 @@ MU-plugin projection package (`isudev/wp-content-bridge-mcp-server`, separate
 repository) still needs the new ID and a version bump — that is the user's
 action, not part of this change. Tasks 2–8 of `docs/plan/RELEASE_0_4_5_PLAN.md`
 remain outstanding and are explicitly out of scope for this change.
+
+**0.4.5 task 2 (unify the preview response flag) is code-complete on
+2026-08-07.** `ServiceSchemaPreviewResult` and `CustomSchemaPreviewResult`
+(Domain) now emit `writes_performed: false` additively, alongside the existing
+`dry_run: true` — neither field was removed. `AbilitySchemas::preview_service_schema_output()`
+and `AbilitySchemas::preview_custom_schema_output()` add `writes_performed` as
+a required boolean property (both schemas keep `additionalProperties: false`,
+so the property definition was mandatory, not optional). All four preview
+Abilities (`preview-update-content`, `preview-update-seo`,
+`preview-update-service-schema`, `preview-update-custom-schema`) now share one
+`writes_performed` read path. `docs/architecture/ABILITIES.md` documents
+`dry_run` as deprecated on both remaining abilities, removal scheduled for
+`0.5.0`. ADR 0019 and ADR 0020 each gained a second "Amended 2026-08-07" note
+recording the addition without altering the original decisions. Existing unit
+assertions covering the preview output shape
+(`AbilitySchemasTest`, `ServiceSchemaReadPreviewTest`,
+`CustomSchemaUseCasesTest`) were extended in place — no new test file. Static
+quality: 247 tests / 648 assertions, PHPCS/PHPStan/PHPUnit all green.
+`tests/Integration/schema-service-verification.php` and
+`tests/Integration/schema-custom-verification.php` both `PASS` against the
+LocalWP environment. Tasks 3–8 of `docs/plan/RELEASE_0_4_5_PLAN.md` remain
+outstanding and are explicitly out of scope for this change.
 
 **The post-0.3 editorial operations roadmap was accepted and extended on
 2026-08-03.** It is recorded in

@@ -61,6 +61,7 @@ final class ServiceSchemaReadPreviewTest extends TestCase {
 		)->to_array();
 
 		self::assertTrue( $result['dry_run'] );
+		self::assertFalse( $result['writes_performed'] );
 		self::assertSame( array( 'name' ), $result['changed_fields'] );
 		self::assertSame( 'Saved service', $result['current_service_schema']['name'] );
 		self::assertSame( 'Proposed service', $result['preview_service_schema']['name'] );

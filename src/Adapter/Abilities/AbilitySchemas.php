@@ -1230,10 +1230,11 @@ final class AbilitySchemas {
 	public static function preview_service_schema_output(): array {
 		return array(
 			'type'                 => 'object',
-			'required'             => array( 'schema_version', 'dry_run', 'post_id', 'post_type', 'version_token', 'changed_fields', 'current_service_schema', 'preview_service_schema', 'provenance' ),
+			'required'             => array( 'schema_version', 'dry_run', 'writes_performed', 'post_id', 'post_type', 'version_token', 'changed_fields', 'current_service_schema', 'preview_service_schema', 'provenance' ),
 			'properties'           => array(
 				'schema_version'         => array( 'type' => 'string' ),
 				'dry_run'                => array( 'type' => 'boolean' ),
+				'writes_performed'       => array( 'type' => 'boolean' ),
 				'post_id'                => array( 'type' => 'integer' ),
 				'post_type'              => array( 'type' => 'string' ),
 				'version_token'          => array( 'type' => 'string' ),
@@ -1363,10 +1364,11 @@ final class AbilitySchemas {
 	public static function preview_custom_schema_output(): array {
 		return array(
 			'type'                 => 'object',
-			'required'             => array( 'schema_version', 'dry_run', 'post_id', 'post_type', 'version_token', 'changed_fields', 'current_custom_schema', 'preview_custom_schema', 'provenance' ),
+			'required'             => array( 'schema_version', 'dry_run', 'writes_performed', 'post_id', 'post_type', 'version_token', 'changed_fields', 'current_custom_schema', 'preview_custom_schema', 'provenance' ),
 			'properties'           => array(
 				'schema_version'        => array( 'type' => 'string' ),
 				'dry_run'               => array( 'type' => 'boolean' ),
+				'writes_performed'      => array( 'type' => 'boolean' ),
 				'post_id'               => array( 'type' => 'integer' ),
 				'post_type'             => array( 'type' => 'string' ),
 				'version_token'         => array( 'type' => 'string' ),

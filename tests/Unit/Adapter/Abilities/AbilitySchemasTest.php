@@ -186,7 +186,9 @@ final class AbilitySchemasTest extends TestCase {
 		self::assertContains( 'service_schema', $get_output['required'] );
 		self::assertContains( 'current_service_schema', $preview_output['required'] );
 		self::assertContains( 'preview_service_schema', $preview_output['required'] );
+		self::assertContains( 'writes_performed', $preview_output['required'] );
 		self::assertSame( 'boolean', $preview_output['properties']['dry_run']['type'] );
+		self::assertSame( 'boolean', $preview_output['properties']['writes_performed']['type'] );
 		self::assertFalse( $output['properties']['effective_service_schema']['additionalProperties'] );
 		self::assertFalse( $output['properties']['effective_service_schema']['properties']['provider']['additionalProperties'] );
 	}
@@ -210,6 +212,8 @@ final class AbilitySchemasTest extends TestCase {
 		self::assertContains( 'custom_schema', $get_output['required'] );
 		self::assertContains( 'current_custom_schema', $preview_output['required'] );
 		self::assertContains( 'preview_custom_schema', $preview_output['required'] );
+		self::assertContains( 'writes_performed', $preview_output['required'] );
+		self::assertSame( 'boolean', $preview_output['properties']['writes_performed']['type'] );
 		self::assertSame( 20, $get_output['properties']['custom_schema']['properties']['validation']['properties']['nodes']['maxItems'] );
 		self::assertTrue( $get_output['properties']['custom_schema']['properties']['validation']['properties']['nodes']['items']['additionalProperties'] );
 		self::assertFalse( $get_output['properties']['custom_schema']['additionalProperties'] );
