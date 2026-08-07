@@ -4,7 +4,7 @@ Tags: abilities, mcp, ai, content, seo, yoast
 Requires at least: 7.0
 Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.4.0
+Stable tag: 0.4.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -14,7 +14,7 @@ Provider-neutral WordPress content and SEO abilities for MCP and other agent cli
 
 The read-only content core exposes access-aware search, content detail, provider-neutral SEO, and safe diagnostics through the WordPress Abilities API. Responses use strict schemas, native WordPress object permissions, per-post-type policy, bounded search, and an explicit content payload limit. A Yoast SEO adapter covers Yoast Free / Premium / Local 28.x.
 
-Safe write abilities (create draft, update content, update SEO, optional structured Service and bounded Custom Schema, and reversible trash) are also available behind off-by-default feature flags, per-post-type write policy, dedicated capabilities, native object checks, and optimistic concurrency. Update content and update SEO each have a matching read-only preview ability that shares the write's exact input contract and never mutates. Schema Extended integrations additionally provide read-before-write and read-only preview abilities when their compatible public contracts are loaded. Publication and other status transitions are not yet supported.
+Safe write abilities (create draft, update content, update SEO, optional structured Service and bounded Custom Schema, and reversible trash with a matching restore) are also available behind off-by-default feature flags, per-post-type write policy, dedicated capabilities, native object checks, and optimistic concurrency. Update content and update SEO each have a matching read-only preview ability that shares the write's exact input contract and never mutates. Schema Extended integrations additionally provide read-before-write and read-only preview abilities when their compatible public contracts are loaded. Publication and other status transitions are not yet supported.
 
 MCP transport is provided separately by the official WordPress MCP Adapter and is not bundled with this plugin.
 
@@ -31,6 +31,16 @@ Deleting the plugin removes its options, its dedicated `wpcb_*` capabilities fro
 The `{prefix}wpcb_audit` table is deliberately left in place. It records who changed what through the bridge — field names only, never values — as a rolling window of the most recent 5,000 mutation attempts. Destroying that record silently on delete is not the plugin's call to make. Remove the table deliberately if you want it gone.
 
 == Changelog ==
+
+= 0.4.5 =
+* Added `wp-content-bridge/restore-trashed-content`, the missing inverse of `trash-content`. Until now an agent could perform a destructive operation it could not reverse. It is gated behind the existing `wpcb_trash_enabled` flag rather than a new one, requires `wpcb_delete_content` plus native `delete_post`, and requires the target to currently be in trash. It restores the recorded pre-trash status only when that status is `draft`, `pending`, or `private`, and falls back to `draft` in every other case — a post trashed while published comes back as a draft. Untrash can never reach `publish` or `future`; republication stays behind the publication gate.
+* All four preview abilities now report `writes_performed: false`. `preview-update-service-schema` and `preview-update-custom-schema` previously reported `dry_run: true` instead — one concept under two names with opposite polarity. Both fields are present, so nothing breaks; **`dry_run` is deprecated and will be removed in 0.5.0.**
+* Added an uninstall routine. The plugin previously left its options, its `wpcb_*` capabilities, and its transients behind on delete. Uninstall now removes all three, including capabilities granted directly to a user rather than through a role, and runs without the Composer autoloader so it succeeds on an install with a missing `vendor/`. The audit table is deliberately kept; see the Uninstall section.
+* Release packaging no longer ships development files. The 0.4.0 artifact contained 74 files under `docs/` and `.agents/`, including the security model, known gaps, and notes about a consuming site's grants.
+* Releases are now cut only by pushing a tag. The workflow previously fired on any push touching the version line, which published a 0.4.0 built from a commit that did not contain the release's own headline feature.
+* `list-block-patterns` passed its first runtime verification, covering the registration gate, the authorization matrix, filesystem-path non-disclosure, the 2 MiB bound, and deterministic pagination. No defect was found.
+* Recorded the Milestone 5 security sign-off with eight named evidence gaps, and added a verification run book covering all 18 runtime verifiers.
+* Expanded the closed MCP profile to 21 potential abilities.
 
 = 0.4.0 =
 * **Breaking:** renamed `preview-service-schema` to `preview-update-service-schema` and `preview-custom-schema` to `preview-update-custom-schema`. A preview ability is now named `preview-` plus the exact ID of the write it mirrors, so the convention holds for every current and planned preview. Update any MCP projection profile and client that references the old IDs.

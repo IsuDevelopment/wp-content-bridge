@@ -1,11 +1,10 @@
 # Project status
 
-**Released version: 0.4.0** (`v0.4.0` = `52cb2a2`, on `origin`). Static quality
-is green at 247 tests / 648 assertions. Runtime verification is no longer the
-open gate: all 18 verifiers ran green on 2026-08-07 and the inventory is now
-defined in `docs/setup/VERIFICATION.md`. Work in progress is `0.4.5`, a
-consolidation release — tasks 1 through 7 are done and only the release itself
-(task 8) remains. See "Next action" and `docs/plan/RELEASE_0_4_5_PLAN.md`.
+**Released version: 0.4.5.** Static quality is green at 247 tests / 648
+assertions. Runtime verification is no longer the open gate: all 18 verifiers
+ran green on 2026-08-07 and the inventory is now defined in
+`docs/setup/VERIFICATION.md`. The consolidation release `0.4.5` is complete;
+next is `0.5.0`, Slice 1B (llms.txt). See "Next action".
 
 Entries below are dated and historical; read them as a log, not as current
 state. Where a dated entry names a version that later moved, the "Release
@@ -636,15 +635,25 @@ verified.
 
 ## Next action
 
-Released state: **0.4.0**, tagged `v0.4.0` on `origin`. Versions 0.2.0 through
-0.4.0 all shipped.
+Released state: **0.4.5**. Versions 0.2.0 through 0.4.5 all shipped.
 
-**Next release is `0.4.5`, a consolidation release.** It is not a roadmap
-slice. Its executable plan is `docs/plan/RELEASE_0_4_5_PLAN.md` and it contains
-seven tasks: `restore-trashed-content`, unifying the preview response flag,
-`list-block-patterns` runtime sign-off, a reproducible verification
-environment, retiring the inert `wpcb_public_base_url` option, the Milestone 5
-security sign-off, and the release itself. Nothing in it is breaking.
+**0.4.5 is complete.** All eight tasks of `docs/plan/RELEASE_0_4_5_PLAN.md` are
+done: `restore-trashed-content`, unifying the preview response flag,
+`list-block-patterns` runtime sign-off, the verification run book, retiring the
+inert `wpcb_public_base_url` option (which surfaced the absence of any uninstall
+routine), the Milestone 5 security sign-off, release packaging, and the release.
+Nothing in it was breaking.
+
+**User action, different repository:** the consuming site's MU-plugin projection
+package `isudev/wp-content-bridge-mcp-server` needs
+`wp-content-bridge/restore-trashed-content` added to its `ABILITY_PROFILE` and a
+version bump to 0.4.5. Until then the ability is registered in WordPress but
+unreachable over MCP. The profile becomes 21 entries.
+
+**Next release is `0.5.0` — Slice 1B (llms.txt).** It is the heaviest slice in
+the roadmap, adds the plugin's first unauthenticated public route, and needs its
+own threat model before any code. It also removes the deprecated `dry_run`
+preview field, which is why it is a minor bump.
 
 Slice 1B (llms.txt) is `0.5.0`, not `0.4.0`. That split was decided on
 2026-08-07: Slice 1A was small, low-risk, and verified, and holding it behind

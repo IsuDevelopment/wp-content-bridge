@@ -21,7 +21,7 @@ allowlists and credentials.
 
 ## Projection profile for current source
 
-The complete WP Content Bridge profile contains 20 potential abilities:
+The complete WP Content Bridge profile contains 21 potential abilities:
 
 ```text
 wp-content-bridge/search-content
@@ -44,6 +44,7 @@ wp-content-bridge/get-custom-schema
 wp-content-bridge/preview-update-custom-schema
 wp-content-bridge/update-custom-schema
 wp-content-bridge/trash-content
+wp-content-bridge/restore-trashed-content
 ```
 
 The first five are always registered. The remaining abilities enter the
@@ -56,7 +57,7 @@ WordPress registry only when their WP Content Bridge feature flags are enabled:
   IsuDev Schema Extended plugin;
 - Custom Schema: `wpcb_writes_enabled` plus Schema Extended's compatible public
   `Integration_API` contract;
-- trash: both `wpcb_writes_enabled` and `wpcb_trash_enabled`.
+- trash and its restore: both `wpcb_writes_enabled` and `wpcb_trash_enabled`.
 
 The MCP server should therefore intersect its explicit profile with abilities
 registered in the current request. This keeps disabled operations absent from
