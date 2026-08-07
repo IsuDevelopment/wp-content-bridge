@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace IsuDev\WPContentBridge;
 
 use IsuDev\WPContentBridge\Adapter\Admin\ContentAccessSettingsPage;
+use IsuDev\WPContentBridge\Adapter\Abilities\BlockMutationAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\ContentAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\CustomSchemaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\MediaAbilities;
@@ -20,6 +21,7 @@ use IsuDev\WPContentBridge\Adapter\Abilities\SeoAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\ServiceSchemaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\TrashAbilities;
 use IsuDev\WPContentBridge\Application\Access\IntegrationAccessManager;
+use IsuDev\WPContentBridge\Application\Content\GetBlockTree;
 use IsuDev\WPContentBridge\Application\Content\GetContent;
 use IsuDev\WPContentBridge\Application\Content\SearchContent;
 use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessManager;
@@ -27,11 +29,13 @@ use IsuDev\WPContentBridge\Application\Editorial\GetEditorialContext;
 use IsuDev\WPContentBridge\Application\Mutation\CreateDraft;
 use IsuDev\WPContentBridge\Application\Mutation\GetCustomSchema;
 use IsuDev\WPContentBridge\Application\Mutation\GetServiceSchema;
+use IsuDev\WPContentBridge\Application\Mutation\PreviewBlockUpdate;
 use IsuDev\WPContentBridge\Application\Mutation\PreviewContentUpdate;
 use IsuDev\WPContentBridge\Application\Mutation\PreviewCustomSchema;
 use IsuDev\WPContentBridge\Application\Mutation\PreviewSeoUpdate;
 use IsuDev\WPContentBridge\Application\Mutation\PreviewServiceSchema;
 use IsuDev\WPContentBridge\Application\Mutation\RestoreTrashedContent;
+use IsuDev\WPContentBridge\Application\Mutation\UpdateBlock;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateContent;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateCustomSchema;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateSeo;
@@ -49,9 +53,11 @@ use IsuDev\WPContentBridge\Application\Seo\SeoProvider;
 use IsuDev\WPContentBridge\Application\Seo\SeoProviderRegistry;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\Installer;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\PhpBlockMarkupValidator;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\PhpBlockTreeSplicer;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressAuditLog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressBlockPatternAccess;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressBlockPatternCatalog;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressBlockTreeRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentAccessSettingsRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentMutationRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentTrashRepository;
@@ -130,6 +136,7 @@ final class Plugin {
 		( new ContentAbilities(
 			$search,
 			new GetContent( $manager, $content_repository ),
+			new GetBlockTree( $manager, new WordPressBlockTreeRepository() ),
 			new GetEditorialContext( $manager, $search, new WordPressEditorialContextRepository(), $seo_providers ),
 			$manager,
 			$seo_providers
@@ -173,6 +180,12 @@ final class Plugin {
 				new UpdateSeo( $manager, $mutation_repository, $seo_writer, $audit_log ),
 				new PreviewContentUpdate( $manager, $block_validator, $mutation_repository, $mutation_repository ),
 				new PreviewSeoUpdate( $manager, $mutation_repository, $seo_writer )
+			) )->register_hooks();
+
+			$block_splicer = new PhpBlockTreeSplicer();
+			( new BlockMutationAbilities(
+				new UpdateBlock( $manager, $mutation_repository, $mutation_repository, $block_splicer, $block_validator, $audit_log ),
+				new PreviewBlockUpdate( $manager, $mutation_repository, $mutation_repository, $block_splicer, $block_validator )
 			) )->register_hooks();
 
 			$service_schema_writer = new SchemaExtendedServiceSchemaWriter();

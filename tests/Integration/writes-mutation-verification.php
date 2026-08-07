@@ -192,6 +192,7 @@ final class WPCB_Mutation_Verification {
 			$this->verify_stale_version_conflict();
 			$this->verify_block_round_trip();
 			$this->verify_idempotent_create();
+			$this->verify_recursive_block_validation();
 		} finally {
 			$this->cleanup();
 		}
@@ -837,6 +838,30 @@ final class WPCB_Mutation_Verification {
 			}
 		);
 		$this->assert_true( 1 === count( $matching ), 'The idempotent create key resulted in more than one post.' );
+	}
+
+	/**
+	 * Check 9: PhpBlockMarkupValidator walks innerBlocks recursively (task 1
+	 * of the block-edits slice). An unregistered block nested two levels
+	 * deep is rejected with its full tree path, not just a top-level index,
+	 * and an otherwise-identical validly nested tree is accepted.
+	 *
+	 * @return void
+	 */
+	private function verify_recursive_block_validation(): void {
+		$validator = new PhpBlockMarkupValidator();
+
+		$valid_nested = '<!-- wp:group --><!-- wp:group --><!-- wp:paragraph --><p>'
+			. $this->token . ' nested.</p><!-- /wp:paragraph --><!-- /wp:group --><!-- /wp:group -->';
+		$this->assert_true( array() === $validator->validate( $valid_nested ), 'A validly nested block tree was rejected.' );
+
+		$invalid_nested = '<!-- wp:group --><!-- wp:group --><!-- wp:acme/nope /--><!-- /wp:group --><!-- /wp:group -->';
+		$reasons        = $validator->validate( $invalid_nested );
+		$this->assert_true( 1 === count( $reasons ), 'An unregistered nested block did not produce exactly one reason.' );
+		$this->assert_true(
+			1 === preg_match( '/^Block \[\d+,\d+,\d+\]: unregistered block type\.$/', $reasons[0] ?? '' ),
+			'An unregistered block nested two levels deep was not reported with its full tree path: ' . ( $reasons[0] ?? '(none)' )
+		);
 	}
 
 	/**

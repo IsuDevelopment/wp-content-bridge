@@ -246,6 +246,79 @@ final class AbilitySchemas {
 	}
 
 	/**
+	 * Returns the get-block-tree input schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function get_block_tree_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'post_id' ),
+			'properties'           => array(
+				'post_id'       => array(
+					'description' => 'WordPress content object ID.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+				),
+				'max_depth'     => array(
+					'description' => 'Maximum node depth to return, counted from the returned root (1 returns only that node, or only top-level nodes when path is omitted). Omit for unbounded depth, still subject to the 500-node cap.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+				),
+				'path'          => array(
+					'description' => 'Zero-based indices into successive innerBlocks arrays identifying a subtree root; returns that node and its descendants instead of the whole document. parse_blocks() emits block_name: null freeform nodes for whitespace between blocks, and these occupy real indices that must be counted when building a path. Omit to read from the top of the document.',
+					'type'        => 'array',
+					'minItems'    => 1,
+					'maxItems'    => 20,
+					'items'       => array(
+						'type'    => 'integer',
+						'minimum' => 0,
+					),
+				),
+				'include_attrs' => array(
+					'description' => 'Whether to include each node\'s raw attrs. Defaults to false: attrs are omitted entirely (this is the contract, not a size omission, so attrs_omitted is never set in that case). When true, per-node attrs are still bounded by the 512-byte encoded limit, above which attrs_omitted is set instead.',
+					'type'        => 'boolean',
+					'default'     => false,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the get-block-tree output schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function get_block_tree_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'schema_version', 'post_id', 'post_type', 'version_token', 'nodes', 'truncated', 'provenance' ),
+			'properties'           => array(
+				'schema_version' => array( 'type' => 'string' ),
+				'post_id'        => array( 'type' => 'integer' ),
+				'post_type'      => array( 'type' => 'string' ),
+				'version_token'  => array(
+					'description' => 'Optimistic-concurrency token to pass to update-block or preview-update-block.',
+					'type'        => 'string',
+				),
+				'nodes'          => array(
+					'description' => 'Flat, document-ordered nodes, each carrying its own explicit path rather than nesting.',
+					'type'        => 'array',
+					'maxItems'    => 500,
+					'items'       => self::block_tree_node(),
+				),
+				'truncated'      => array(
+					'description' => 'True when the 500-node cap stopped traversal before every node was returned.',
+					'type'        => 'boolean',
+				),
+				'provenance'     => self::provenance(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
 	 * Returns the bounded media search input schema.
 	 *
 	 * @return array<string, mixed>
@@ -854,6 +927,111 @@ final class AbilitySchemas {
 				),
 				'warnings'           => self::preview_warnings_schema( 20 ),
 				'provenance'         => self::provenance(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the update-block input schema, shared verbatim by
+	 * preview-update-block per ADR 0021.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_block_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'post_id', 'version_token', 'path', 'expected_block_name', 'block_markup' ),
+			'properties'           => array(
+				'post_id'             => array(
+					'description' => 'Target post ID.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+				),
+				'version_token'       => array(
+					'description' => 'Optimistic-concurrency token from get-block-tree or get-content.',
+					'type'        => 'string',
+					'minLength'   => 18,
+					'maxLength'   => 191,
+				),
+				'path'                => array(
+					'description' => 'Zero-based indices into successive innerBlocks arrays identifying the block subtree to replace, as returned by get-block-tree. parse_blocks() emits block_name: null freeform nodes for whitespace between blocks, and these occupy real indices that must be counted when building a path.',
+					'type'        => 'array',
+					'minItems'    => 1,
+					'maxItems'    => 20,
+					'items'       => array(
+						'type'    => 'integer',
+						'minimum' => 0,
+					),
+				),
+				'expected_block_name' => array(
+					'description' => 'Registered block name asserted to exist at path, or null to assert a freeform node. A matching version_token proves the document did not change; it does not prove path points at the intended block, so this fact is asserted separately and the request fails closed with wpcb_block_mismatch when it differs.',
+					'type'        => array( 'string', 'null' ),
+					'minLength'   => 1,
+					'maxLength'   => 200,
+				),
+				'block_markup'        => array(
+					'description' => 'Replacement block markup for the subtree at path. Empty string deletes the subtree.',
+					'type'        => 'string',
+					'maxLength'   => 500000,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the update-block output schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_block_output(): array {
+		return self::mutation_output();
+	}
+
+	/**
+	 * Returns the preview-update-block input contract.
+	 *
+	 * The preview intentionally shares the exact update input so the result can
+	 * be applied without changing semantic intent or validation rules.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function preview_update_block_input(): array {
+		return self::update_block_input();
+	}
+
+	/**
+	 * Returns the preview-update-block output contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function preview_update_block_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'schema_version', 'writes_performed', 'post_id', 'post_type', 'version_token', 'changed_fields', 'current_content', 'preview_content', 'provenance' ),
+			'properties'           => array(
+				'schema_version'   => array( 'type' => 'string' ),
+				'writes_performed' => array( 'type' => 'boolean' ),
+				'post_id'          => array( 'type' => 'integer' ),
+				'post_type'        => array( 'type' => 'string' ),
+				'version_token'    => array( 'type' => 'string' ),
+				'changed_fields'   => array(
+					'type'  => 'array',
+					'items' => array(
+						'type' => 'string',
+						'enum' => array( 'content' ),
+					),
+				),
+				'current_content'  => array(
+					'description' => 'Current whole post_content.',
+					'type'        => 'string',
+				),
+				'preview_content'  => array(
+					'description' => 'Prospective whole post_content after the parse/splice/serialize round trip.',
+					'type'        => 'string',
+				),
+				'provenance'       => self::provenance(),
 			),
 			'additionalProperties' => false,
 		);
@@ -1651,6 +1829,56 @@ final class AbilitySchemas {
 				'featured_image_id'  => array( 'type' => array( 'integer', 'null' ) ),
 				'featured_image_url' => array( 'type' => array( 'string', 'null' ) ),
 				'untrusted'          => array( 'type' => 'boolean' ),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the flat block-tree node schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function block_tree_node(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'path', 'block_name', 'inner_blocks', 'text', 'text_source' ),
+			'properties'           => array(
+				'path'          => array(
+					'description' => 'Zero-based indices into successive innerBlocks arrays; pass straight back to update-block or preview-update-block.',
+					'type'        => 'array',
+					'minItems'    => 1,
+					'items'       => array(
+						'type'    => 'integer',
+						'minimum' => 0,
+					),
+				),
+				'block_name'    => array(
+					'description' => 'Registered block name, or null for the freeform whitespace nodes parse_blocks() emits between blocks. These occupy real indices in the array a write mutates and are never omitted.',
+					'type'        => array( 'string', 'null' ),
+				),
+				'inner_blocks'  => array(
+					'description' => 'Immediate child count.',
+					'type'        => 'integer',
+					'minimum'     => 0,
+				),
+				'text'          => array(
+					'description' => 'Bounded plain-text preview, at most 120 characters; null when empty. Tries the node\'s own innerHTML first; when that is empty, falls back to its prose-bearing string attributes (whitespace-containing values at least 3 characters long), concatenated in attribute-name order. See text_source for which was used.',
+					'type'        => array( 'string', 'null' ),
+				),
+				'text_source'   => array(
+					'description' => 'Where text came from: inner_html or attrs; null when text is null. Editing a block whose text_source is attrs means changing an attribute value, not the block\'s inner markup.',
+					'type'        => array( 'string', 'null' ),
+					'enum'        => array( 'inner_html', 'attrs', null ),
+				),
+				'attrs'         => array(
+					'description' => 'Raw block attributes. Present only when include_attrs was true on the request, the attributes are non-empty, and the encoded form is within the 512-byte bound.',
+					'type'        => 'object',
+				),
+				'attrs_omitted' => array(
+					'description' => 'True when include_attrs was true but attrs was withheld for exceeding the 512-byte encoded bound. Never set when include_attrs is false, since omission is then the request\'s own contract, not a size omission.',
+					'type'        => 'boolean',
+				),
 			),
 			'additionalProperties' => false,
 		);

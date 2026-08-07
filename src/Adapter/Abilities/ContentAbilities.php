@@ -12,6 +12,7 @@ namespace IsuDev\WPContentBridge\Adapter\Abilities;
 use InvalidArgumentException;
 use IsuDev\WPContentBridge\Application\Content\ContentUnavailable;
 use IsuDev\WPContentBridge\Application\Content\ContentPayloadTooLarge;
+use IsuDev\WPContentBridge\Application\Content\GetBlockTree;
 use IsuDev\WPContentBridge\Application\Content\GetContent;
 use IsuDev\WPContentBridge\Application\Content\SearchContent;
 use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessManager;
@@ -35,6 +36,7 @@ final readonly class ContentAbilities {
 	 *
 	 * @param SearchContent        $search Search use case.
 	 * @param GetContent           $get    Detail use case.
+	 * @param GetBlockTree         $get_block_tree Block-tree use case.
 	 * @param GetEditorialContext  $editorial Editorial context use case.
 	 * @param ContentAccessManager $access Shared policy.
 	 * @param SeoProviderRegistry  $seo_providers SEO provider selection.
@@ -42,6 +44,7 @@ final readonly class ContentAbilities {
 	public function __construct(
 		private SearchContent $search,
 		private GetContent $get,
+		private GetBlockTree $get_block_tree,
 		private GetEditorialContext $editorial,
 		private ContentAccessManager $access,
 		private SeoProviderRegistry $seo_providers,
@@ -103,6 +106,20 @@ final readonly class ContentAbilities {
 				'output_schema'       => AbilitySchemas::get_output(),
 				'permission_callback' => array( $this, 'can_read' ),
 				'execute_callback'    => array( $this, 'execute_get' ),
+				'meta'                => self::read_meta(),
+			)
+		);
+
+		wp_register_ability(
+			'wp-content-bridge/get-block-tree',
+			array(
+				'label'               => __( 'Get block tree', 'wp-content-bridge' ),
+				'description'         => __( "Returns one readable WordPress content object's Gutenberg block structure as a flat, path-addressed node list, without full block markup. parse_blocks() emits block_name: null freeform nodes for whitespace between blocks; these occupy real array indices that a later block-level write mutates and are always included, never skipped. Each node's text prefers its own innerHTML but falls back to prose-bearing string attributes when that is empty; raw attrs are omitted by default and returned only when include_attrs is true.", 'wp-content-bridge' ),
+				'category'            => self::CATEGORY,
+				'input_schema'        => AbilitySchemas::get_block_tree_input(),
+				'output_schema'       => AbilitySchemas::get_block_tree_output(),
+				'permission_callback' => array( $this, 'can_read' ),
+				'execute_callback'    => array( $this, 'execute_get_block_tree' ),
 				'meta'                => self::read_meta(),
 			)
 		);
@@ -193,6 +210,41 @@ final readonly class ContentAbilities {
 			return $this->get->execute( $post_id, $representations, $include )->to_array();
 		} catch ( ContentPayloadTooLarge ) {
 			return new WP_Error( 'wpcb_content_too_large', __( 'Selected content representations exceed the 2 MiB response limit. Request fewer representations.', 'wp-content-bridge' ) );
+		} catch ( ContentUnavailable ) {
+			return new WP_Error( 'wpcb_content_unavailable', __( 'Content is unavailable.', 'wp-content-bridge' ) );
+		} catch ( InvalidArgumentException $exception ) {
+			return new WP_Error( 'wpcb_invalid_input', $exception->getMessage() );
+		} catch ( Throwable ) {
+			return self::internal_error();
+		}
+	}
+
+	/**
+	 * Executes block-tree retrieval.
+	 *
+	 * @param mixed $input Validated ability input.
+	 * @return array<string, mixed>|WP_Error
+	 */
+	public function execute_get_block_tree( mixed $input = array() ): array|WP_Error {
+		if ( ! $this->can_read() ) {
+			return self::forbidden();
+		}
+
+		try {
+			$normalized    = self::normalize_block_tree_input( $input );
+			$post_id       = isset( $normalized['post_id'] ) && is_int( $normalized['post_id'] ) ? $normalized['post_id'] : 0;
+			$path          = self::selected_path( $normalized['path'] ?? array() );
+			$max_depth     = isset( $normalized['max_depth'] ) && is_int( $normalized['max_depth'] ) ? $normalized['max_depth'] : null;
+			$include_attrs = $normalized['include_attrs'] ?? false;
+
+			if ( $post_id < 1 ) {
+				return new WP_Error( 'wpcb_invalid_input', 'post_id must be a positive integer.' );
+			}
+			if ( ! is_bool( $include_attrs ) ) {
+				return new WP_Error( 'wpcb_invalid_input', 'include_attrs must be a boolean.' );
+			}
+
+			return $this->get_block_tree->execute( $post_id, $path, $max_depth, $include_attrs )->to_array();
 		} catch ( ContentUnavailable ) {
 			return new WP_Error( 'wpcb_content_unavailable', __( 'Content is unavailable.', 'wp-content-bridge' ) );
 		} catch ( InvalidArgumentException $exception ) {
@@ -329,6 +381,52 @@ final readonly class ContentAbilities {
 		}
 
 		return $normalized;
+	}
+
+	/**
+	 * Normalizes REST query-string integers before domain validation.
+	 *
+	 * Direct Ability calls retain their integer values. WordPress REST query
+	 * parsing may preserve nested scalar integers as decimal strings.
+	 *
+	 * @param mixed $input Callback input.
+	 * @return array<string, mixed>
+	 */
+	private static function normalize_block_tree_input( mixed $input ): array {
+		$normalized = self::normalize_input( $input );
+		foreach ( array( 'post_id', 'max_depth' ) as $key ) {
+			if ( isset( $normalized[ $key ] ) && is_string( $normalized[ $key ] ) && ctype_digit( $normalized[ $key ] ) ) {
+				$normalized[ $key ] = (int) $normalized[ $key ];
+			}
+		}
+
+		return $normalized;
+	}
+
+	/**
+	 * Normalizes a block-tree path.
+	 *
+	 * @param mixed $value Candidate path.
+	 * @return list<int>
+	 * @throws InvalidArgumentException When invalid.
+	 */
+	private static function selected_path( mixed $value ): array {
+		if ( ! is_array( $value ) ) {
+			throw new InvalidArgumentException( 'path must be an array of non-negative integers.' );
+		}
+
+		$result = array();
+		foreach ( $value as $item ) {
+			if ( is_string( $item ) && ctype_digit( $item ) ) {
+				$item = (int) $item;
+			}
+			if ( ! is_int( $item ) || 0 > $item ) {
+				throw new InvalidArgumentException( 'path must contain only non-negative integers.' );
+			}
+			$result[] = $item;
+		}
+
+		return $result;
 	}
 
 	/**
