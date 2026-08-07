@@ -78,7 +78,7 @@ wp eval 'require "/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/In
 WPCB_SITE_URL=https://kormas-isu.local \
 WPCB_WP_ROOT="/Users/lukaszbiedron/Local Sites/kormas-isu/app/public" \
 WPCB_MCP_PATH="/wp-json/wpcb-mcp/mcp" \
-WPCB_EXPECTED_TOOLS=search-content,get-content,get-url-seo,get-editorial-context,get-diagnostics,get-media,get-media-by-id,list-block-patterns,create-draft,update-content,update-seo,get-service-schema,preview-service-schema,update-service-schema,trash-content \
+WPCB_EXPECTED_TOOLS=search-content,get-content,get-url-seo,get-editorial-context,get-diagnostics,get-media,get-media-by-id,list-block-patterns,create-draft,update-content,update-seo,get-service-schema,preview-update-service-schema,update-service-schema,trash-content \
 "/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/Integration/mcp-smoke-verification.sh"
 ```
 
@@ -261,7 +261,7 @@ Verified on 2026-07-17 against WordPress 7.0.1 with Yoast Free 28.0, Premium
 - stale `version_token` rejects before the provider write;
 - `get-service-schema` returns independently saved configuration and a current
   token before any change;
-- `preview-service-schema` returns current plus provider-sanitized prospective
+- `preview-update-service-schema` returns current plus provider-sanitized prospective
   configuration with `dry_run: true` and performs no metadata, audit, revision,
   or cache mutation;
 - raw MCP descriptors mark `post_id` required for get, and both `post_id` plus

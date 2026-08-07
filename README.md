@@ -78,10 +78,10 @@ annotations.
 | `update-content` | Content writes enabled | `wpcb_edit_content` | Updates selected content fields with optimistic concurrency and a WordPress revision. |
 | `update-seo` | Content writes enabled | `wpcb_manage_seo` | Updates supported Yoast fields and returns the effective SEO document after the write. |
 | `get-service-schema` | Content writes enabled and Schema Extended active | `wpcb_manage_seo` | Reads the independently saved Service, areaServed, brand, and OfferCatalog configuration. |
-| `preview-service-schema` | Content writes enabled and Schema Extended active | `wpcb_manage_seo` | Returns current and provider-sanitized prospective Service configuration without writing. |
+| `preview-update-service-schema` | Content writes enabled and Schema Extended active | `wpcb_manage_seo` | Returns current and provider-sanitized prospective Service configuration without writing. |
 | `update-service-schema` | Content writes enabled and Schema Extended active | `wpcb_manage_seo` | Updates a fixed Service, areaServed, brand, and OfferCatalog field set and returns the effective configuration. |
 | `get-custom-schema` | Content writes enabled and Schema Extended 0.3+ active | `wpcb_manage_seo` | Reads bounded Custom Schema JSON and structural validation diagnostics. |
-| `preview-custom-schema` | Content writes enabled and Schema Extended 0.3+ active | `wpcb_manage_seo` | Validates prospective Custom Schema without writing; reports save and render eligibility. |
+| `preview-update-custom-schema` | Content writes enabled and Schema Extended 0.3+ active | `wpcb_manage_seo` | Validates prospective Custom Schema without writing; reports save and render eligibility. |
 | `update-custom-schema` | Content writes enabled and Schema Extended 0.3+ active | `wpcb_manage_seo` | Writes validated Custom Schema through the provider's public integration contract. |
 | `trash-content` | Content writes and trash enabled | `wpcb_delete_content` | Moves an authorized object to reversible WordPress trash without exposing permanent deletion. |
 
@@ -288,7 +288,7 @@ writes are enabled and a compatible plugin API is loaded. It requires
 current `version_token` for preview and update.
 
 `get-service-schema` requires `post_id` and returns the saved effective
-configuration plus the current `version_token`. `preview-service-schema`
+configuration plus the current `version_token`. `preview-update-service-schema`
 requires `post_id`, `version_token`, and at least one proposed field; it returns
 the current and provider-sanitized prospective configurations with
 `dry_run: true`. It performs no metadata write, audit mutation, or cache purge.
@@ -311,7 +311,7 @@ cache invalidation.
 The optional Custom Schema workflow exposes three separate intents when global
 writes are enabled and Schema Extended's compatible `Integration_API` contract
 is active. `get-custom-schema` reads the saved `enabled` flag, editable JSON,
-normalized nodes, and diagnostics. `preview-custom-schema` requires `post_id`,
+normalized nodes, and diagnostics. `preview-update-custom-schema` requires `post_id`,
 the current `version_token`, and at least one of `enabled` or `source`; it
 returns current and prospective configurations with `dry_run: true` and cannot
 write. `update-custom-schema` uses the same input and is the only mutation.

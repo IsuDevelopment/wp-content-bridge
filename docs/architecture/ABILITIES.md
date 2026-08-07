@@ -359,7 +359,7 @@ provenance. It performs no mutation.
 
 Annotations: `readonly: true`, `destructive: false`, `idempotent: true`.
 
-### `wp-content-bridge/preview-service-schema`
+### `wp-content-bridge/preview-update-service-schema`
 
 Accepts the exact `update-service-schema` input contract, including required
 `post_id` and current `version_token`, and at least one mutable field. It checks
@@ -419,7 +419,7 @@ placeholders or execute a speculative Yoast render, so
 
 Annotations: `readonly: true`, `destructive: false`, `idempotent: true`.
 
-### `wp-content-bridge/preview-custom-schema`
+### `wp-content-bridge/preview-update-custom-schema`
 
 Accepts the exact `update-custom-schema` input contract: required `post_id` and
 current `version_token`, plus at least one of `enabled` or `source`. Omitted

@@ -91,7 +91,7 @@ It also exposed a real drift. The Adapter projection is site infrastructure — 
 version-controlled Composer MU-plugin owned by the consuming site, pinned there
 at `isudev/wp-content-bridge-mcp-server` **0.2.1**, which declares **15**
 abilities. The three Custom Schema abilities released in bridge 0.3.0
-(`get-custom-schema`, `preview-custom-schema`, `update-custom-schema`) are
+(`get-custom-schema`, `preview-update-custom-schema`, `update-custom-schema`) are
 absent from it, so they are implemented and registered in WordPress but **not
 reachable over MCP**. Bumping that package is a change in the consuming site's
 repository, not this one. Until it ships, the effective MCP surface is 15 of the
@@ -551,7 +551,7 @@ with the standalone provider active remains the release gate for graph-level
 ### Plan 3c — Service schema read-before-write — **code-complete 2026-08-03**
 
 - added separate read-only `get-service-schema` and
-  `preview-service-schema` semantic intents rather than a mixed `dry_run` mode
+  `preview-update-service-schema` semantic intents rather than a mixed `dry_run` mode
   on the destructive write;
 - preview reuses the exact update validation, policy, provider support,
   optimistic concurrency, and sanitization paths without metadata writes,
@@ -566,7 +566,7 @@ pending because the Local database socket was unavailable on 2026-08-03.
 
 ### Plan 3d — bounded Custom Schema read/preview/update — **code-complete 2026-08-03**
 
-- added separate `get-custom-schema`, `preview-custom-schema`, and
+- added separate `get-custom-schema`, `preview-update-custom-schema`, and
   `update-custom-schema` semantic intents;
 - integrated only with Schema Extended 0.3.0's public `Integration_API`
   contract version 1.0; no storage keys or provider internals cross the bridge;

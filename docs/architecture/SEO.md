@@ -164,7 +164,7 @@ adapter:
 
 ### Structured Service provider
 
-`get-service-schema`, `preview-service-schema`, and `update-service-schema` are
+`get-service-schema`, `preview-update-service-schema`, and `update-service-schema` are
 separate semantic intents from Yoast editor SEO. Their public contracts describe `Service`, typed `areaServed`,
 `brand`, and `hasOfferCatalog`, while the infrastructure adapter maps those
 fields to the standalone IsuDev Schema Extended plugin's public `Meta_Fields`

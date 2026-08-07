@@ -20,7 +20,7 @@ use IsuDev\WPContentBridge\Domain\Mutation\CustomSchemaUpdate;
  */
 final readonly class PreviewCustomSchema {
 
-	public const ABILITY = 'wp-content-bridge/preview-custom-schema';
+	public const ABILITY = 'wp-content-bridge/preview-update-custom-schema';
 
 	/**
 	 * Creates the use case.

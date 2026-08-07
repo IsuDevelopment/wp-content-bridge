@@ -32,7 +32,7 @@ least-privilege capabilities, optimistic concurrency, redacted audit, and
 runtime/MCP release gates. No implementation has started.
 
 **Bounded Custom Schema MCP support is code-complete for connector 0.3.0 on
-2026-08-03.** Conditional `get-custom-schema`, `preview-custom-schema`, and
+2026-08-03.** Conditional `get-custom-schema`, `preview-update-custom-schema`, and
 `update-custom-schema` Abilities use only Schema Extended 0.3.0's public
 `Integration_API` contract version 1.0. Input is limited to `enabled` and a
 100,000-byte JSON source; provider output is normalized to at most 20 nodes and
@@ -46,7 +46,7 @@ exception. The closed MCP profile now has 18 potential entries. Full
 the release gate.
 
 **Service schema read-before-write was code-complete on 2026-08-03.** Separate
-`get-service-schema` and `preview-service-schema` Abilities now complement the
+`get-service-schema` and `preview-update-service-schema` Abilities now complement the
 existing update. Get returns the independently saved provider configuration and
 current token. Preview consumes the exact update input, policy, provider,
 optimistic-concurrency, and sanitization paths but performs no metadata write,
@@ -485,7 +485,7 @@ The MCP projection gap and the miniOrange grants were both closed on
 4. Start roadmap Slice 1A (content and SEO preview) for 0.4.0. The execution
    plan is `docs/plan/SLICE_1A_EXECUTION_PLAN.md`. Before writing its schemas,
    settle the preview ability naming convention — the shipped
-   `preview-service-schema` / `preview-custom-schema` IDs do not match the
+   `preview-update-service-schema` / `preview-update-custom-schema` IDs do not match the
    roadmap's `preview-<verb>-<noun>` form, and ability IDs are stable API.
 
 Plan 4c `transition-content-status` is **not** the next action. It is Slice 2

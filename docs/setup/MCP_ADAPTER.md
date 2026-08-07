@@ -36,10 +36,10 @@ wp-content-bridge/create-draft
 wp-content-bridge/update-content
 wp-content-bridge/update-seo
 wp-content-bridge/get-service-schema
-wp-content-bridge/preview-service-schema
+wp-content-bridge/preview-update-service-schema
 wp-content-bridge/update-service-schema
 wp-content-bridge/get-custom-schema
-wp-content-bridge/preview-custom-schema
+wp-content-bridge/preview-update-custom-schema
 wp-content-bridge/update-custom-schema
 wp-content-bridge/trash-content
 ```
@@ -110,10 +110,10 @@ $wpcb_profile = array(
 	'wp-content-bridge/update-content',
 	'wp-content-bridge/update-seo',
 	'wp-content-bridge/get-service-schema',
-	'wp-content-bridge/preview-service-schema',
+	'wp-content-bridge/preview-update-service-schema',
 	'wp-content-bridge/update-service-schema',
 	'wp-content-bridge/get-custom-schema',
-	'wp-content-bridge/preview-custom-schema',
+	'wp-content-bridge/preview-update-custom-schema',
 	'wp-content-bridge/update-custom-schema',
 	'wp-content-bridge/trash-content',
 );
@@ -175,7 +175,7 @@ the same operation.
 First verify registration inside WordPress:
 
 ```bash
-wp eval 'foreach (array("search-content","get-content","get-url-seo","get-editorial-context","get-diagnostics","get-media","get-media-by-id","list-block-patterns","create-draft","update-content","update-seo","get-service-schema","preview-service-schema","update-service-schema","get-custom-schema","preview-custom-schema","update-custom-schema","trash-content") as $name) { $id = "wp-content-bridge/" . $name; echo $id, "=", (int) (function_exists("wp_has_ability") && wp_has_ability($id)), PHP_EOL; }'
+wp eval 'foreach (array("search-content","get-content","get-url-seo","get-editorial-context","get-diagnostics","get-media","get-media-by-id","list-block-patterns","create-draft","update-content","update-seo","get-service-schema","preview-update-service-schema","update-service-schema","get-custom-schema","preview-update-custom-schema","update-custom-schema","trash-content") as $name) { $id = "wp-content-bridge/" . $name; echo $id, "=", (int) (function_exists("wp_has_ability") && wp_has_ability($id)), PHP_EOL; }'
 ```
 
 Then run the client-agnostic smoke test. `WPCB_EXPECTED_TOOLS` controls the
@@ -186,7 +186,7 @@ executes write or destructive tools.
 WPCB_SITE_URL=https://example.test \
 WPCB_WP_ROOT=/absolute/path/to/site/public \
 WPCB_MCP_PATH=/wp-json/wpcb-mcp/mcp \
-WPCB_EXPECTED_TOOLS=search-content,get-content,get-url-seo,get-editorial-context,get-diagnostics,get-media,get-media-by-id,list-block-patterns,create-draft,update-content,update-seo,get-service-schema,preview-service-schema,update-service-schema,get-custom-schema,preview-custom-schema,update-custom-schema,trash-content \
+WPCB_EXPECTED_TOOLS=search-content,get-content,get-url-seo,get-editorial-context,get-diagnostics,get-media,get-media-by-id,list-block-patterns,create-draft,update-content,update-seo,get-service-schema,preview-update-service-schema,update-service-schema,get-custom-schema,preview-update-custom-schema,update-custom-schema,trash-content \
 tests/Integration/mcp-smoke-verification.sh
 ```
 

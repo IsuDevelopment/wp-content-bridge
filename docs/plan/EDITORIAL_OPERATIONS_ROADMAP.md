@@ -53,25 +53,24 @@ compounds the risk that this roadmap's own gates are meant to prevent.
 Goal: let clients validate and review prospective content and SEO changes before
 the existing mutation Abilities are called.
 
-Prior art in the codebase: `preview-service-schema` (ADR 0019) and
-`preview-custom-schema` (ADR 0020) already implement this pattern — a separate
+Prior art in the codebase: `preview-update-service-schema` (ADR 0019) and
+`preview-update-custom-schema` (ADR 0020) already implement this pattern — a separate
 read-only intent reusing the write's exact validation, policy, provider, and
 concurrency paths. Slice 1A extends that pattern to the core content and SEO
 writes rather than inventing a second one.
 
-Naming decision required before the first schema is written: the two shipped
-previews use `preview-<noun>`, while the IDs below use `preview-<noun>-<verb>`
-and later slices use `preview-<verb>-<noun>`. Ability IDs are stable API, so
-settle one convention now. Mirroring the write ability's own ID
-(`preview-update-content`, `preview-update-seo`, `preview-update-media`) keeps
-the relation mechanical and makes the redirect pair consistent; adopting it
-means renaming the two shipped IDs while they are still only in 0.3.0 with a
-single connector.
+**Naming convention — decided 2026-08-07.** A preview ability ID is
+`preview-` followed by the exact ID of the write it mirrors. This makes the
+relation mechanical and keeps the later redirect and revision slices
+consistent. The two previews shipped in 0.3.0 were renamed accordingly
+(`preview-service-schema` → `preview-update-service-schema`,
+`preview-custom-schema` → `preview-update-custom-schema`) while the surface was
+still one release old with a single connector.
 
-Abilities (IDs subject to the naming decision above):
+Abilities:
 
-- `wp-content-bridge/preview-content-update`
-- `wp-content-bridge/preview-seo-update`
+- `wp-content-bridge/preview-update-content`
+- `wp-content-bridge/preview-update-seo`
 
 Contract requirements:
 
@@ -144,7 +143,7 @@ Reference implementation:
 Candidate Abilities:
 
 - `wp-content-bridge/get-llms-txt`
-- `wp-content-bridge/preview-llms-txt`
+- `wp-content-bridge/preview-update-llms-txt`
 - `wp-content-bridge/update-llms-txt`
 - `wp-content-bridge/regenerate-llms-txt`
 
@@ -233,7 +232,7 @@ Read and preview requirements:
   configuration, current public artifact, generation time, byte/link counts,
   warnings, and a concurrency token derived from provider configuration plus
   effective artifact state;
-- `preview-llms-txt` accepts the same configurable fields as update, builds a
+- `preview-update-llms-txt` accepts the same configurable fields as update, builds a
   bounded prospective document without settings/files/options writes, and
   returns current/prospective summaries plus a line/section diff;
 - Markdown validation requires valid UTF-8, no forbidden control characters,
@@ -288,7 +287,7 @@ form `post_status` field to content updates.
 Abilities:
 
 - `wp-content-bridge/get-status-transitions`
-- `wp-content-bridge/preview-status-transition`
+- `wp-content-bridge/preview-transition-content-status`
 - `wp-content-bridge/transition-content-status`
 
 Implementation follows ADR 0015:
@@ -370,9 +369,9 @@ without introducing upload or remote import yet.
 
 Abilities:
 
-- `wp-content-bridge/preview-media-update`
+- `wp-content-bridge/preview-update-media`
 - `wp-content-bridge/update-media`
-- `wp-content-bridge/preview-featured-image-update`
+- `wp-content-bridge/preview-update-featured-image`
 - `wp-content-bridge/update-featured-image`
 
 Contract requirements:
@@ -436,7 +435,7 @@ Phase 5A is research and ADR work:
 
 Candidate permalink Abilities after acceptance:
 
-- `wp-content-bridge/preview-permalink-update`
+- `wp-content-bridge/preview-update-permalink`
 - `wp-content-bridge/update-permalink`
 
 Rules:
@@ -487,7 +486,7 @@ Candidate Abilities:
 
 - `wp-content-bridge/get-block-outline`
 - `wp-content-bridge/validate-block-markup`
-- `wp-content-bridge/preview-block-update`
+- `wp-content-bridge/preview-update-block`
 - `wp-content-bridge/update-block`
 
 Validation levels:

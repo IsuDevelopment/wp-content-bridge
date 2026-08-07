@@ -3,6 +3,12 @@
 **Status:** Accepted  
 **Date:** 2026-08-03
 
+> **Amended 2026-08-07 — ability ID renamed.** The decision below is unchanged,
+> but the public ID `preview-service-schema` is now
+> `preview-update-service-schema`. A preview ability is named `preview-` plus
+> the exact ID of the write it mirrors. The rename landed in 0.4.0, while the
+> surface was one release old with a single connector.
+
 ## Context
 
 The structured Service integration originally exposed only

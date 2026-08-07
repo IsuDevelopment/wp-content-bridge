@@ -24,23 +24,15 @@ same idea. Read them first and mirror them. Do not invent a new approach.
 - Ability IDs are stable public API. Use exactly the IDs decided in step 0.
 - Commit only when the user asks.
 
-## Step 0 — settle the naming convention (blocking, ~10 minutes)
+## Step 0 — naming convention (already decided, nothing to do)
 
-The repository currently has three preview-ID shapes. Before writing any schema,
-ask the user to choose and record the answer in the ADR from step 1:
+**Decided 2026-08-07, no longer blocking.** A preview ability ID is `preview-`
+followed by the exact ID of the write it mirrors. The two previews shipped in
+0.3.0 were already renamed to match
+(`preview-update-service-schema`, `preview-update-custom-schema`), and the whole
+roadmap was normalised to this shape.
 
-- shipped today: `preview-service-schema`, `preview-custom-schema`
-- this roadmap: `preview-content-update`, `preview-seo-update`
-- later roadmap slices: `preview-create-redirect`, `preview-restore-content-revision`
-
-Recommended: mirror the write ability's own ID — `preview-update-content`,
-`preview-update-seo`. That makes the preview/write relation mechanical and is
-consistent with the later slices. If the user accepts it, also decide whether
-the two shipped IDs get renamed now (cheap: 0.3.0, one connector) or kept as
-legacy names.
-
-Everything below writes `preview-update-content` / `preview-update-seo`. If the
-user picks otherwise, substitute consistently.
+Use `preview-update-content` and `preview-update-seo`. Do not reopen this.
 
 ## Step 1 — ADR
 

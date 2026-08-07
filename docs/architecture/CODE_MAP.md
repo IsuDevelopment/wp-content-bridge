@@ -244,8 +244,8 @@ get-editorial-context Ability
 
 ```text
 create-draft / update-content / update-seo / get-service-schema /
-preview-service-schema / update-service-schema / get-custom-schema /
-preview-custom-schema / update-custom-schema / trash-content Ability
+preview-update-service-schema / update-service-schema / get-custom-schema /
+preview-update-custom-schema / update-custom-schema / trash-content Ability
   -> plugin capability (`wpcb_edit_content`) + native object capability
      (`create_posts`/`edit_posts` or `edit_post`) — MutationAbilities
      permission callback

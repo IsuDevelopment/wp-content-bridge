@@ -152,7 +152,7 @@ for tool in "${EXPECTED_TOOLS[@]}"; do
 		get-content|get-service-schema|get-custom-schema)
 			assert_required_fields "wp-content-bridge-$tool" post_id
 			;;
-		update-service-schema|preview-service-schema|update-custom-schema|preview-custom-schema)
+		update-service-schema|preview-update-service-schema|update-custom-schema|preview-update-custom-schema)
 			assert_required_fields "wp-content-bridge-$tool" post_id version_token
 			;;
 	esac

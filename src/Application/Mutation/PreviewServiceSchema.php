@@ -20,7 +20,7 @@ use IsuDev\WPContentBridge\Domain\Mutation\ServiceSchemaUpdate;
  */
 final readonly class PreviewServiceSchema {
 
-	public const ABILITY = 'wp-content-bridge/preview-service-schema';
+	public const ABILITY = 'wp-content-bridge/preview-update-service-schema';
 
 	/**
 	 * Creates the use case.

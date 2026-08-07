@@ -154,7 +154,7 @@ best-effort restoration of already-written keys from their pre-write values
 (ADR 0017).
 
 Read-before-write and dry-run behavior use separate read-only
-`get-service-schema` and `preview-service-schema` Abilities rather than a mode
+`get-service-schema` and `preview-update-service-schema` Abilities rather than a mode
 flag on the destructive write. They retain `wpcb_manage_seo`, native
 `edit_post`, per-type `update_seo` policy, provider compatibility, and (for
 preview) optimistic concurrency. Preview shares provider sanitization with the
