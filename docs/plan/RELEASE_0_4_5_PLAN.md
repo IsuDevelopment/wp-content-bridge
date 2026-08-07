@@ -232,9 +232,18 @@ only, so cutting a release stays a deliberate act.
 - `docs/architecture/ABILITIES.md`, `CODE_MAP.md`, `README.md`,
   `.agents/status.md`;
 - the consuming site's MU-plugin projection package
-  (`isudev/wp-content-bridge-mcp-server`, different repository) needs
-  `restore-trashed-content` added and a version bump. **Report this to the
-  user; do not edit that repository.** Profile becomes 21 entries.
+  (`isudev/wp-content-bridge-mcp-server`, different repository) may take
+  `restore-trashed-content` with a version bump, making the profile 21 entries.
+  **Report this to the user; do not edit that repository.**
+
+> **Corrected 2026-08-07.** This bullet originally said the package "needs" the
+> new ID, and the first report to the user claimed the ability was unreachable
+> over MCP without it. Both are wrong. That package projects only the official
+> MCP Adapter endpoint; the miniOrange OAuth server ChatGPT uses reads
+> `wp_get_abilities()` directly and never consults `ABILITY_PROFILE`. The bump
+> is hygiene for `mcp-smoke-verification.sh`, not a reachability blocker. The
+> corrected account is in `.agents/status.md`, "Two MCP servers, one
+> projection".
 
 ## Final check
 

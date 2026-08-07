@@ -69,11 +69,15 @@ evidence and should be read as such.
    The hook contract is proven; integration with the actual plugin is not.
 6. **Multisite is untested at runtime.** The settings page refuses multisite in
    code; only single-site has ever been exercised.
-7. **External grant drift is undetected.** The 2026-08-07 audit found the live
-   miniOrange grant set contradicted this file in both directions — it granted
-   `create-draft` to a read-only principal and omitted three reads. Layered
-   defense held, but nothing detects drift automatically; it remains a manual
-   check against site configuration outside this repository.
+7. **External grant drift is undetected, and the external projection fails
+   open.** The 2026-08-07 audit found the live miniOrange grant set contradicted
+   this file in both directions — it granted `create-draft` to a read-only
+   principal and omitted three reads. Worse, miniOrange treats an *unset*
+   allowlist as unrestricted, so a principal with no grants configured is
+   exposed every registered ability. Layered defense held in both cases because
+   the WordPress capability check is independent, but nothing detects either
+   condition automatically; both remain manual checks against site
+   configuration outside this repository. See "Two MCP servers, one projection".
 8. **`wpcb_publish_enabled` is registered and consumed by nothing.** It is a
    flag with no ability behind it until `transition-content-status` (0.6.0).
 
@@ -106,8 +110,9 @@ trash-to-draft restore with redacted audit, a `publish` pre-trash fixture
 landing on `draft` (never `publish`/`future`), a stale-token conflict rejected
 before any mutation, and per-type policy denial. The consuming site's
 MU-plugin projection package (`isudev/wp-content-bridge-mcp-server`, separate
-repository) still needs the new ID and a version bump — that is the user's
-action, not part of this change. Tasks 2–8 of `docs/plan/RELEASE_0_4_5_PLAN.md`
+repository) may take the new ID with a version bump; that is optional hygiene
+for the official-Adapter endpoint only, not a reachability blocker — see "Two
+MCP servers, one projection". Tasks 2–8 of `docs/plan/RELEASE_0_4_5_PLAN.md`
 remain outstanding and are explicitly out of scope for this change.
 
 **0.4.5 task 2 (unify the preview response flag) is code-complete on
@@ -644,11 +649,14 @@ inert `wpcb_public_base_url` option (which surfaced the absence of any uninstall
 routine), the Milestone 5 security sign-off, release packaging, and the release.
 Nothing in it was breaking.
 
-**User action, different repository:** the consuming site's MU-plugin projection
-package `isudev/wp-content-bridge-mcp-server` needs
-`wp-content-bridge/restore-trashed-content` added to its `ABILITY_PROFILE` and a
-version bump to 0.4.5. Until then the ability is registered in WordPress but
-unreachable over MCP. The profile becomes 21 entries.
+**Optional, different repository:** the consuming site's MU-plugin projection
+package `isudev/wp-content-bridge-mcp-server` can take
+`wp-content-bridge/restore-trashed-content` in its `ABILITY_PROFILE` with a
+version bump, making the profile 21 entries.
+
+This is hygiene, not a blocker — see "Two MCP servers, one projection" below.
+An earlier draft of this entry claimed the ability was "unreachable over MCP"
+until the bump. That is wrong and was corrected on 2026-08-07.
 
 **Next release is `0.5.0` — Slice 1B (llms.txt).** It is the heaviest slice in
 the roadmap, adds the plugin's first unauthenticated public route, and needs its
@@ -734,11 +742,47 @@ was 0.5.0 under the current numbering.
 
 Verified against the running site on 2026-08-07.
 
-The official Adapter now projects all 18 registered abilities. The site's
-projection package `isudev/wp-content-bridge-mcp-server` was one release behind
-at 0.2.1 with 15 entries, so the three Custom Schema abilities from 0.3.0 were
-registered in WordPress but unreachable over MCP. The package was bumped to
-0.3.0 in the consuming site's repository and the smoke run confirms 18/18.
+### Two MCP servers, one projection
+
+Established by reading the consuming site's source on 2026-08-07, after the
+question "why does stage/live work without the MU-plugin?". It does, and the
+reason matters — earlier entries in this file blurred the two paths.
+
+**Official MCP Adapter — `/wp-json/wpcb-mcp/mcp`.** The Adapter is a framework
+only; the endpoint does not exist until something calls
+`wp_register_mcp_server()`. That is the sole job of the site's MU-plugin
+`isudev/wp-content-bridge-mcp-server`, whose `ABILITY_PROFILE` constant is the
+projection, intersected per request with `wp_has_ability()`. No MU-plugin, no
+endpoint — so on an install without it there is nothing to bump. This endpoint
+is what `tests/Integration/mcp-smoke-verification.sh` targets.
+
+**miniOrange Secure MCP Server — `/wp-json/mosmcp/v1/mcp`.** This is the OAuth
+path ChatGPT connects through, and it **never reads `ABILITY_PROFILE`**. Its
+`class-mcp-server.php` calls `wp_get_abilities()` against the WordPress core
+registry, applies the `mosmcp_exposed_abilities` filter, then narrows to the
+per-principal NHI allowlist. A newly registered ability therefore appears on
+this path automatically, with no package release involved.
+
+Consequence: a projection-package bump is hygiene for the smoke test, never a
+reachability blocker for the connector. What governs the connector's reach is
+the miniOrange grant, and destructive intents must stay out of the read-only
+principal's grant deliberately — `restore-trashed-content` included.
+
+**Fail-open worth knowing before 0.5.0:** miniOrange treats an unset allowlist
+as unrestricted (`null !== self::$allowed_abilities` guards the filtering step),
+so a principal with no grants configured sees every registered ability, bounded
+only by WordPress capabilities. The capability layer holds — that is why the
+misconfigured `create-draft` grant below could not have executed — but the
+projection layer fails open, and Slice 1B's threat model must state that rather
+than rediscover it.
+
+### History
+
+The official Adapter now projects all registered abilities. The site's
+projection package was one release behind at 0.2.1 with 15 entries, so the three
+Custom Schema abilities from 0.3.0 were **absent from the official-Adapter
+endpoint** (not from MCP as a whole; the miniOrange path was unaffected). The
+package was bumped to 0.3.0 and the smoke run confirmed 18/18.
 
 The separate miniOrange per-principal grants for `wpcb-bridge-reader` did not
 match the documented least-privilege profile in either direction. They granted
