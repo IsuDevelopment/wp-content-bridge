@@ -13,6 +13,7 @@ use IsuDev\WPContentBridge\Application\Mutation\MutationWriteFailed;
 use IsuDev\WPContentBridge\Application\Mutation\SeoFieldUnsupported;
 use IsuDev\WPContentBridge\Application\Mutation\SeoImageRepository;
 use IsuDev\WPContentBridge\Application\Mutation\SeoImageUnavailable;
+use IsuDev\WPContentBridge\Application\Mutation\SeoPreviewProvider;
 use IsuDev\WPContentBridge\Application\Mutation\SeoWriter;
 use IsuDev\WPContentBridge\Application\Seo\SeoProvider;
 use IsuDev\WPContentBridge\Domain\Seo\SeoTarget;
@@ -20,12 +21,13 @@ use IsuDev\WPContentBridge\Domain\Seo\SeoTarget;
 /**
  * Writes the version-tested Yoast 28.x Free and Premium editor allowlist.
  */
-final readonly class YoastSeoWriter implements SeoWriter {
+final readonly class YoastSeoWriter implements SeoWriter, SeoPreviewProvider {
 
 	private const COMPATIBLE_MAJOR = '28.';
 	private const PREMIUM_FIELDS   = array( 'keyphrase_synonyms', 'related_keyphrases' );
 	private const PREMIUM_LIMIT    = 20;
 	private const SYNONYM_BYTES    = 4000;
+	private const BASIC_ROBOTS     = array( 'robots_index', 'robots_follow' );
 	private const ADVANCED_ROBOTS  = array(
 		'robots_noimageindex' => 'noimageindex',
 		'robots_noarchive'    => 'noarchive',
@@ -87,6 +89,86 @@ final readonly class YoastSeoWriter implements SeoWriter {
 	 * @throws SeoFieldUnsupported When the required compatible provider is unavailable.
 	 */
 	public function write( int $post_id, array $fields ): array {
+		$this->assert_supported( $fields );
+
+		// Resolve every requested attachment before the first write so an invalid
+		// image cannot leave an otherwise valid multi-field request half-applied.
+		$social_images = $this->resolve_social_images( $fields );
+
+		// Identical normalization to preview(); this method only adds the Yoast
+		// storage encoding and the writes themselves.
+		$normalized = self::normalize_fields( $fields );
+
+		foreach ( self::TEXT_META as $field => $yoast_key ) {
+			if ( array_key_exists( $field, $normalized ) && is_string( $normalized[ $field ] ) ) {
+				\WPSEO_Meta::set_value( $yoast_key, $normalized[ $field ], $post_id );
+			}
+		}
+
+		if ( array_key_exists( 'robots_index', $normalized ) && is_bool( $normalized['robots_index'] ) ) {
+			\WPSEO_Meta::set_value( 'meta-robots-noindex', $normalized['robots_index'] ? '2' : '1', $post_id );
+		}
+		if ( array_key_exists( 'robots_follow', $normalized ) && is_bool( $normalized['robots_follow'] ) ) {
+			\WPSEO_Meta::set_value( 'meta-robots-nofollow', $normalized['robots_follow'] ? '0' : '1', $post_id );
+		}
+
+		$this->write_advanced_robots( $post_id, $normalized );
+		$this->write_social_images( $post_id, $social_images );
+
+		$this->write_premium_keyphrases( $post_id, $normalized );
+
+		$document = $this->reader->get( SeoTarget::for_post( $post_id ) );
+
+		return $document->to_array();
+	}
+
+	/**
+	 * Reads the current full resolved SEO document (already public).
+	 *
+	 * @param int $post_id Target post ID.
+	 * @return array<string, mixed>
+	 */
+	public function current( int $post_id ): array {
+		return $this->reader->get( SeoTarget::for_post( $post_id ) )->to_array();
+	}
+
+	/**
+	 * Normalizes the given allowlisted fields through the same normalize_fields()
+	 * call write() uses, without writing any metadata. Returns only the
+	 * requested fields.
+	 *
+	 * @param int   $post_id Target post ID.
+	 * @param array $fields  Present allowlisted field name to value.
+	 * @phpstan-param array<string, string|int|bool|list<string>> $fields
+	 * @return array<string, mixed>
+	 * @throws SeoFieldUnsupported When the required compatible provider is unavailable.
+	 */
+	public function preview( int $post_id, array $fields ): array {
+		$this->assert_supported( $fields );
+
+		// Resolution only reads and validates the attachment; it never writes.
+		$social_images = $this->resolve_social_images( $fields );
+
+		$preview = self::normalize_fields( $fields );
+
+		foreach ( self::SOCIAL_IMAGES as $field => $yoast_key ) {
+			if ( isset( $social_images[ $yoast_key ] ) ) {
+				$preview[ $field ] = $social_images[ $yoast_key ]['id'];
+			}
+		}
+
+		return $preview;
+	}
+
+	/**
+	 * Asserts that the provider tier the requested fields need is active.
+	 *
+	 * @param array $fields Present allowlisted field name to value.
+	 * @phpstan-param array<string, string|int|bool|list<string>> $fields
+	 * @return void
+	 * @throws SeoFieldUnsupported When Yoast Free or the required Premium tier is unavailable.
+	 */
+	private function assert_supported( array $fields ): void {
 		if ( ! $this->is_available() ) {
 			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- structured field names, not rendered output.
 			throw new SeoFieldUnsupported( array_keys( $fields ) );
@@ -97,35 +179,43 @@ final readonly class YoastSeoWriter implements SeoWriter {
 			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- structured field names, not rendered output.
 			throw new SeoFieldUnsupported( $requested_premium );
 		}
+	}
 
-		// Resolve every requested attachment before the first write so an invalid
-		// image cannot leave an otherwise valid multi-field request half-applied.
-		$social_images = $this->resolve_social_images( $fields );
+	/**
+	 * Sanitizes the requested allowlisted fields into their canonical values,
+	 * keyed by public field name and independent of Yoast storage encoding.
+	 *
+	 * This is the single normalization path shared by write() and preview(); a
+	 * preview can only stay truthful while both consume the same result.
+	 *
+	 * @param array $fields Present allowlisted field name to value.
+	 * @phpstan-param array<string, string|int|bool|list<string>> $fields
+	 * @return array<string, string|bool|list<string>>
+	 */
+	private static function normalize_fields( array $fields ): array {
+		$normalized = array();
 
-		foreach ( self::TEXT_META as $field => $yoast_key ) {
+		foreach ( array_keys( self::TEXT_META ) as $field ) {
 			if ( array_key_exists( $field, $fields ) && is_string( $fields[ $field ] ) ) {
-				$value = 'canonical' === $field
+				$normalized[ $field ] = 'canonical' === $field
 					? esc_url_raw( $fields[ $field ], array( 'http', 'https' ) )
 					: sanitize_text_field( $fields[ $field ] );
-				\WPSEO_Meta::set_value( $yoast_key, $value, $post_id );
 			}
 		}
 
-		if ( array_key_exists( 'robots_index', $fields ) && is_bool( $fields['robots_index'] ) ) {
-			\WPSEO_Meta::set_value( 'meta-robots-noindex', $fields['robots_index'] ? '2' : '1', $post_id );
+		foreach ( array_merge( self::BASIC_ROBOTS, array_keys( self::ADVANCED_ROBOTS ) ) as $field ) {
+			if ( array_key_exists( $field, $fields ) && is_bool( $fields[ $field ] ) ) {
+				$normalized[ $field ] = $fields[ $field ];
+			}
 		}
-		if ( array_key_exists( 'robots_follow', $fields ) && is_bool( $fields['robots_follow'] ) ) {
-			\WPSEO_Meta::set_value( 'meta-robots-nofollow', $fields['robots_follow'] ? '0' : '1', $post_id );
+
+		foreach ( self::PREMIUM_FIELDS as $field ) {
+			if ( array_key_exists( $field, $fields ) && is_array( $fields[ $field ] ) ) {
+				$normalized[ $field ] = array_map( 'sanitize_text_field', $fields[ $field ] );
+			}
 		}
 
-		$this->write_advanced_robots( $post_id, $fields );
-		$this->write_social_images( $post_id, $social_images );
-
-		$this->write_premium_keyphrases( $post_id, $fields );
-
-		$document = $this->reader->get( SeoTarget::for_post( $post_id ) );
-
-		return $document->to_array();
+		return $normalized;
 	}
 
 	/**
@@ -169,8 +259,8 @@ final readonly class YoastSeoWriter implements SeoWriter {
 	 * Merges explicitly requested advanced directives with the current Yoast value.
 	 *
 	 * @param int   $post_id Target post ID.
-	 * @param array $fields  Validated public fields.
-	 * @phpstan-param array<string, string|int|bool|list<string>> $fields
+	 * @param array $fields  Fields already normalized by normalize_fields().
+	 * @phpstan-param array<string, string|bool|list<string>> $fields
 	 * @return void
 	 */
 	private function write_advanced_robots( int $post_id, array $fields ): void {
@@ -232,8 +322,8 @@ final readonly class YoastSeoWriter implements SeoWriter {
 	 * and related-keyphrase synonyms maintained by the Yoast editor.
 	 *
 	 * @param int   $post_id Target post ID.
-	 * @param array $fields  Validated fields.
-	 * @phpstan-param array<string, string|int|bool|list<string>> $fields
+	 * @param array $fields  Fields already normalized by normalize_fields().
+	 * @phpstan-param array<string, string|bool|list<string>> $fields
 	 * @return void
 	 * @throws MutationWriteFailed When JSON encoding fails.
 	 */
@@ -248,7 +338,7 @@ final readonly class YoastSeoWriter implements SeoWriter {
 		$current_synonyms = self::decoded_synonym_strings( get_post_meta( $post_id, '_yoast_wpseo_keywordsynonyms', true ) );
 		$primary_synonyms = $current_synonyms[0] ?? '';
 		if ( $updates_synonyms && is_array( $fields['keyphrase_synonyms'] ) ) {
-			$primary_synonyms = implode( ', ', array_map( 'sanitize_text_field', $fields['keyphrase_synonyms'] ) );
+			$primary_synonyms = implode( ', ', $fields['keyphrase_synonyms'] );
 		}
 
 		if ( ! $updates_related ) {
@@ -270,7 +360,6 @@ final readonly class YoastSeoWriter implements SeoWriter {
 		$related_synonyms = array( $primary_synonyms );
 		if ( is_array( $fields['related_keyphrases'] ) ) {
 			foreach ( $fields['related_keyphrases'] as $keyword ) {
-				$keyword            = sanitize_text_field( $keyword );
 				$related[]          = array(
 					'keyword' => $keyword,
 					'score'   => $existing[ $keyword ]['score'] ?? 0,

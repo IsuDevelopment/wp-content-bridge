@@ -10,6 +10,7 @@ declare( strict_types=1 );
 namespace IsuDev\WPContentBridge\Infrastructure\WordPress;
 
 use IsuDev\WPContentBridge\Application\Mutation\ContentMutationRepository;
+use IsuDev\WPContentBridge\Application\Mutation\ContentSnapshotRepository;
 use IsuDev\WPContentBridge\Application\Mutation\MutationWriteFailed;
 use IsuDev\WPContentBridge\Domain\Mutation\ContentUpdate;
 use IsuDev\WPContentBridge\Domain\Mutation\DraftInput;
@@ -21,7 +22,7 @@ use WP_Post;
 /**
  * The only place create/update actually touch WordPress. Never publishes.
  */
-final class WordPressContentMutationRepository implements ContentMutationRepository {
+final class WordPressContentMutationRepository implements ContentMutationRepository, ContentSnapshotRepository {
 
 	/**
 	 * Post type of an existing, eligible object, or null when absent/ineligible.
@@ -115,6 +116,25 @@ final class WordPressContentMutationRepository implements ContentMutationReposit
 		}
 
 		return $this->built_result( $post_id, false, $update->changed_fields() );
+	}
+
+	/**
+	 * Current content field values, or null when the target is absent.
+	 *
+	 * @param int $post_id Target post ID.
+	 * @return array{title: string, block_markup: string, excerpt: string}|null
+	 */
+	public function content_snapshot( int $post_id ): ?array {
+		$post = get_post( $post_id );
+		if ( ! $post instanceof WP_Post ) {
+			return null;
+		}
+
+		return array(
+			'title'        => $post->post_title,
+			'block_markup' => $post->post_content,
+			'excerpt'      => $post->post_excerpt,
+		);
 	}
 
 	/**

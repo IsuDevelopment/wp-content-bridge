@@ -88,6 +88,21 @@ final class PhpBlockMarkupValidator implements BlockMarkupValidator {
 	}
 
 	/**
+	 * Round-trips block markup through parsing and re-serialization only,
+	 * without applying content filters that could mutate stored source.
+	 *
+	 * @param string $markup Raw Gutenberg block markup (may be empty).
+	 * @return string The markup that would actually be stored.
+	 */
+	public function normalize( string $markup ): string {
+		if ( '' === trim( $markup ) ) {
+			return '';
+		}
+
+		return serialize_blocks( parse_blocks( $markup ) );
+	}
+
+	/**
 	 * True when re-parsing the serialized blocks yields the same top-level name sequence.
 	 *
 	 * @param array<int|string, ParsedBlock> $blocks Parsed blocks.

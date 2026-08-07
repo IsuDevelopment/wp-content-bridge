@@ -302,6 +302,29 @@ Output: same shape as `create-draft`'s (`created` is always `false`).
 
 Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
 
+### `wp-content-bridge/preview-update-content`
+
+Accepts the exact `update-content` input contract, including required
+`post_id` and current `version_token`. It checks the same per-post-type Update
+policy, the same optimistic-concurrency token, and validates block markup with
+the same `BlockMarkupValidator`, then returns bounded current/prospective
+content and `writes_performed: false`. No post, meta, revision, audit, or
+cache state is changed (ADR 0021).
+
+Output (`schema_version, writes_performed, post_id, post_type, version_token,
+changed_fields, current_content, preview_content, preview_taxonomies,
+warnings, provenance`): `current_content`/`preview_content` each carry
+`title`, `block_markup`, and `excerpt`. `block_markup` is round-tripped through
+`parse_blocks()`/`serialize_blocks()` only — never through content filters
+that could mutate what would actually be stored. `preview_taxonomies` lists
+the prospective `{taxonomy, term_ids}` assignments, empty when taxonomies are
+untouched. `warnings` is a bounded list of `{code, field, message}`, emitting
+`content_replaced`/`content_deleted` when `block_markup` changes and
+`taxonomies_replaced` when a taxonomy assignment is present (assignments
+always replace a taxonomy's current terms).
+
+Annotations: `readonly: true`, `destructive: false`, `idempotent: true`.
+
 ### `wp-content-bridge/update-seo`
 
 Writes a fixed, version-tested Yoast editor-field allowlist on one existing post
@@ -348,6 +371,28 @@ provider's raw positional JSON is never part of the Ability contract (ADR
 0014).
 
 Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
+
+### `wp-content-bridge/preview-update-seo`
+
+Accepts the exact `update-seo` input contract, including required `post_id`
+and current `version_token`. It checks the same per-post-type Update SEO
+policy, the same optimistic-concurrency token, the same allowlist (an
+outside-allowlist key still fails with `wpcb_seo_field_unsupported`), and
+normalizes each requested field exactly as `YoastSeoWriter::write()` sanitizes
+it — including resolving social-image attachment IDs — but never calls
+`WPSEO_Meta::set_value()`. Returns `writes_performed: false` (ADR 0021).
+
+Output (`schema_version, writes_performed, post_id, post_type, version_token,
+changed_fields, current_seo, preview_seo, warnings, provenance`):
+`current_seo` is the same full resolved shape as `get-url-seo` and
+`update-seo`'s `effective_seo`, since it already exists and is already public.
+`preview_seo` is deliberately narrower — only the present, sanitized
+allowlisted field values — because the resolved public output does not exist
+until the change is actually rendered. `warnings` is a bounded list of
+`{code, field, message}`, emitting `field_cleared` when a field is explicitly
+set to an empty string.
+
+Annotations: `readonly: true`, `destructive: false`, `idempotent: true`.
 
 ### `wp-content-bridge/get-service-schema`
 

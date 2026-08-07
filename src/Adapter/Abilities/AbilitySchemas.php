@@ -798,6 +798,68 @@ final class AbilitySchemas {
 	}
 
 	/**
+	 * Returns the preview-update-content input contract.
+	 *
+	 * The preview intentionally shares the exact update input so the result can
+	 * be applied without changing semantic intent or validation rules.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function preview_content_input(): array {
+		return self::update_content_input();
+	}
+
+	/**
+	 * Returns the preview-update-content output contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function preview_content_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'schema_version', 'writes_performed', 'post_id', 'post_type', 'version_token', 'changed_fields', 'current_content', 'preview_content', 'preview_taxonomies', 'warnings', 'provenance' ),
+			'properties'           => array(
+				'schema_version'     => array( 'type' => 'string' ),
+				'writes_performed'   => array( 'type' => 'boolean' ),
+				'post_id'            => array( 'type' => 'integer' ),
+				'post_type'          => array( 'type' => 'string' ),
+				'version_token'      => array( 'type' => 'string' ),
+				'changed_fields'     => array(
+					'type'        => 'array',
+					'uniqueItems' => true,
+					'maxItems'    => 4,
+					'items'       => array(
+						'type' => 'string',
+						'enum' => array( 'title', 'content', 'excerpt', 'taxonomies' ),
+					),
+				),
+				'current_content'    => self::content_snapshot_schema(),
+				'preview_content'    => self::content_snapshot_schema(),
+				'preview_taxonomies' => array(
+					'type'     => 'array',
+					'maxItems' => 50,
+					'items'    => array(
+						'type'                 => 'object',
+						'required'             => array( 'taxonomy', 'term_ids' ),
+						'properties'           => array(
+							'taxonomy' => array( 'type' => 'string' ),
+							'term_ids' => array(
+								'type'     => 'array',
+								'maxItems' => 100,
+								'items'    => array( 'type' => 'integer' ),
+							),
+						),
+						'additionalProperties' => false,
+					),
+				),
+				'warnings'           => self::preview_warnings_schema( 20 ),
+				'provenance'         => self::provenance(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
 	 * Returns the update-seo input schema.
 	 *
 	 * @return array<string, mixed>
@@ -927,6 +989,75 @@ final class AbilitySchemas {
 		$schema['properties']['effective_seo'] = self::seo_output();
 
 		return $schema;
+	}
+
+	/**
+	 * Returns the preview-update-seo input contract.
+	 *
+	 * The preview intentionally shares the exact update input so the result can
+	 * be applied without changing semantic intent or validation rules.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function preview_seo_input(): array {
+		return self::update_seo_input();
+	}
+
+	/**
+	 * Returns the preview-update-seo output contract.
+	 *
+	 * `current_seo` is the same full resolved shape as `get-url-seo` and
+	 * `update-seo`'s `effective_seo`, since it already exists and is already
+	 * public. `preview_seo` is deliberately narrower: only the prospective
+	 * *configured* allowlisted field values, because the resolved public output
+	 * does not exist until the change is actually rendered.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function preview_seo_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'schema_version', 'writes_performed', 'post_id', 'post_type', 'version_token', 'changed_fields', 'current_seo', 'preview_seo', 'warnings', 'provenance' ),
+			'properties'           => array(
+				'schema_version'   => array( 'type' => 'string' ),
+				'writes_performed' => array( 'type' => 'boolean' ),
+				'post_id'          => array( 'type' => 'integer' ),
+				'post_type'        => array( 'type' => 'string' ),
+				'version_token'    => array( 'type' => 'string' ),
+				'changed_fields'   => array(
+					'type'        => 'array',
+					'uniqueItems' => true,
+					'maxItems'    => 17,
+					'items'       => array(
+						'type' => 'string',
+						'enum' => array(
+							'seo_title',
+							'meta_description',
+							'focus_keyphrase',
+							'keyphrase_synonyms',
+							'related_keyphrases',
+							'canonical',
+							'robots_index',
+							'robots_follow',
+							'robots_noarchive',
+							'robots_noimageindex',
+							'robots_nosnippet',
+							'og_title',
+							'og_description',
+							'og_image_id',
+							'twitter_title',
+							'twitter_description',
+							'twitter_image_id',
+						),
+					),
+				),
+				'current_seo'      => self::seo_output(),
+				'preview_seo'      => self::seo_preview_fields_schema(),
+				'warnings'         => self::preview_warnings_schema( 17 ),
+				'provenance'       => self::provenance(),
+			),
+			'additionalProperties' => false,
+		);
 	}
 
 	/**
@@ -1754,6 +1885,98 @@ final class AbilitySchemas {
 				'untrusted' => array( 'type' => 'boolean' ),
 			),
 			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the shared current/preview content-field snapshot schema used by
+	 * preview-update-content.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function content_snapshot_schema(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'title', 'block_markup', 'excerpt' ),
+			'properties'           => array(
+				'title'        => array( 'type' => 'string' ),
+				'block_markup' => array( 'type' => 'string' ),
+				'excerpt'      => array( 'type' => 'string' ),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the bounded prospective-configured-fields schema used by
+	 * preview-update-seo. Deliberately narrower than `seo_output()`: only the
+	 * present allowlisted fields, never a claim about resolved public output.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function seo_preview_fields_schema(): array {
+		return array(
+			'type'                 => 'object',
+			'properties'           => array(
+				'seo_title'           => array( 'type' => 'string' ),
+				'meta_description'    => array( 'type' => 'string' ),
+				'focus_keyphrase'     => array( 'type' => 'string' ),
+				'keyphrase_synonyms'  => array(
+					'type'     => 'array',
+					'maxItems' => 20,
+					'items'    => array( 'type' => 'string' ),
+				),
+				'related_keyphrases'  => array(
+					'type'     => 'array',
+					'maxItems' => 20,
+					'items'    => array( 'type' => 'string' ),
+				),
+				'canonical'           => array( 'type' => 'string' ),
+				'robots_index'        => array( 'type' => 'boolean' ),
+				'robots_follow'       => array( 'type' => 'boolean' ),
+				'robots_noarchive'    => array( 'type' => 'boolean' ),
+				'robots_noimageindex' => array( 'type' => 'boolean' ),
+				'robots_nosnippet'    => array( 'type' => 'boolean' ),
+				'og_title'            => array( 'type' => 'string' ),
+				'og_description'      => array( 'type' => 'string' ),
+				'og_image_id'         => array( 'type' => 'integer' ),
+				'twitter_title'       => array( 'type' => 'string' ),
+				'twitter_description' => array( 'type' => 'string' ),
+				'twitter_image_id'    => array( 'type' => 'integer' ),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the shared bounded machine-readable preview-warning list schema.
+	 *
+	 * @param int $maximum Maximum item count.
+	 * @return array<string, mixed>
+	 */
+	private static function preview_warnings_schema( int $maximum ): array {
+		return array(
+			'type'     => 'array',
+			'maxItems' => $maximum,
+			'items'    => array(
+				'type'                 => 'object',
+				'required'             => array( 'code', 'field', 'message' ),
+				'properties'           => array(
+					'code'    => array(
+						'type'      => 'string',
+						'maxLength' => 64,
+					),
+					'field'   => array(
+						'type'      => 'string',
+						'maxLength' => 64,
+					),
+					'message' => array(
+						'type'      => 'string',
+						'maxLength' => 500,
+					),
+				),
+				'additionalProperties' => false,
+			),
 		);
 	}
 

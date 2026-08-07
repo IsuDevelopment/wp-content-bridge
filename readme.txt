@@ -14,7 +14,7 @@ Provider-neutral WordPress content and SEO abilities for MCP and other agent cli
 
 The read-only content core exposes access-aware search, content detail, provider-neutral SEO, and safe diagnostics through the WordPress Abilities API. Responses use strict schemas, native WordPress object permissions, per-post-type policy, bounded search, and an explicit content payload limit. A Yoast SEO adapter covers Yoast Free / Premium / Local 28.x.
 
-Safe write abilities (create draft, update content, update SEO, optional structured Service and bounded Custom Schema, and reversible trash) are also available behind off-by-default feature flags, per-post-type write policy, dedicated capabilities, native object checks, and optimistic concurrency. Schema Extended integrations additionally provide read-before-write and read-only preview abilities when their compatible public contracts are loaded. Publication and other status transitions are not yet supported.
+Safe write abilities (create draft, update content, update SEO, optional structured Service and bounded Custom Schema, and reversible trash) are also available behind off-by-default feature flags, per-post-type write policy, dedicated capabilities, native object checks, and optimistic concurrency. Update content and update SEO each have a matching read-only preview ability that shares the write's exact input contract and never mutates. Schema Extended integrations additionally provide read-before-write and read-only preview abilities when their compatible public contracts are loaded. Publication and other status transitions are not yet supported.
 
 MCP transport is provided separately by the official WordPress MCP Adapter and is not bundled with this plugin.
 
@@ -31,6 +31,10 @@ Install a packaged release or run Composer before activating a source checkout.
 * Added `description` to the required `taxonomy` and `term_ids` fields of the nested taxonomy assignment schema in `create-draft` and `update-content`; they were the only required fields in the public profile without one.
 * Added runtime verifiers for the Service schema and Custom Schema slices, asserting graph-level output rather than the provider's own re-read.
 * Repaired three runtime verifiers that had drifted against the current source and would fail on any release after 0.1.0.
+* Added `preview-update-content` and `preview-update-seo`, read-only previews of `update-content` and `update-seo` that share the write's exact input contract, policy, and concurrency check but never mutate; responses report `writes_performed: false` (ADR 0021).
+* Added a runtime verifier for both new previews, proving repeated calls are deterministic and cause no post, meta, revision, or audit change, that a preview followed by the matching write produces exactly the previewed state, and that stale tokens are rejected before any mutation.
+* Collapsed the Yoast adapter's field sanitization into one shared normalization path consumed by both `update-seo` and `preview-update-seo`, so a field added to the write cannot silently go missing from the preview.
+* Expanded the closed MCP profile to 20 potential abilities.
 
 = 0.3.0 =
 * Added conditional `get-custom-schema`, `preview-custom-schema`, and `update-custom-schema` abilities through Schema Extended 0.3.0's public integration contract.

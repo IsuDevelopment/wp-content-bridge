@@ -373,6 +373,16 @@ final class CreateDraftTest extends TestCase {
 			public function validate( string $markup ): array {
 				return array();
 			}
+
+			/**
+			 * Not used by these tests.
+			 *
+			 * @param string $markup Unused markup.
+			 * @throws \LogicException Always; this fake is not exercised by these tests.
+			 */
+			public function normalize( string $markup ): string {
+				throw new \LogicException( 'not used' );
+			}
 		};
 	}
 
@@ -401,6 +411,16 @@ final class CreateDraftTest extends TestCase {
 			 */
 			public function validate( string $markup ): array {
 				return $this->reasons;
+			}
+
+			/**
+			 * Not used by these tests.
+			 *
+			 * @param string $markup Unused markup.
+			 * @throws \LogicException Always; this fake is not exercised by these tests.
+			 */
+			public function normalize( string $markup ): string {
+				throw new \LogicException( 'not used' );
 			}
 		};
 	}

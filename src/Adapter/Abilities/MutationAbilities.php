@@ -16,6 +16,8 @@ use IsuDev\WPContentBridge\Application\Mutation\InvalidBlockMarkup;
 use IsuDev\WPContentBridge\Application\Mutation\MutationConflict;
 use IsuDev\WPContentBridge\Application\Mutation\MutationForbidden;
 use IsuDev\WPContentBridge\Application\Mutation\MutationWriteFailed;
+use IsuDev\WPContentBridge\Application\Mutation\PreviewContentUpdate;
+use IsuDev\WPContentBridge\Application\Mutation\PreviewSeoUpdate;
 use IsuDev\WPContentBridge\Application\Mutation\SeoFieldUnsupported;
 use IsuDev\WPContentBridge\Application\Mutation\SeoImageUnavailable;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateContent;
@@ -24,9 +26,9 @@ use Throwable;
 use WP_Error;
 
 /**
- * Adapter for create-draft and update-content. Contains no policy — it maps
- * input/output and errors, and enforces capability gates in its permission
- * callbacks.
+ * Adapter for create-draft, update-content, update-seo, and their previews.
+ * Contains no policy — it maps input/output and errors, and enforces
+ * capability gates in its permission callbacks.
  */
 final readonly class MutationAbilities {
 
@@ -35,14 +37,18 @@ final readonly class MutationAbilities {
 	/**
 	 * Creates the Abilities projection.
 	 *
-	 * @param CreateDraft   $create     Create-draft use case.
-	 * @param UpdateContent $update     Update-content use case.
-	 * @param UpdateSeo     $update_seo Update-SEO use case.
+	 * @param CreateDraft          $create          Create-draft use case.
+	 * @param UpdateContent        $update          Update-content use case.
+	 * @param UpdateSeo            $update_seo      Update-SEO use case.
+	 * @param PreviewContentUpdate $preview_content Preview-update-content use case.
+	 * @param PreviewSeoUpdate     $preview_seo     Preview-update-seo use case.
 	 */
 	public function __construct(
 		private CreateDraft $create,
 		private UpdateContent $update,
 		private UpdateSeo $update_seo,
+		private PreviewContentUpdate $preview_content,
+		private PreviewSeoUpdate $preview_seo,
 	) {
 	}
 
@@ -100,6 +106,34 @@ final readonly class MutationAbilities {
 				'permission_callback' => array( $this, 'can_update_seo' ),
 				'execute_callback'    => array( $this, 'execute_update_seo' ),
 				'meta'                => self::write_meta( true ),
+			)
+		);
+
+		wp_register_ability(
+			PreviewContentUpdate::ABILITY,
+			array(
+				'label'               => __( 'Preview content update', 'wp-content-bridge' ),
+				'description'         => __( 'Preview the title, content, excerpt, and taxonomy changes an update would produce, without writing.', 'wp-content-bridge' ),
+				'category'            => self::CATEGORY,
+				'input_schema'        => AbilitySchemas::preview_content_input(),
+				'output_schema'       => AbilitySchemas::preview_content_output(),
+				'permission_callback' => array( $this, 'can_update' ),
+				'execute_callback'    => array( $this, 'execute_preview_content' ),
+				'meta'                => self::preview_meta(),
+			)
+		);
+
+		wp_register_ability(
+			PreviewSeoUpdate::ABILITY,
+			array(
+				'label'               => __( 'Preview SEO update', 'wp-content-bridge' ),
+				'description'         => __( 'Preview the normalized SEO field values an update would produce, without writing.', 'wp-content-bridge' ),
+				'category'            => self::CATEGORY,
+				'input_schema'        => AbilitySchemas::preview_seo_input(),
+				'output_schema'       => AbilitySchemas::preview_seo_output(),
+				'permission_callback' => array( $this, 'can_update_seo' ),
+				'execute_callback'    => array( $this, 'execute_preview_seo' ),
+				'meta'                => self::preview_meta(),
 			)
 		);
 	}
@@ -221,6 +255,42 @@ final readonly class MutationAbilities {
 	}
 
 	/**
+	 * Executes a content-update preview. Never writes.
+	 *
+	 * @param array<string, mixed> $input Ability input.
+	 * @return array<string, mixed>|WP_Error
+	 */
+	public function execute_preview_content( array $input ): array|WP_Error {
+		if ( ! $this->can_update( $input ) ) {
+			return self::forbidden();
+		}
+
+		try {
+			return $this->preview_content->execute( $input )->to_array();
+		} catch ( Throwable $error ) {
+			return $this->to_error( $error );
+		}
+	}
+
+	/**
+	 * Executes an SEO-update preview. Never writes.
+	 *
+	 * @param array<string, mixed> $input Ability input.
+	 * @return array<string, mixed>|WP_Error
+	 */
+	public function execute_preview_seo( array $input ): array|WP_Error {
+		if ( ! $this->can_update_seo( $input ) ) {
+			return self::forbidden();
+		}
+
+		try {
+			return $this->preview_seo->execute( $input )->to_array();
+		} catch ( Throwable $error ) {
+			return $this->to_error( $error );
+		}
+	}
+
+	/**
 	 * Maps a thrown failure to a stable WP_Error.
 	 *
 	 * @param Throwable $error The failure that ended the attempt.
@@ -258,6 +328,23 @@ final readonly class MutationAbilities {
 				'readonly'    => false,
 				'destructive' => $destructive,
 				'idempotent'  => false,
+			),
+			'show_in_rest' => true,
+			'mcp'          => array( 'public' => true ),
+		);
+	}
+
+	/**
+	 * Returns the shared annotations for side-effect-free preview Abilities.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function preview_meta(): array {
+		return array(
+			'annotations'  => array(
+				'readonly'    => true,
+				'destructive' => false,
+				'idempotent'  => true,
 			),
 			'show_in_rest' => true,
 			'mcp'          => array( 'public' => true ),

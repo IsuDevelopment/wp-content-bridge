@@ -50,6 +50,12 @@ compounds the risk that this roadmap's own gates are meant to prevent.
 
 ### Slice 1A — content and SEO preview (`0.4.0`)
 
+**Status: done, 2026-08-07.** `preview-update-content` and
+`preview-update-seo` are implemented per ADR 0021, `composer check` is green,
+and `tests/Integration/preview-verification.php` plus the closed-profile
+guard both pass on Kormas local. See `.agents/status.md` for the full record.
+Slice 1B (below) is next.
+
 Goal: let clients validate and review prospective content and SEO changes before
 the existing mutation Abilities are called.
 
@@ -588,10 +594,14 @@ and never performs writes.
 Implementation starts with Slice 1 and its contract/ADR. No code for Slice 2
 or later should be mixed into the Slice 1 branch or release.
 
-Three decisions are due before the first Slice 1A commit:
+Three decisions were due before the first Slice 1A commit:
 
-1. the runtime verification backlog is cleared (see "Entry gate");
-2. the preview ability naming convention is fixed, including whether the two
-   shipped `preview-*` IDs are renamed;
+1. ~~the runtime verification backlog is cleared~~ — **cleared 2026-08-07**
+   (see "Entry gate" and `.agents/status.md`);
+2. ~~the preview ability naming convention is fixed~~ — **fixed 2026-08-07**:
+   `preview-` plus the exact ID of the write it mirrors; the two shipped
+   `preview-*` IDs were renamed accordingly. Slice 1A shipped against this
+   convention with no further rename;
 3. whether Slice 1A and Slice 1B share the 0.4.0 release or the llms.txt work
-   gets its own version, with later slices renumbered.
+   gets its own version, with later slices renumbered — **still open**; decide
+   this before starting Slice 1B.

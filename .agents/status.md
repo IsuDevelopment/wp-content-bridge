@@ -31,6 +31,39 @@ semantic validation. All slices retain separate read/preview/write intents,
 least-privilege capabilities, optimistic concurrency, redacted audit, and
 runtime/MCP release gates. No implementation has started.
 
+**Slice 1A (content and SEO preview) is code-complete and runtime-verified for
+0.4.0 on 2026-08-07.** `wp-content-bridge/preview-update-content` and
+`wp-content-bridge/preview-update-seo` mirror `update-content` and
+`update-seo` exactly, per ADR 0021: same validated input DTO, per-post-type
+policy, optimistic-concurrency check, and (for content) block-markup
+validation; neither takes an `AuditLog` dependency at all, so neither can
+record a mutation audit row. Content preview round-trips block markup through
+a new `BlockMarkupValidator::normalize()` method (`parse_blocks()`/
+`serialize_blocks()` only, never content filters) and reads the post's current
+title/content/excerpt through a new, additive `ContentSnapshotRepository`
+port that `WordPressContentMutationRepository` also implements. SEO preview
+normalizes every requested field exactly as `YoastSeoWriter::write()`
+sanitizes it (including resolving social-image attachment IDs) through a new,
+additive `SeoPreviewProvider` port that `YoastSeoWriter` also implements, but
+never calls `WPSEO_Meta::set_value()`. Both new ports are additive to
+existing interfaces, so no existing implementer or test double changed shape.
+Preview responses report `writes_performed: false` — deliberately not
+`dry_run`, which the roadmap reserves for the forbidden mode of a destructive
+Ability. Both previews register only inside `MutationAbilities`, alongside the
+writes they mirror, so they share `wpcb_writes_enabled` and the identical
+capability/native-object permission callback automatically. The closed MCP
+profile grew to 20 potential abilities. `composer check` is green: PHPCS 0
+errors, PHPStan max-level 0 errors, PHPUnit 242 tests / 626 assertions. The new
+`tests/Integration/preview-verification.php` passes against Yoast Free 28.2 on
+Kormas local, proving repeated previews are deterministic and cause no
+post/meta/revision/audit change, that a preview followed by the matching
+write produces exactly the previewed state, and that stale tokens are
+rejected before any mutation. `abilities-runtime-verification.php` (the
+closed-profile guard) also passes. The consuming site's MU-plugin projection
+package `isudev/wp-content-bridge-mcp-server` still needs a version bump to
+include the two new IDs — that is the user's action in a different
+repository, not part of this change.
+
 **Bounded Custom Schema MCP support is code-complete for connector 0.3.0 on
 2026-08-03.** Conditional `get-custom-schema`, `preview-update-custom-schema`, and
 `update-custom-schema` Abilities use only Schema Extended 0.3.0's public
@@ -482,11 +515,15 @@ The MCP projection gap and the miniOrange grants were both closed on
 2. Record the Milestone 5 security sign-off, which is still outstanding.
 3. Delete the now-inert `wpcb_public_base_url` option and uninstall the old
    root-owned cloudflared service; the dev-only MU shim has already been removed.
-4. Start roadmap Slice 1A (content and SEO preview) for 0.4.0. The execution
-   plan is `docs/plan/SLICE_1A_EXECUTION_PLAN.md`. Before writing its schemas,
-   settle the preview ability naming convention — the shipped
-   `preview-update-service-schema` / `preview-update-custom-schema` IDs do not match the
-   roadmap's `preview-<verb>-<noun>` form, and ability IDs are stable API.
+4. ~~Start roadmap Slice 1A (content and SEO preview) for 0.4.0.~~ **Done
+   2026-08-07** — see the Slice 1A entry above. The consuming site's MU-plugin
+   projection package still needs a version bump for the two new IDs (user
+   action, different repository).
+5. Start roadmap Slice 1B (llms.txt read, preview, configuration, and
+   generation), also targeted at `0.4.0` per
+   `docs/plan/EDITORIAL_OPERATIONS_ROADMAP.md`. It is the heaviest slice in the
+   roadmap and introduces the plugin's first public unauthenticated route; it
+   needs its own threat model before implementation starts.
 
 Plan 4c `transition-content-status` is **not** the next action. It is Slice 2
 (`0.5.0`), after the 0.4.0 preview and llms.txt slices.
@@ -509,7 +546,14 @@ match the documented least-privilege profile in either direction. They granted
 gate would have refused the call), but the grant contradicted this file's own
 claim that no write grants remained. The write grant was removed and the three
 missing reads added; the principal now holds exactly the five documented reads
-plus `list-block-patterns`, which is a read and left in place pending a decision.
+plus `list-block-patterns`.
+
+**Decision 2026-08-07: `list-block-patterns` stays in the `wpcb-bridge-reader`
+grant set and its review is deferred to 0.4.5.** It is a genuine read, it is
+independently gated behind `wpcb_pattern_reads_enabled` and
+`wpcb_read_patterns`, and Plan 4a has never had a runtime sign-off. Revisiting
+it now would block the 0.4.0 release on an unrelated verification; 0.4.5 should
+either complete that sign-off or drop the grant.
 
 Treat the earlier "no `mosmcp/*` write grants remain" note as unverified
 history: it was written without a live check. External MCP allowlists remain

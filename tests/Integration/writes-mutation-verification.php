@@ -12,6 +12,8 @@ declare(strict_types=1);
 use IsuDev\WPContentBridge\Adapter\Abilities\MutationAbilities;
 use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessManager;
 use IsuDev\WPContentBridge\Application\Mutation\CreateDraft;
+use IsuDev\WPContentBridge\Application\Mutation\PreviewContentUpdate;
+use IsuDev\WPContentBridge\Application\Mutation\PreviewSeoUpdate;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateContent;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateSeo;
 use IsuDev\WPContentBridge\Application\Seo\NullSeoProvider;
@@ -120,6 +122,20 @@ final class WPCB_Mutation_Verification {
 	private UpdateSeo $update_seo_use_case;
 
 	/**
+	 * Preview-update-content use case required by the MutationAbilities adapter.
+	 *
+	 * @var PreviewContentUpdate
+	 */
+	private PreviewContentUpdate $preview_content_use_case;
+
+	/**
+	 * Preview-update-seo use case required by the MutationAbilities adapter.
+	 *
+	 * @var PreviewSeoUpdate
+	 */
+	private PreviewSeoUpdate $preview_seo_use_case;
+
+	/**
 	 * Create-draft ability, resolved once registration is proven.
 	 *
 	 * @var WP_Ability
@@ -217,17 +233,20 @@ final class WPCB_Mutation_Verification {
 		$this->create_use_case = new CreateDraft( $manager, $validator, $repository, $idempotency, $audit );
 		$this->update_use_case = new UpdateContent( $manager, $validator, $repository, $audit );
 
+		$seo_writer = new YoastSeoWriter(
+			( new SeoProviderRegistry( array(), new NullSeoProvider() ) )->active(),
+			new WordPressSeoImageRepository()
+		);
+
 		// MutationAbilities also owns update-seo. This verifier does not exercise
 		// it (writes-seo-verification.php does), but the adapter requires it.
-		$this->update_seo_use_case = new UpdateSeo(
-			$manager,
-			$repository,
-			new YoastSeoWriter(
-				( new SeoProviderRegistry( array(), new NullSeoProvider() ) )->active(),
-				new WordPressSeoImageRepository()
-			),
-			$audit
-		);
+		$this->update_seo_use_case = new UpdateSeo( $manager, $repository, $seo_writer, $audit );
+
+		// MutationAbilities also owns both previews. This verifier does not
+		// exercise them (preview-verification.php does), but the adapter
+		// requires them.
+		$this->preview_content_use_case = new PreviewContentUpdate( $manager, $validator, $repository, $repository );
+		$this->preview_seo_use_case     = new PreviewSeoUpdate( $manager, $repository, $seo_writer );
 	}
 
 	/**
@@ -286,7 +305,13 @@ final class WPCB_Mutation_Verification {
 		$this->assert_true( ! wp_has_ability( UpdateContent::ABILITY ), 'update-content ability is registered while wpcb_writes_enabled is off.' );
 
 		update_option( Installer::WRITES_ENABLED_OPTION, true, false );
-		$mutation_abilities = new MutationAbilities( $this->create_use_case, $this->update_use_case, $this->update_seo_use_case );
+		$mutation_abilities = new MutationAbilities(
+			$this->create_use_case,
+			$this->update_use_case,
+			$this->update_seo_use_case,
+			$this->preview_content_use_case,
+			$this->preview_seo_use_case
+		);
 
 		global $wp_current_filter;
 		// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- CLI verifier scopes doing_action() to this call only, restored immediately below.

@@ -21,4 +21,13 @@ interface BlockMarkupValidator {
 	 * @return list<string> Bounded failure reasons; empty means valid.
 	 */
 	public function validate( string $markup ): array;
+
+	/**
+	 * Round-trips block markup through parsing and re-serialization only,
+	 * without applying content filters that could mutate stored source.
+	 *
+	 * @param string $markup Raw Gutenberg block markup (may be empty).
+	 * @return string The markup that would actually be stored.
+	 */
+	public function normalize( string $markup ): string;
 }

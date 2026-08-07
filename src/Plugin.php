@@ -26,7 +26,9 @@ use IsuDev\WPContentBridge\Application\Editorial\GetEditorialContext;
 use IsuDev\WPContentBridge\Application\Mutation\CreateDraft;
 use IsuDev\WPContentBridge\Application\Mutation\GetCustomSchema;
 use IsuDev\WPContentBridge\Application\Mutation\GetServiceSchema;
+use IsuDev\WPContentBridge\Application\Mutation\PreviewContentUpdate;
 use IsuDev\WPContentBridge\Application\Mutation\PreviewCustomSchema;
+use IsuDev\WPContentBridge\Application\Mutation\PreviewSeoUpdate;
 use IsuDev\WPContentBridge\Application\Mutation\PreviewServiceSchema;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateContent;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateCustomSchema;
@@ -166,7 +168,9 @@ final class Plugin {
 			( new MutationAbilities(
 				new CreateDraft( $manager, $block_validator, $mutation_repository, $idempotency, $audit_log ),
 				new UpdateContent( $manager, $block_validator, $mutation_repository, $audit_log ),
-				new UpdateSeo( $manager, $mutation_repository, $seo_writer, $audit_log )
+				new UpdateSeo( $manager, $mutation_repository, $seo_writer, $audit_log ),
+				new PreviewContentUpdate( $manager, $block_validator, $mutation_repository, $mutation_repository ),
+				new PreviewSeoUpdate( $manager, $mutation_repository, $seo_writer )
 			) )->register_hooks();
 
 			$service_schema_writer = new SchemaExtendedServiceSchemaWriter();

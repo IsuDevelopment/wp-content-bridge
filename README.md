@@ -76,7 +76,9 @@ annotations.
 | `list-block-patterns` | Pattern reads enabled | `wpcb_read_patterns` | Registered local block-pattern metadata and optional complete Gutenberg markup. |
 | `create-draft` | Content writes enabled | `wpcb_edit_content` | Creates a draft with Gutenberg markup, excerpt, taxonomies, and optional idempotency. |
 | `update-content` | Content writes enabled | `wpcb_edit_content` | Updates selected content fields with optimistic concurrency and a WordPress revision. |
+| `preview-update-content` | Content writes enabled | `wpcb_edit_content` | Returns current and prospective title/content/excerpt/taxonomies for an update without writing. |
 | `update-seo` | Content writes enabled | `wpcb_manage_seo` | Updates supported Yoast fields and returns the effective SEO document after the write. |
+| `preview-update-seo` | Content writes enabled | `wpcb_manage_seo` | Returns the current resolved SEO document and sanitized prospective field values without writing. |
 | `get-service-schema` | Content writes enabled and Schema Extended active | `wpcb_manage_seo` | Reads the independently saved Service, areaServed, brand, and OfferCatalog configuration. |
 | `preview-update-service-schema` | Content writes enabled and Schema Extended active | `wpcb_manage_seo` | Returns current and provider-sanitized prospective Service configuration without writing. |
 | `update-service-schema` | Content writes enabled and Schema Extended active | `wpcb_manage_seo` | Updates a fixed Service, areaServed, brand, and OfferCatalog field set and returns the effective configuration. |
@@ -251,6 +253,16 @@ The caller must provide the `post_id` and current `version_token` obtained from
 work. Successful updates create a WordPress revision and return a new mutation
 result with changed field names only.
 
+### `wp-content-bridge/preview-update-content`
+
+Accepts the exact `update-content` input contract and applies the same
+policy, concurrency check, and block-markup validation, but never writes.
+Returns current and prospective `title`/`block_markup`/`excerpt`, prospective
+taxonomy assignments, `changed_fields`, and bounded machine-readable
+`warnings` (`content_replaced`/`content_deleted` when block markup changes,
+`taxonomies_replaced` when taxonomies are present). The response reports
+`writes_performed: false`. See ADR 0021.
+
 ### `wp-content-bridge/update-seo`
 
 Updates a fixed, version-tested allowlist of Yoast editor fields on one existing
@@ -278,6 +290,19 @@ Advanced robots updates merge only the explicitly supplied flags. Social
 images accept a positive image attachment ID, or `0` to clear the override;
 caller-supplied URLs are rejected. All requested attachments are authorized and
 resolved before the first SEO field is written.
+
+### `wp-content-bridge/preview-update-seo`
+
+Accepts the exact `update-seo` input contract, including the same allowlist
+and the same optimistic-concurrency check, and normalizes each requested field
+exactly as the write sanitizes it — including resolving social-image
+attachment IDs — but never writes Yoast metadata. Returns `current_seo` (the
+same full resolved shape as `get-url-seo`), `preview_seo` (only the present,
+sanitized allowlisted field values — deliberately not a claim about resolved
+public output, which does not exist until the change is rendered),
+`changed_fields`, and bounded `warnings` (`field_cleared` when a field is set
+to an empty string). The response reports `writes_performed: false`. See
+ADR 0021.
 
 ### Service schema configuration
 
@@ -411,7 +436,7 @@ The plugin registers domain abilities; it does not provide MCP transport or
 authentication. Install the official WordPress MCP Adapter separately and
 explicitly allow only the abilities required by a client.
 
-The current source defines a closed 18-ability projection profile covering
+The current source defines a closed 20-ability projection profile covering
 every implemented ability. The reference site-level MCP server intersects
 that profile with the abilities registered in the current request, so disabled
 media, pattern, write, Schema Extended, and trash features remain absent from

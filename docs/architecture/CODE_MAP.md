@@ -243,9 +243,10 @@ get-editorial-context Ability
 ## Write (mutation) feature
 
 ```text
-create-draft / update-content / update-seo / get-service-schema /
-preview-update-service-schema / update-service-schema / get-custom-schema /
-preview-update-custom-schema / update-custom-schema / trash-content Ability
+create-draft / update-content / preview-update-content / update-seo /
+preview-update-seo / get-service-schema / preview-update-service-schema /
+update-service-schema / get-custom-schema / preview-update-custom-schema /
+update-custom-schema / trash-content Ability
   -> plugin capability (`wpcb_edit_content`) + native object capability
      (`create_posts`/`edit_posts` or `edit_post`) — MutationAbilities
      permission callback
@@ -282,6 +283,16 @@ Rules for this flow:
 - `get-content`'s output additionally carries a `version_token` (built from
   `VersionToken::for_content()`) that `update-content` consumes for optimistic
   concurrency — the only touch to the read flow.
+- `preview-update-content` and `preview-update-seo` (ADR 0021) share the
+  matching write's validated input DTO, per-post-type policy, and
+  optimistic-concurrency check, and take no `AuditLog` dependency at all, so
+  they cannot record a mutation audit row even by accident. Content preview
+  round-trips block markup through `BlockMarkupValidator::normalize()`
+  (`parse_blocks()`/`serialize_blocks()` only, never content filters). SEO
+  preview normalizes through `YoastSeoWriter::preview()` (same sanitization as
+  `write()`) but never calls `WPSEO_Meta::set_value()`. Both are registered in
+  the same `MutationAbilities::register_abilities()` call as the writes they
+  mirror, so they share the same `wpcb_writes_enabled` gate automatically.
 
 Files:
 
@@ -321,12 +332,26 @@ Files:
   authorize (policy), optimistic-concurrency check (`wpcb_conflict` on
   mismatch), block validation, write, audit; same exactly-once-audit
   structure as `CreateDraft`.
+- `src/Domain/Mutation/ContentPreviewResult.php` and
+  `SeoPreviewResult.php` — immutable preview DTOs (ADR 0021); wire field is
+  `writes_performed: false`, not `dry_run`.
+- `src/Application/Mutation/ContentSnapshotRepository.php` — additive,
+  read-only companion port to `ContentMutationRepository` (`content_snapshot()`
+  only); `WordPressContentMutationRepository` implements both, so no existing
+  implementer or test double changes shape.
+- `src/Application/Mutation/SeoPreviewProvider.php` — additive, read-only
+  companion port to `SeoWriter` (`current()`/`preview()`); `YoastSeoWriter`
+  implements both.
+- `src/Application/Mutation/PreviewContentUpdate.php` and
+  `PreviewSeoUpdate.php` — the two preview use cases; no `AuditLog` dependency.
 - `src/Infrastructure/WordPress/PhpBlockMarkupValidator.php` — `parse_blocks`
-  round-trip + registered-block-type check, bounded reason list.
+  round-trip + registered-block-type check, bounded reason list; also exposes
+  `normalize()` (parse/serialize round-trip only) that
+  `PreviewContentUpdate` uses to compute what would actually be stored.
 - `src/Infrastructure/WordPress/WordPressContentMutationRepository.php` —
   `wp_insert_post`/`wp_update_post`, revisions, and `result_for()` replay
   lookup; the only place `post_status` is written, and it is never
-  `publish`/`future`/`pending`.
+  `publish`/`future`/`pending`. Also implements `ContentSnapshotRepository`.
 - `src/Infrastructure/WordPress/WordPressSeoImageRepository.php` — requires an
   existing image attachment plus native `read_post`, then resolves its public
   URL without accepting caller-controlled URLs or filesystem paths.
@@ -348,7 +373,9 @@ Files:
   Premium 28.x and are mapped to bounded positional JSON under ADR 0014.
   Advanced robots are merged per directive, while social images are
   pre-resolved and written as paired Yoast URL/attachment-ID values under ADR
-  0016.
+  0016. Also implements `SeoPreviewProvider`: `current()` re-reads the full
+  resolved document; `preview()` reuses the exact same per-field sanitization
+  and image resolution as `write()` but never calls `WPSEO_Meta::set_value()`.
 - `src/Domain/Mutation/ServiceSchemaUpdate.php` — provider-neutral, bounded
   Service/area/brand/OfferCatalog write intent with explicit clear semantics.
 - `src/Application/Mutation/ServiceSchemaWriter.php` and
@@ -368,18 +395,23 @@ Files:
   `edit_post`, with truthful per-intent annotations.
 - `stubs/schema-extended.stub.php` — analysis-only public API declarations for
   the optional provider; it does not load or emulate the plugin at runtime.
-- `src/Adapter/Abilities/MutationAbilities.php` — registers `create-draft`/
-  `update-content` only when `wpcb_writes_enabled` is on; permission callbacks
-  enforce `wpcb_edit_content` + the native type/object capability; maps
+- `src/Adapter/Abilities/MutationAbilities.php` — registers `create-draft`,
+  `update-content`, `update-seo`, and their two previews only when
+  `wpcb_writes_enabled` is on; each preview reuses the exact same permission
+  callback (`can_update`/`can_update_seo`) as the write it mirrors, so it
+  requires the same WPCB capability and native type/object capability; maps
   thrown failures to stable `WP_Error` codes (`wpcb_invalid_input`,
   `wpcb_conflict`, `wpcb_invalid_blocks`, `wpcb_forbidden`,
-  `wpcb_content_unavailable`, `wpcb_write_failed`, `wpcb_internal_error`).
+  `wpcb_content_unavailable`, `wpcb_write_failed`, `wpcb_seo_field_unsupported`,
+  `wpcb_seo_image_unavailable`, `wpcb_internal_error`).
 - `src/Adapter/Abilities/TrashAbilities.php` — separately registers
   `trash-content` only through the composition root's write+trash flag gate and
   enforces `wpcb_delete_content` plus native `delete_post`.
 - `src/Adapter/Abilities/AbilitySchemas.php` — adds
-  `create_draft_input/output`, `update_content_input/output`, and the
-  additive `version_token` property on `get_output()`.
+  `create_draft_input/output`, `update_content_input/output`, the
+  additive `version_token` property on `get_output()`, and
+  `preview_content_input/output`/`preview_seo_input/output` (ADR 0021); each
+  preview input schema is exactly its matching update input schema.
 - `src/Adapter/Admin/ContentAccessSettingsPage.php` — adds the global "Enable
   content writes" checkbox bound to `Installer::WRITES_ENABLED_OPTION`.
 - `tests/Unit/Domain/Mutation/` and `tests/Unit/Application/Mutation/` —
@@ -393,9 +425,17 @@ Files:
 - `tests/Integration/cache-invalidation-verification.php` — runtime proof that
   successful events purge one post, failed events do nothing, and cache-adapter
   exceptions cannot change the completed write outcome.
+- `tests/Unit/Application/Mutation/PreviewContentUpdateTest.php` and
+  `PreviewSeoUpdateTest.php` — changed-fields reporting, stale-token
+  rejection, policy/unsupported-field denial, and no-write assertions against
+  the existing test doubles (ADR 0021).
+- `tests/Integration/preview-verification.php` — runtime proof that repeated
+  previews are deterministic and change nothing (post, meta, revision, or
+  audit), that a preview followed by the matching write produces exactly the
+  previewed state, and that stale tokens are rejected before any mutation.
 
 **MCP projection:** the current source documents a closed profile containing all
-18 implemented abilities. The reference Kormas site owns this boundary as a
+20 implemented abilities. The reference Kormas site owns this boundary as a
 Composer-installed MU-plugin and passes only profile entries that are currently
 registered. Service and Custom Schema entries therefore disappear automatically
 when their standalone provider contract or global writes are inactive. OAuth grants remain a
