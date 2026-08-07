@@ -1,12 +1,15 @@
 name: Build & Release
 
+# Cutting a release is a deliberate act: push a tag, or dispatch manually.
+#
+# This workflow previously also fired on any push to main that touched
+# wp-content-bridge.php, deriving the tag from the version header. On
+# 2026-08-07 that published a v0.4.0 built from the rename commit alone,
+# missing the entire Slice 1A feature set, because the follow-up commit did not
+# touch the version line. It also auto-published a v0.3.1 nobody asked for.
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
-    paths:
-      - 'wp-content-bridge.php'
     tags:
       - 'v*'
 
@@ -29,6 +32,16 @@ jobs:
           VERSION=$(grep -m1 'Version:' wp-content-bridge.php | awk '{print $NF}' | tr -d '[:space:]')
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      # A tag that disagrees with the plugin header would publish the artifact
+      # under a version it does not contain.
+      - name: Assert the pushed tag matches the plugin header
+        if: github.ref_type == 'tag'
+        run: |
+          if [ "${{ github.ref_name }}" != "${{ steps.version.outputs.tag }}" ]; then
+            echo "Tag ${{ github.ref_name }} does not match plugin header version ${{ steps.version.outputs.version }}."
+            exit 1
+          fi
 
       - name: Check if tag already exists
         id: tag_check
@@ -56,19 +69,58 @@ jobs:
       - name: Install Composer dependencies
         run: composer install --no-dev --optimize-autoloader
 
+      # Ship the plugin, nothing else. Development files previously reached
+      # every install: 74 files under docs/ and .agents/ were in the v0.4.0
+      # artifact, including the security model, known gaps, and notes about a
+      # consuming site's grants.
       - name: Build plugin zip
         run: |
           mkdir -p build/wp-content-bridge
+          # Leading slash anchors a pattern to the repository root. Without it
+          # rsync matches at every depth, which would strip composer.json out
+          # of every package under vendor/ as well.
           rsync -a --exclude-from=- ./ build/wp-content-bridge/ <<'EOF'
           .git
-          .github
-          build
-          tests
           node_modules
           *.zip
-          .gitignore
+          /.github
+          /.gitignore
+          /.agents
+          /.claude
+          /.superpowers
+          /.continue-here.md
+          /.phpunit.cache
+          /.editorconfig
+          /build
+          /tests
+          /stubs
+          /docs
+          /*.dist
+          /AGENTS.md
+          /CLAUDE.md
+          /CODEX.md
+          /GEMINI.md
+          /composer.json
+          /composer.lock
+          /wp-content-bridge.code-workspace
           EOF
           cd build && zip -r ../wp-content-bridge.zip wp-content-bridge
+
+      # Fail the release rather than publish a leaking artifact.
+      - name: Assert no development files in the artifact
+        run: |
+          LEAKED=$(unzip -l wp-content-bridge.zip \
+            | grep -E 'wp-content-bridge/(docs|tests|stubs|\.agents|\.claude|\.superpowers)/|wp-content-bridge/(AGENTS|CLAUDE|CODEX|GEMINI)\.md$|wp-content-bridge/composer\.(json|lock)$' \
+            || true)
+          if [ -n "$LEAKED" ]; then
+            echo "Development files leaked into the release artifact:"
+            echo "$LEAKED"
+            exit 1
+          fi
+          test -f build/wp-content-bridge/wp-content-bridge.php
+          test -f build/wp-content-bridge/readme.txt
+          test -f build/wp-content-bridge/vendor/autoload.php
+          echo "Artifact contents OK"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
