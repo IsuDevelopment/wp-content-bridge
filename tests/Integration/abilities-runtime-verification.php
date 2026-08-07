@@ -22,7 +22,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class WPCB_Abilities_Runtime_Verification {
 
 	/**
-	 * Names owned by this plugin.
+	 * Core read abilities this verifier exercises. They are always registered,
+	 * so they are a precondition rather than the complete inventory.
 	 *
 	 * @var list<string>
 	 */
@@ -32,6 +33,36 @@ final class WPCB_Abilities_Runtime_Verification {
 		'wp-content-bridge/get-url-seo',
 		'wp-content-bridge/get-diagnostics',
 		'wp-content-bridge/get-editorial-context',
+	);
+
+	/**
+	 * Every ability this plugin may ever register. Abilities beyond the core
+	 * reads appear only when their feature flag and, where applicable, their
+	 * optional provider are active, so the runtime inventory is a subset of
+	 * this profile — never a superset. Anything registered outside this list is
+	 * an unintended public surface and fails the run.
+	 *
+	 * @var list<string>
+	 */
+	private const CLOSED_PROFILE = array(
+		'wp-content-bridge/search-content',
+		'wp-content-bridge/get-content',
+		'wp-content-bridge/get-url-seo',
+		'wp-content-bridge/get-diagnostics',
+		'wp-content-bridge/get-editorial-context',
+		'wp-content-bridge/get-media',
+		'wp-content-bridge/get-media-by-id',
+		'wp-content-bridge/list-block-patterns',
+		'wp-content-bridge/create-draft',
+		'wp-content-bridge/update-content',
+		'wp-content-bridge/update-seo',
+		'wp-content-bridge/trash-content',
+		'wp-content-bridge/get-service-schema',
+		'wp-content-bridge/preview-service-schema',
+		'wp-content-bridge/update-service-schema',
+		'wp-content-bridge/get-custom-schema',
+		'wp-content-bridge/preview-custom-schema',
+		'wp-content-bridge/update-custom-schema',
 	);
 
 	/**
@@ -90,7 +121,11 @@ final class WPCB_Abilities_Runtime_Verification {
 			);
 			$meta                 = $ability->get_meta();
 			$annotations[ $name ] = $meta['annotations'] ?? null;
-			$this->assert_read_annotations( $annotations[ $name ], $name );
+			// Write and preview abilities carry their own annotation contracts and
+			// are verified by their own runtime verifiers.
+			if ( in_array( $name, self::NAMES, true ) ) {
+				$this->assert_read_annotations( $annotations[ $name ], $name );
+			}
 			$this->assert_true( true === ( $meta['show_in_rest'] ?? false ), $name . ' is not exposed in REST.' );
 
 			$missing          = $this->missing_required_descriptions( $ability->get_input_schema() );
@@ -204,11 +239,24 @@ final class WPCB_Abilities_Runtime_Verification {
 		);
 		$owned = array_combine( array_map( static fn ( WP_Ability $ability ): string => $ability->get_name(), $owned ), $owned );
 		ksort( $owned );
-		$expected = self::NAMES;
-		sort( $expected );
-		$this->assert_true( array_keys( $owned ) === $expected, 'Runtime ability inventory differs from the expected inventory.' );
+		$registered = array_keys( $owned );
+		$this->assert_true(
+			array() === array_diff( self::NAMES, $registered ),
+			'Core read abilities are missing from the runtime inventory.'
+		);
+		$this->assert_true(
+			array() === array_diff( $registered, self::CLOSED_PROFILE ),
+			'Runtime inventory contains an ability outside the closed profile: '
+				. implode( ', ', array_diff( $registered, self::CLOSED_PROFILE ) )
+		);
 
-		return $owned;
+		/*
+		 * This verifier executes every ability it returns, so it must hand back
+		 * only the read abilities it is written for. Write, preview, and
+		 * provider-dependent abilities are covered by their own verifiers and
+		 * must never be executed here.
+		 */
+		return array_intersect_key( $owned, array_flip( self::NAMES ) );
 	}
 
 	/**
@@ -296,9 +344,15 @@ final class WPCB_Abilities_Runtime_Verification {
 		$this->assert_true( 200 === $list->get_status(), 'REST ability discovery failed.' );
 		$listed = array_column( (array) $list->get_data(), 'name' );
 		sort( $listed );
-		$expected = self::NAMES;
-		sort( $expected );
-		$this->assert_true( $expected === $listed, 'REST ability inventory differs from the expected inventory.' );
+		$this->assert_true(
+			array() === array_diff( self::NAMES, $listed ),
+			'REST discovery is missing a core read ability.'
+		);
+		$this->assert_true(
+			array() === array_diff( $listed, self::CLOSED_PROFILE ),
+			'REST discovery exposes an ability outside the closed profile: '
+				. implode( ', ', array_diff( $listed, self::CLOSED_PROFILE ) )
+		);
 
 		$request = new WP_REST_Request( 'GET', '/wp-abilities/v1/abilities/wp-content-bridge/get-content/run' );
 		$request->set_query_params(

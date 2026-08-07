@@ -71,6 +71,11 @@ try {
 		)
 	);
 
+	$first = get_user_by( 'id', $first->ID );
+	if ( ! $first instanceof WP_User ) {
+		throw new RuntimeException( 'First fixture user disappeared during verification.' );
+	}
+
 	if ( ! user_can( $first, IntegrationCapability::READ_CONTENT->value )
 		|| ! user_can( $first, IntegrationCapability::READ_MEDIA->value )
 		|| ! user_can( $first, IntegrationCapability::READ_PATTERNS->value )

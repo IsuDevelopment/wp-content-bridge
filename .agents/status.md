@@ -1,6 +1,35 @@
 # Project status
 
+**Released version: 0.3.0** (`v0.3.0` = `be3b177`, on `origin`). Static quality
+is green at 234 tests / 596 assertions. Live runtime verification is the open
+gate — see "Next action" and the runtime verification backlog in
+`docs/plan/IMPLEMENTATION_PLAN.md`. Entries below are dated and historical;
+read them as a log, not as current state.
+
 ## Current phase
+
+**The post-0.3 editorial operations roadmap was accepted and extended on
+2026-08-03.** It is recorded in
+`docs/plan/EDITORIAL_OPERATIONS_ROADMAP.md`. Version 0.4.0 now contains two
+sequential sub-slices: content/SEO preview followed by native `llms.txt` read,
+preview, configuration, generation, and virtual
+publication informed by the installed LLMagnet 3.4.3 implementation. LLMagnet
+is research material only and will be removable with no runtime adapter,
+classes, options, files, Abilities, cron, or licensing dependency in the
+bridge. A physical artifact left by LLMagnet is a fail-closed ownership
+conflict; migration/deactivation/deletion remains an explicit administrator
+deployment step. Yoast SEO's own `llms.txt` toggle and physical-file ownership
+are now an additional fail-closed conflict gate. The first release detects and
+guides an administrator to disable Yoast manually; it never writes the raw
+`wpseo` option. Optional automated handoff requires a separately accepted,
+version-tested Yoast write contract plus administrator-only preview and
+confirmation. The existing 0.5 status-transition target remains next. The
+0.8 redirect slice now requires deterministic Yoast Premium-first selection
+with Redirection fallback and never dual-writes. The targeted Gutenberg slice
+distinguishes server structural validation from true editor-side `save()`
+semantic validation. All slices retain separate read/preview/write intents,
+least-privilege capabilities, optimistic concurrency, redacted audit, and
+runtime/MCP release gates. No implementation has started.
 
 **Bounded Custom Schema MCP support is code-complete for connector 0.3.0 on
 2026-08-03.** Conditional `get-custom-schema`, `preview-custom-schema`, and
@@ -110,7 +139,8 @@ fixtures that accidentally required PHP 8.3 were made PHP 8.2-compatible. The
 Kormas runtime verifier was attempted but the Local
 database remains stopped, so no fixture mutation ran.
 
-Milestone 5 (writes) — **in progress.** Executed as four sequential plans.
+Milestone 5 (writes) — **in progress.** Planned as four sequential plans; it
+has since grown to nine (1, 2, 3, 3b, 3c, 3d, 4a, 4b, 4c).
 **Plan 1 (writes foundation) is complete and merged** to `main` (merge commit
 `ab4805f`). **Plan 2 (`create-draft` + `update-content`) is complete and
 merged** to `main` (merge commit `28818ab`, pushed to origin). The plugin now
@@ -416,27 +446,75 @@ verified.
   implemented; pattern runtime sign-off is pending.
 - Media P1 writes are not implemented: `update-media`, upload, featured-image
   assignment/removal, and remote import remain separately gated future work.
-- Runtime verification of the 0.2.0 official Adapter profile and explicit
+- Runtime verification of the current official Adapter profile and explicit
   miniOrange grants for the intended principal. The OAuth grant is site
   configuration and must not use a wildcard or enable unrelated `mosmcp/*`
   tools.
+- Restore-from-trash. `trash-content` shipped in 0.1.5 as reversible, but no
+  ability undoes it; recovery requires wp-admin. No roadmap slice covers it yet.
+- A reproducible verification environment. Runtime sign-off still depends on one
+  machine's Local instance.
 - Role-management UI beyond the capability grant.
 - Agents API integration.
 
 ## Next action
 
-1. Run the remaining integration-access, media, cache, pattern, and trash
-   runtime verifiers recorded in `.continue-here.md`; update-seo is green.
-2. Delete the now-inert `wpcb_public_base_url` option and uninstall the old
-   root-owned cloudflared service; the dev-only MU shim has already been removed.
-3. Verify the complete 0.2.0 profile through the official Adapter, then update
-   and verify the separate miniOrange grants for the intended principal.
-4. Ship 0.2.0 after runtime sign-off.
-5. Start Plan 4c `transition-content-status`; keep the explicit transition
-   graph and the stronger public/scheduled gates defined by ADR 0015.
+Released state: **0.3.0**, tagged `v0.3.0` (`be3b177`) on `origin`. Versions
+0.2.0 through 0.3.0 all shipped.
 
-External MCP allowlists remain site infrastructure and must be updated only
-when the new abilities are intentionally exposed to a specific principal.
+**Verification environment restored on 2026-08-07 and all eleven PHP runtime
+verifiers pass** against WordPress 7.0.2, PHP 8.4, Yoast Free 28.2, and Premium
+28.0. The 2026-07-21 blocker was environment configuration, not a stopped
+database: `DB_HOST` pointed at a stale Local socket path and `WP_HOME` had lost
+its domain. Details, including the four drifted verifiers repaired during the
+run and the one real schema defect found, are in the "Runtime verification
+backlog" section of `docs/plan/IMPLEMENTATION_PLAN.md`.
+
+Thirteen runtime verifiers now pass, including two new ones written on
+2026-08-07 for the Service and Custom Schema slices, and the MCP discovery
+smoke against the official Adapter.
+
+The MCP projection gap and the miniOrange grants were both closed on
+2026-08-07; see "MCP exposure and grants" below. Remaining:
+
+1. Add a reproducible verification environment so sign-off stops depending on
+   one machine's Local instance; `.wp-env.json` already exists in the app repo.
+2. Record the Milestone 5 security sign-off, which is still outstanding.
+3. Delete the now-inert `wpcb_public_base_url` option and uninstall the old
+   root-owned cloudflared service; the dev-only MU shim has already been removed.
+4. Start roadmap Slice 1A (content and SEO preview) for 0.4.0. The execution
+   plan is `docs/plan/SLICE_1A_EXECUTION_PLAN.md`. Before writing its schemas,
+   settle the preview ability naming convention — the shipped
+   `preview-service-schema` / `preview-custom-schema` IDs do not match the
+   roadmap's `preview-<verb>-<noun>` form, and ability IDs are stable API.
+
+Plan 4c `transition-content-status` is **not** the next action. It is Slice 2
+(`0.5.0`), after the 0.4.0 preview and llms.txt slices.
+
+## MCP exposure and grants
+
+Verified against the running site on 2026-08-07.
+
+The official Adapter now projects all 18 registered abilities. The site's
+projection package `isudev/wp-content-bridge-mcp-server` was one release behind
+at 0.2.1 with 15 entries, so the three Custom Schema abilities from 0.3.0 were
+registered in WordPress but unreachable over MCP. The package was bumped to
+0.3.0 in the consuming site's repository and the smoke run confirms 18/18.
+
+The separate miniOrange per-principal grants for `wpcb-bridge-reader` did not
+match the documented least-privilege profile in either direction. They granted
+`create-draft` — a write intent on a read-only principal — while missing
+`search-content`, `get-content`, and `get-url-seo`. The layered defense held
+(user 87 has no role and only `wpcb_read_content`, so the native `edit_posts`
+gate would have refused the call), but the grant contradicted this file's own
+claim that no write grants remained. The write grant was removed and the three
+missing reads added; the principal now holds exactly the five documented reads
+plus `list-block-patterns`, which is a read and left in place pending a decision.
+
+Treat the earlier "no `mosmcp/*` write grants remain" note as unverified
+history: it was written without a live check. External MCP allowlists remain
+site infrastructure and must be updated only when new abilities are
+intentionally exposed to a specific principal.
 
 ## Guardrail
 

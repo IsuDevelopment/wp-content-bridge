@@ -2,6 +2,116 @@
 
 The plan uses gated milestones. A later milestone must not begin merely because the previous code exists; its acceptance criteria must pass.
 
+The accepted sequential roadmap for preview, native llms.txt management,
+controlled publication, revision recovery, media writes, dual-provider permalink/redirect
+handling, targeted block editing and validation, mutation history, and bounded
+content inventory is maintained in
+`docs/plan/EDITORIAL_OPERATIONS_ROADMAP.md`. Implementation begins with the
+0.4.0 content/SEO preview slice followed by the llms.txt slice in the same
+release line. LLMagnet is reference material only and can be removed completely;
+status-transition work must not be mixed into that release.
+
+**No roadmap slice starts while the runtime verification backlog below is
+open.** Releases 0.1.3 through 0.3.0 shipped on static checks alone because the
+verification environment was unavailable from 2026-07-21.
+
+## Runtime verification backlog — **largely cleared 2026-08-07**
+
+Static quality is green at 234 tests / 596 assertions (PHPCS, maximum-level
+PHPStan, PHPUnit).
+
+The environment was restored on 2026-08-07. The blocker was never a stopped
+database: the Kormas Local MySQL instance was running the whole time, but the
+site's `.env` pointed `DB_HOST` at a stale socket path and `WP_HOME` had lost
+its domain. Both are environment configuration, not plugin defects.
+
+All eleven PHP runtime verifiers now pass against WordPress 7.0.2, PHP 8.4,
+Yoast Free 28.2, and Yoast Premium 28.0:
+
+| Verifier | Result |
+| --- | --- |
+| `integration-access-verification.php` | PASS |
+| `media-read-verification.php` | PASS |
+| `cache-invalidation-verification.php` | PASS |
+| `block-patterns-verification.php` | PASS |
+| `trash-content-verification.php` | PASS |
+| `writes-foundation-verification.php` | PASS |
+| `writes-mutation-verification.php` | PASS |
+| `writes-seo-verification.php` | PASS |
+| `abilities-runtime-verification.php` | PASS |
+| `authorization-matrix.php` | PASS |
+| `yoast-configured-runtime-verification.php` | PASS |
+| `schema-service-verification.php` (new) | PASS |
+| `schema-custom-verification.php` (new) | PASS |
+
+Four verifiers had drifted against the 0.3.0 source and were repaired as part of
+the run; three were test defects and one exposed a real contract gap:
+
+- `integration-access-verification.php` and `trash-content-verification.php`
+  asserted capabilities through a `WP_User` object cached before the grant.
+  `wp_set_current_user()` early-returns for the same ID, so the global principal
+  kept stale capabilities. Product behavior was correct.
+- `writes-foundation-verification.php` asserted that the write flags are
+  currently false, which can only hold on a virgin install.
+  `Installer::activate()` correctly preserves an administrator's explicit
+  opt-in. It now verifies the real invariant — a first activation yields safe
+  defaults — and restores the site's configuration afterwards.
+- `abilities-runtime-verification.php` hard-coded the five Milestone 1B read
+  abilities and exact-matched the whole runtime inventory, so it failed on every
+  release after 0.1.0 and would have executed write abilities. It now asserts
+  the core reads are present, that nothing outside the closed profile is
+  registered, and exercises only the reads it was written for.
+- **Real defect found and fixed:** the nested `taxonomies[]` object in
+  `create-draft` and `update-content` declared required `taxonomy` and
+  `term_ids` fields with no `description`. They were the only required fields in
+  the entire public profile lacking one, which degrades MCP client behavior.
+  Fixed in `AbilitySchemas::taxonomy_assignment_schema()`.
+
+The two previously missing schema verifiers were written on 2026-08-07 and pass
+against Schema Extended 0.3.0 with Yoast active. Both assert the release gate at
+the graph level rather than trusting the provider's own re-read:
+
+- `schema-service-verification.php` — read, non-mutating preview, effective
+  write, a rendered front-end `Service` node carrying `areaServed` and
+  `hasOfferCatalog`, and stale-token rejection;
+- `schema-custom-verification.php` — invalid prospective JSON reported without
+  writing, read/preview/write round trip, the custom node present in the
+  rendered graph **alongside** Yoast's own nodes (proving a merge rather than a
+  replacement), and stale-token rejection.
+
+Both discover their fixture post type through Schema Extended's public
+`Meta_Fields::get_supported_post_types()`, because the provider scopes these
+surfaces to specific types and `Integration_API` exposes no such accessor.
+
+**MCP profile discovery** (`tests/Integration/mcp-smoke-verification.sh`) passes
+against the official Adapter: session handshake, `tools/list`, required-field
+contracts, and `tools/call` for the safe baseline reads.
+
+It also exposed a real drift. The Adapter projection is site infrastructure — a
+version-controlled Composer MU-plugin owned by the consuming site, pinned there
+at `isudev/wp-content-bridge-mcp-server` **0.2.1**, which declares **15**
+abilities. The three Custom Schema abilities released in bridge 0.3.0
+(`get-custom-schema`, `preview-custom-schema`, `update-custom-schema`) are
+absent from it, so they are implemented and registered in WordPress but **not
+reachable over MCP**. Bumping that package is a change in the consuming site's
+repository, not this one. Until it ships, the effective MCP surface is 15 of the
+18 registered abilities.
+
+Exit gate for this backlog:
+
+- every verifier above runs green on a live WordPress instance — **met
+  2026-08-07** (thirteen PHP verifiers);
+- the two missing schema verifiers exist and pass — **met 2026-08-07**;
+- the closed MCP profile is confirmed against the running site, not against
+  source — **met 2026-08-07**, and it found the 0.2.1 projection gap above.
+  Bumping the site's MU-plugin package and re-verifying the miniOrange
+  per-principal grants remain **open**;
+- verification no longer depends on one developer machine's Local instance — a
+  reproducible fallback (the repository already carries `.wp-env.json`) can
+  execute the same verifiers — **open**. The 2026-07-21 outage was caused by
+  environment configuration drift in a single site's `.env`, which is exactly
+  the dependency this criterion is meant to remove.
+
 ## Milestone 0 — repository and specification scaffold
 
 Status: complete.
@@ -301,10 +411,16 @@ Exit gate:
 
 ## Milestone 5 — writes (drafts, SEO, trash, and controlled status workflow)
 
-Status: **in progress (Plans 1–3 complete; trash code-complete; status workflow remains).** During brainstorming
-(2026-07-20) the write scope originally spread across Milestones 5–7 was
-folded into a single Milestone 5, executed as four sequential, independently
-shippable plans. Public and scheduled transitions stay gated behind their own feature flag
+Status: **in progress.** Plans 1, 2, and 3 are merged and released; Plans 3b,
+3c, 3d, 4a, and 4b are released but not runtime-verified (see the backlog
+above); Plan 4c (`transition-content-status`) is not started and has moved to
+Slice 2 / `0.5.0` of the editorial operations roadmap, behind the `0.4.0`
+preview and llms.txt slices.
+
+During brainstorming (2026-07-20) the write scope originally spread across
+Milestones 5–7 was folded into a single Milestone 5, planned as four sequential
+plans. It has since grown to nine as provider-specific schema work arrived:
+1, 2, 3, 3b, 3c, 3d, 4a, 4b, and 4c. Public and scheduled transitions stay gated behind their own feature flag
 and capability (the M7 guardrails, pulled forward). Architecture is
 **Approach A**: a new `src/*/Mutation/` vertical slice mirroring the read
 layers; the read surface is untouched except for one additive `version_token`
@@ -379,11 +495,14 @@ success-audit call outside the `try`/`catch` in both use cases, with two new
 regression tests. `composer check` green on merged `main` (120 tests / 309
 assertions, PHPCS 0, PHPStan 0).
 
-**Expanded in the current source profile:** site infrastructure may expose a
-closed list of all 18 implemented abilities through the official Adapter and
-filters out any ability not registered under the current feature flags.
-miniOrange OAuth grants remain a distinct per-principal runtime configuration;
-see `docs/setup/MCP_ADAPTER.md` and `docs/setup/CHATGPT_CONNECTOR.md`.
+**MCP exposure:** site infrastructure may expose a closed list of the
+implemented abilities through the official Adapter, and filters out any ability
+not registered under the current feature flags. The authoritative ability
+inventory and count live in `docs/architecture/ABILITIES.md` and the projection
+profile in `docs/setup/MCP_ADAPTER.md`; this plan and the status file reference
+them instead of restating a number that drifts every release. miniOrange OAuth
+grants remain a distinct per-principal runtime configuration; see
+`docs/setup/CHATGPT_CONNECTOR.md`.
 
 ### Plan 3 — `update-seo` — **base merged `796e932`; SEO extensions runtime-verified**
 
@@ -462,12 +581,12 @@ pending because the Local database socket was unavailable on 2026-08-03.
   read instead of adding a duplicate graph endpoint;
 - ADR 0020 records the bounded raw-JSON exception and provider boundary.
 
-The closed MCP profile now contains 18 potential abilities. Static/unit checks
-cover DTO bounds, strict public schemas, read/preview/update orchestration,
-stale-token rejection, audit redaction, and inactive-provider discovery. A
-full `composer check` is green at 234 tests / 596 assertions. A
-WordPress runtime with Schema Extended 0.3.0 and Yoast active remains the final
-registration and merged-graph release check.
+Static/unit checks cover DTO bounds, strict public schemas,
+read/preview/update orchestration, stale-token rejection, audit redaction, and
+inactive-provider discovery. A full `composer check` is green at 234 tests /
+596 assertions. A WordPress runtime with Schema Extended 0.3.0 and Yoast active
+remains the final registration and merged-graph release check; no runtime
+verifier for this slice exists yet.
 
 ### Plan 4a — `list-block-patterns`
 
@@ -504,6 +623,12 @@ was unavailable, so WordPress did not bootstrap and no fixture mutation ran.
 
 ### Plan 4c — `transition-content-status`
 
+Status: **not started; rescheduled.** This plan is now Slice 2 (`0.5.0`) of
+`docs/plan/EDITORIAL_OPERATIONS_ROADMAP.md` and runs after the `0.4.0` preview
+and llms.txt slices. It must not be pulled forward into an earlier release. The
+roadmap adds `get-status-transitions` and `preview-status-transition` alongside
+the write, so the contract below is the minimum, not the final scope.
+
 ADR 0015 replaces the never-released `publish-content` plan with a controlled
 status-workflow ability:
 
@@ -533,6 +658,11 @@ Exit gate:
 - writes are invisible over MCP unless their master flag is enabled;
 - security review signs off before beta.
 
+Gate state: the first three criteria hold in source and unit tests. The
+security sign-off has **not** been recorded, and the runtime evidence for the
+Plans 3b–4b write surfaces is still outstanding, so this milestone cannot be
+closed even though every plan except 4c is released.
+
 > Milestones 6 and 7 below are retained for historical traceability of the
 > original gate criteria; their deliverables are executed inside Milestone 5
 > Plans 3 and 4 respectively.
@@ -551,8 +681,11 @@ Exit gate:
 - no direct write to provider-derived/indexables tables;
 - unsupported fields fail explicitly;
 - effective SEO is re-read after mutation;
-- Premium/Local writes beyond the two Premium keyphrase fields in ADR 0014
-  remain out until separately specified.
+- Premium/Local writes beyond the two Premium keyphrase fields in ADR 0014 and
+  the merged advanced robots flags plus Open Graph/Twitter attachment overrides
+  in ADR 0016 remain out until separately specified. Provider-specific Service
+  and Custom Schema writes are governed by ADR 0017 and ADR 0020 and are
+  registered only when their optional provider is present.
 
 ## Milestone 7 — controlled status transitions
 
@@ -573,6 +706,10 @@ Exit gate:
 
 ## Milestone 8 — optional Agents API integration
 
+Status: **unscheduled and outside the editorial operations roadmap.** No slice
+in `docs/plan/EDITORIAL_OPERATIONS_ROADMAP.md` depends on it, and nothing in
+the 0.4.0–0.11.0 sequence should be reordered for it.
+
 Deliverables only after an ADR reassessment:
 
 - optional dependency feature detection;
@@ -584,6 +721,12 @@ Deliverables only after an ADR reassessment:
 Agents API is not required for external-client usage.
 
 ## Future backlog — redirect management
+
+**Superseded as the planning source by Slice 5 (`0.8.0+`) of
+`docs/plan/EDITORIAL_OPERATIONS_ROADMAP.md`,** which fixes the provider
+decision: Yoast SEO Premium Redirect Manager is selected first, the Redirection
+plugin is the fallback, and the two are never dual-written. The requirements
+below remain valid as the detailed evaluation checklist for that slice.
 
 Add bounded redirect-management abilities in a separate, post-MVP phase.
 Before planning implementation, compare a dedicated redirects plugin with
@@ -723,6 +866,18 @@ bounded target deduplication, unsupported-provider behavior, and explicit
 dependency coverage where one post affects archives or other public URLs.
 
 ## Future backlog — extended editorial operations
+
+**Sequencing for these items is owned by
+`docs/plan/EDITORIAL_OPERATIONS_ROADMAP.md`** (status transitions → Slice 2,
+revision restoration → Slice 3, media/featured image → Slice 4, slug and
+permalink → Slice 5). The list below is retained as the per-operation
+requirement detail; it does not set release order. Navigation-menu editing and
+permanent deletion have **no** roadmap slice yet and remain unscheduled.
+
+Known gap: `trash-content` shipped in 0.1.5 as a reversible operation, but no
+ability restores a trashed object. Recovery currently requires wp-admin.
+Either add a bounded `restore-trashed-content` intent to the revision-recovery
+slice or record untrash as a deliberate administrator-only operation.
 
 Add the following editorial capabilities after the current write milestone.
 They must remain separate semantic abilities over shared application services;

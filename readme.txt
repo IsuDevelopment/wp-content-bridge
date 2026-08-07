@@ -4,7 +4,7 @@ Tags: abilities, mcp, ai, content, seo, yoast
 Requires at least: 7.0
 Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.3.0
+Stable tag: 0.3.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -25,6 +25,11 @@ Packaged installs can update from the plugin's GitHub release ZIP through Plugin
 Install a packaged release or run Composer before activating a source checkout.
 
 == Changelog ==
+
+= 0.3.1 =
+* Added `description` to the required `taxonomy` and `term_ids` fields of the nested taxonomy assignment schema in `create-draft` and `update-content`; they were the only required fields in the public profile without one.
+* Added runtime verifiers for the Service schema and Custom Schema slices, asserting graph-level output rather than the provider's own re-read.
+* Repaired three runtime verifiers that had drifted against the current source and would fail on any release after 0.1.0.
 
 = 0.3.0 =
 * Added conditional `get-custom-schema`, `preview-custom-schema`, and `update-custom-schema` abilities through Schema Extended 0.3.0's public integration contract.

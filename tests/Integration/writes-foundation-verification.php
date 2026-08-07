@@ -32,17 +32,50 @@ foreach ( array( 'wpcb_edit_content', 'wpcb_manage_seo', 'wpcb_publish_content',
 	}
 }
 
-if ( false !== (bool) get_option( Installer::WRITES_ENABLED_OPTION ) ) {
-	$failures[] = 'wpcb_writes_enabled is not false by default';
+/*
+ * The safe-default invariant is "a first activation must not enable a write
+ * surface", not "these options are false right now". An administrator may have
+ * deliberately enabled them, and Installer::activate() must never reset an
+ * existing choice. Verify the invariant on absent options, then restore the
+ * site's real configuration.
+ */
+$default_options = array(
+	Installer::WRITES_ENABLED_OPTION   => 'wpcb_writes_enabled',
+	Installer::PUBLISH_ENABLED_OPTION  => 'wpcb_publish_enabled',
+	Installer::TRASH_ENABLED_OPTION    => 'wpcb_trash_enabled',
+	Installer::INTEGRATION_USER_OPTION => 'wpcb_integration_user_id',
+);
+
+$saved_options = array();
+foreach ( array_keys( $default_options ) as $option_name ) {
+	$saved_options[ $option_name ] = get_option( $option_name, null );
+	delete_option( $option_name );
 }
-if ( false !== (bool) get_option( Installer::PUBLISH_ENABLED_OPTION ) ) {
-	$failures[] = 'wpcb_publish_enabled is not false by default';
-}
-if ( false !== (bool) get_option( Installer::TRASH_ENABLED_OPTION ) ) {
-	$failures[] = 'wpcb_trash_enabled is not false by default';
-}
-if ( 0 !== (int) get_option( Installer::INTEGRATION_USER_OPTION, 0 ) ) {
-	$failures[] = 'wpcb_integration_user_id is not zero by default';
+
+try {
+	Installer::activate();
+
+	foreach ( $default_options as $option_name => $label ) {
+		if ( Installer::INTEGRATION_USER_OPTION === $option_name ) {
+			if ( 0 !== (int) get_option( $option_name, 0 ) ) {
+				$failures[] = "{$label} is not zero on a first activation";
+			}
+			continue;
+		}
+
+		if ( false !== (bool) get_option( $option_name ) ) {
+			$failures[] = "{$label} is not false on a first activation";
+		}
+	}
+} finally {
+	foreach ( $saved_options as $option_name => $saved_value ) {
+		if ( null === $saved_value ) {
+			delete_option( $option_name );
+			continue;
+		}
+
+		update_option( $option_name, $saved_value, false );
+	}
 }
 
 global $wpdb;

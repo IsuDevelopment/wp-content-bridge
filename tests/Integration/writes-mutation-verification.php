@@ -13,7 +13,12 @@ use IsuDev\WPContentBridge\Adapter\Abilities\MutationAbilities;
 use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessManager;
 use IsuDev\WPContentBridge\Application\Mutation\CreateDraft;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateContent;
+use IsuDev\WPContentBridge\Application\Mutation\UpdateSeo;
+use IsuDev\WPContentBridge\Application\Seo\NullSeoProvider;
+use IsuDev\WPContentBridge\Application\Seo\SeoProviderRegistry;
 use IsuDev\WPContentBridge\Domain\Mutation\VersionToken;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoImageRepository;
+use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastSeoWriter;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\Installer;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\PhpBlockMarkupValidator;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressAuditLog;
@@ -106,6 +111,13 @@ final class WPCB_Mutation_Verification {
 	 * @var UpdateContent
 	 */
 	private UpdateContent $update_use_case;
+
+	/**
+	 * SEO write use case required by the MutationAbilities adapter.
+	 *
+	 * @var UpdateSeo
+	 */
+	private UpdateSeo $update_seo_use_case;
 
 	/**
 	 * Create-draft ability, resolved once registration is proven.
@@ -204,6 +216,18 @@ final class WPCB_Mutation_Verification {
 
 		$this->create_use_case = new CreateDraft( $manager, $validator, $repository, $idempotency, $audit );
 		$this->update_use_case = new UpdateContent( $manager, $validator, $repository, $audit );
+
+		// MutationAbilities also owns update-seo. This verifier does not exercise
+		// it (writes-seo-verification.php does), but the adapter requires it.
+		$this->update_seo_use_case = new UpdateSeo(
+			$manager,
+			$repository,
+			new YoastSeoWriter(
+				( new SeoProviderRegistry( array(), new NullSeoProvider() ) )->active(),
+				new WordPressSeoImageRepository()
+			),
+			$audit
+		);
 	}
 
 	/**
@@ -253,13 +277,16 @@ final class WPCB_Mutation_Verification {
 		if ( wp_has_ability( UpdateContent::ABILITY ) ) {
 			wp_unregister_ability( UpdateContent::ABILITY );
 		}
+		if ( wp_has_ability( UpdateSeo::ABILITY ) ) {
+			wp_unregister_ability( UpdateSeo::ABILITY );
+		}
 
 		update_option( Installer::WRITES_ENABLED_OPTION, false, false );
 		$this->assert_true( ! wp_has_ability( CreateDraft::ABILITY ), 'create-draft ability is registered while wpcb_writes_enabled is off.' );
 		$this->assert_true( ! wp_has_ability( UpdateContent::ABILITY ), 'update-content ability is registered while wpcb_writes_enabled is off.' );
 
 		update_option( Installer::WRITES_ENABLED_OPTION, true, false );
-		$mutation_abilities = new MutationAbilities( $this->create_use_case, $this->update_use_case );
+		$mutation_abilities = new MutationAbilities( $this->create_use_case, $this->update_use_case, $this->update_seo_use_case );
 
 		global $wp_current_filter;
 		// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- CLI verifier scopes doing_action() to this call only, restored immediately below.

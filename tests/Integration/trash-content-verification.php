@@ -202,6 +202,12 @@ final class WPCB_Trash_Content_Verification {
 		$user = get_user_by( 'id', $this->user_id );
 		$this->assert_true( $user instanceof WP_User, 'Could not resolve the trash fixture user.' );
 		$user->add_cap( 'wpcb_delete_content' );
+
+		// wp_set_current_user() early-returns for the same ID, so the global principal
+		// still holds the capabilities cached before add_cap(). Force a rebuild.
+		wp_set_current_user( 0 );
+		wp_set_current_user( $this->user_id );
+
 		$this->assert_true( $this->ability->check_permissions( array( 'post_id' => $post_id ) ), 'Authorized author was denied own-post trash.' );
 	}
 

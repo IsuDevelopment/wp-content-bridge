@@ -1799,14 +1799,16 @@ final class AbilitySchemas {
 				'required'             => array( 'taxonomy', 'term_ids' ),
 				'properties'           => array(
 					'taxonomy' => array(
-						'type'    => 'string',
-						'pattern' => '^[a-z0-9_-]{1,32}$',
+						'description' => 'Registered public REST taxonomy slug to assign terms in.',
+						'type'        => 'string',
+						'pattern'     => '^[a-z0-9_-]{1,32}$',
 					),
 					'term_ids' => array(
-						'type'     => 'array',
-						'minItems' => 1,
-						'maxItems' => 100,
-						'items'    => array(
+						'description' => 'Existing term IDs to assign, replacing the current terms of this taxonomy.',
+						'type'        => 'array',
+						'minItems'    => 1,
+						'maxItems'    => 100,
+						'items'       => array(
 							'type'    => 'integer',
 							'minimum' => 1,
 						),
