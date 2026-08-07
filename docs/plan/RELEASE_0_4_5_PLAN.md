@@ -129,27 +129,40 @@ verifier. If sign-off cannot be reached in this release, remove
 `list-block-patterns` from the `wpcb-bridge-reader` grant and say so — an
 unverified read in a live grant set is the thing this task exists to resolve.
 
-## Task 4 — reproducible verification environment
+## Task 4 — the verification run book — **done 2026-08-07**
 
-Runtime sign-off currently depends on one machine's LocalWP instance. That was
-the direct cause of the 2026-07-21 → 2026-08-07 verification blackout, during
-which 0.1.3 through 0.3.0 all shipped on static checks alone.
+> **Amended 2026-08-07.** As originally written this task called for a
+> `.wp-env.json` so the PHP verifiers could run against a disposable WordPress.
+> That was the wrong diagnosis and it was mine. It was tried and abandoned; see
+> "Why not a container" below.
 
-`.wp-env.json` already exists in the consuming app repository. Bring an
-equivalent into this repository so the PHP verifiers can run against a
-disposable WordPress without LocalWP.
+Runtime sign-off depends on one machine's LocalWP instance. That was blamed for
+the 2026-07-21 → 2026-08-07 verification blackout, during which 0.1.3 through
+0.3.0 all shipped on static checks alone.
 
-Scope honestly: the Yoast Free/Premium and Schema Extended verifiers need
-licensed or private plugins and **cannot** run in a clean `wp-env`. Do not fake
-them. Split the verifier inventory into:
+The blame was misplaced. The environment existed and worked throughout the
+blackout — the same instance ran the whole inventory green on 2026-08-07 with no
+setup at all. What was missing was any document stating what the inventory
+*was*, so "verified" had no definition and skipping it left no trace.
 
-- runs anywhere (core content, writes, trash, access, patterns, abilities
-  runtime, restore);
-- requires the provider environment (Yoast SEO, Service schema, Custom Schema).
+Deliverable: [`docs/setup/VERIFICATION.md`](../setup/VERIFICATION.md) — all 18
+verifiers, what each proves, its hardest dependency, the exact commands, and a
+dated record of the last complete run. Run it before cutting a release.
 
-Document both lists and the command for each in `docs/setup/`. A partial
-reproducible environment that is honest about its boundary is worth more than
-one that pretends to cover everything.
+Also fixed here: `preview-verification.php` hard-asserted Yoast availability in
+`set_up()`, so the `preview-update-content` half — WordPress core only, no
+provider involved — could not be verified without a licence. The halves are now
+independent and an absent provider is reported in a `skipped` array instead of
+failing the run or, worse, passing quietly.
+
+### Why not a container
+
+A `wp-env` instance reproduces the WordPress-core half of the inventory and
+cannot ever cover the rest: Yoast Premium/Local are licensed and IsuDev Schema
+Extended is private, so neither may be committed. Green on such an environment
+would look like coverage while a third of the surface went unchecked — a worse
+failure mode than one documented environment that is honest about being one
+machine.
 
 ## Task 5 — retire the inert `wpcb_public_base_url` option
 

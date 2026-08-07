@@ -5,8 +5,10 @@
  *
  * Run: wp eval 'require "<abs path>/tests/Integration/preview-verification.php";'
  *
- * Requires Yoast Free 28.x active for the SEO half. Content preview uses only
- * WordPress core, so it needs no optional provider.
+ * The `preview-update-content` half uses only WordPress core and always runs.
+ * The `preview-update-seo` half needs a compatible Yoast Free 28.x install; when
+ * one is absent those checks are reported in the result's `skipped` list rather
+ * than silently passing. See docs/setup/VERIFICATION.md.
  *
  * @package IsuDev\WPContentBridge\Tests
  */
@@ -57,6 +59,21 @@ final class WPCB_Preview_Verification {
 	private array $failures = array();
 
 	/**
+	 * Checks this run did not perform, reported alongside the result so a PASS
+	 * is never mistaken for complete coverage.
+	 *
+	 * @var list<string>
+	 */
+	private array $skipped = array();
+
+	/**
+	 * Whether a compatible Yoast Free install backs the SEO half of this run.
+	 *
+	 * @var bool
+	 */
+	private bool $yoast_available = false;
+
+	/**
 	 * Snapshotted options restored in the teardown.
 	 *
 	 * @var array<string, mixed>
@@ -95,12 +112,21 @@ final class WPCB_Preview_Verification {
 
 		try {
 			$this->set_up();
+
+			// `preview-update-content` is a WordPress-core-only surface. It is
+			// verified unconditionally so a clean disposable WordPress can sign
+			// it off; only the SEO half needs the licensed provider.
 			$this->verify_content_preview_causes_no_mutation();
 			$this->verify_content_preview_then_write_matches();
 			$this->verify_content_preview_stale_token_rejected();
-			$this->verify_seo_preview_causes_no_mutation();
-			$this->verify_seo_preview_then_write_matches();
-			$this->verify_seo_preview_stale_token_rejected();
+
+			if ( $this->yoast_available ) {
+				$this->verify_seo_preview_causes_no_mutation();
+				$this->verify_seo_preview_then_write_matches();
+				$this->verify_seo_preview_stale_token_rejected();
+			} else {
+				$this->skipped[] = 'preview-update-seo: no compatible Yoast Free 28.x install is active. Run this verifier in the provider environment to cover it.';
+			}
 		} catch ( Throwable $error ) {
 			$this->failures[] = $error->getMessage();
 		} finally {
@@ -111,6 +137,7 @@ final class WPCB_Preview_Verification {
 			array(
 				'status'   => array() === $this->failures ? 'PASS' : 'FAIL',
 				'failures' => $this->failures,
+				'skipped'  => $this->skipped,
 			)
 		) . "\n";
 
@@ -123,7 +150,7 @@ final class WPCB_Preview_Verification {
 	 * @return void
 	 */
 	private function set_up(): void {
-		$this->assert_true( ( new YoastSeoWriter( new YoastSeoProvider(), new WordPressSeoImageRepository() ) )->is_available(), 'Yoast is not available; activate a compatible Yoast Free 28.x before running this verifier.' );
+		$this->yoast_available = ( new YoastSeoWriter( new YoastSeoProvider(), new WordPressSeoImageRepository() ) )->is_available();
 
 		$administrators = get_users(
 			array(

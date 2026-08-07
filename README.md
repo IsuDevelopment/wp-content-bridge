@@ -509,6 +509,17 @@ composer install
 composer check
 ```
 
+`composer check` is static: PHPCS, PHPStan, and unit tests. The gates that
+matter — capabilities, per-post-type policy, optimistic concurrency, audit
+redaction, cache invalidation, provider graph output — are behaviour, and are
+covered by 18 runtime verifiers under `tests/Integration/` instead. Eleven need
+only WordPress; the rest need licensed Yoast SEO or the private Schema Extended
+plugin.
+
+[Runtime verification](docs/setup/VERIFICATION.md) is the run book: the full
+inventory, what each verifier proves, its hardest dependency, the commands, and
+the date of the last complete green run. Run it before cutting a release.
+
 Detailed contracts and architecture are documented in:
 
 - [Abilities](docs/architecture/ABILITIES.md)
