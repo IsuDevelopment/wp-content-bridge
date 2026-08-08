@@ -39,4 +39,25 @@ interface SeoProvider {
 	 * @return SeoDocument
 	 */
 	public function get( SeoTarget $target ): SeoDocument;
+
+	/**
+	 * Answers whether a target is `noindex`, independent of any other target
+	 * resolved earlier in the same request.
+	 *
+	 * This is a separate method rather than a convenience for reading
+	 * `get()->resolved['robots']` because that path goes through a provider's
+	 * rendered *presentation*, and a provider is not required to make that
+	 * presentation safe to compute for many targets within one request.
+	 * Yoast's is not: `YoastSEO()->meta->for_post()` memoizes internal
+	 * rendering context by static state that outlives the call, so resolving
+	 * post B and then post A in the same request can return post B's `robots`
+	 * (and other presentation fields) for post A too. Implementations of this
+	 * method must answer from stored data instead, so the result does not
+	 * depend on what else was resolved earlier in the request.
+	 *
+	 * @param SeoTarget $target Validated target.
+	 * @return bool|null `true` when definitely noindex, `false` when definitely
+	 *                    indexable, `null` when it cannot be determined.
+	 */
+	public function is_noindex( SeoTarget $target ): ?bool;
 }

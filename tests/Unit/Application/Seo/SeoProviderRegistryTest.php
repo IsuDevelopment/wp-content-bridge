@@ -103,6 +103,19 @@ final class SeoProviderRegistryTest extends TestCase {
 
 				return new SeoDocument( array(), array(), array(), array(), $this->status(), SeoCompleteness::COMPLETE, array() );
 			}
+
+			/**
+			 * Returns an unknown answer; this fake is not used by any test that
+			 * exercises noindex exclusion.
+			 *
+			 * @param SeoTarget $target Unused target.
+			 * @return bool|null
+			 */
+			public function is_noindex( SeoTarget $target ): ?bool {
+				unset( $target );
+
+				return null;
+			}
 		};
 	}
 }

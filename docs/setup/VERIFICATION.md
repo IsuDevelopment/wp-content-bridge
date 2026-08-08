@@ -70,7 +70,8 @@ for v in abilities-runtime-verification \
          yoast-configured-runtime-verification \
          writes-seo-verification \
          schema-service-verification \
-         schema-custom-verification; do
+         schema-custom-verification \
+         llms-txt-verification; do
   wp eval "require \"$IT/$v.php\";" >/dev/null 2>&1 \
     && echo "PASS $v" || echo "FAIL $v"
 done
@@ -117,6 +118,7 @@ given machine can run the check at all:
 | `writes-seo-verification.php` | yoast | `update-seo` authorization matrix, conflict, Free/Premium write and re-read parity, audit |
 | `schema-service-verification.php` | schema | Service / `areaServed` / `hasOfferCatalog` parity in the rendered front-end JSON-LD graph |
 | `schema-custom-verification.php` | schema | The custom node coexists with Yoast's own nodes in the emitted graph |
+| `llms-txt-verification.php` ³ | core | The flag-off rewrite rule and 404 are indistinguishable from never-installed; exact byte/`ETag`/`Last-Modified` fidelity and `304` handling; the front-end route performs no post query and no write, proven by query count plus option `option_id`/value identity plus a behavioural absence proof; the leak matrix (draft, private, password-protected, `noindex`, non-public-post-type); de-publish staleness after regeneration; `preview-update-llms-txt` purity; `update-llms-txt` rejecting a stale token before any write; `regenerate-llms-txt` idempotency; the physical-artifact ownership conflict and its ABSPATH-vs-web-root regression with no filesystem path leaked; and deterministic bound truncation |
 | `http-url-runtime-verification.sh` | http | URL-target resolution through a real HTTP request context, public head parity |
 | `mcp-smoke-verification.sh` | mcp | `initialize` → `tools/list` → `tools/call` over Streamable HTTP as the least-privilege bridge principal |
 | `local-multilocation-runtime-verification.sh` | yoast + http | Branch identity from provider-emitted Local Schema, bounds, and that no private Local option leaks |
@@ -126,6 +128,23 @@ given machine can run the check at all:
 `preview-update-seo` half needs Yoast; without it those three checks are
 reported in the result's `skipped` array rather than passing silently. **A
 `PASS` with a non-empty `skipped` is not a full sign-off.**
+³ Every check is a hard assertion. The noindex leg needs Yoast; without it
+that one leg prints a `WARN` to stderr instead of being exercised, and the
+other four leak vectors still run.
+
+That leg is a regression test for a defect found on 2026-08-08. Yoast's own
+`YoastSEO()->meta->for_post()` returns the **first-resolved post's meta for
+every subsequent post in the same request** — reproduced with raw Yoast calls
+and no plugin code involved, on Yoast SEO Free 28.2 with Yoast Local 15.8.
+`WordPressLlmsSourceSelector::is_noindex()` is the first caller in this
+codebase to resolve SEO for many posts in one request, so nothing had
+triggered it before and a `noindex` page leaked into the public document. The
+fix moved that decision onto Yoast's indexable data through
+`SeoProvider::is_noindex()`, which is order-independent.
+
+`YoastSeoProvider::get()` is still subject to Yoast's memoization for
+multi-post reads. No remaining caller resolves more than one post per request,
+so this is a recorded gap rather than a live exposure — see `.agents/status.md`.
 
 `bridge-reader-fixture.php` and `local-multilocation-fixture.php` are fixtures
 driven by the shell verifiers, not verifiers themselves.

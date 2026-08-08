@@ -174,6 +174,49 @@ final readonly class YoastSeoProvider implements SeoProvider {
 	}
 
 	/**
+	 * Answers `noindex` from Yoast's stored indexable data rather than its
+	 * rendered Meta presentation, so the answer does not depend on what other
+	 * target was resolved earlier in the same request (see the port docblock
+	 * for why {@see self::get()}'s `resolved['robots']` is unsafe for this).
+	 *
+	 * @param SeoTarget $target Validated target.
+	 * @return bool|null
+	 */
+	public function is_noindex( SeoTarget $target ): ?bool {
+		if ( ! $this->is_available() || null === $target->post_id ) {
+			return null;
+		}
+
+		try {
+			$post_type = get_post_type( $target->post_id );
+			if ( ! is_string( $post_type ) || '' === $post_type ) {
+				return null;
+			}
+
+			$indexable = \YoastSEO()->classes->get( \Yoast\WP\SEO\Repositories\Indexable_Repository::class )
+				->find_by_id_and_type( $target->post_id, 'post' );
+			if ( null === $indexable ) {
+				return null;
+			}
+
+			$explicit = $indexable->is_robots_noindex;
+			if ( is_bool( $explicit ) ) {
+				return $explicit;
+			}
+
+			$titles_option = get_option( 'wpseo_titles', false );
+			$default_key   = 'noindex-' . $post_type;
+			if ( ! is_array( $titles_option ) || ! array_key_exists( $default_key, $titles_option ) ) {
+				return null;
+			}
+
+			return (bool) $titles_option[ $default_key ];
+		} catch ( Throwable ) {
+			return null;
+		}
+	}
+
+	/**
 	 * Resolves the public URL whose rendered schema should be captured.
 	 *
 	 * @param SeoTarget $target Authorized SEO target.

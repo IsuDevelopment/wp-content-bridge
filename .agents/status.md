@@ -118,6 +118,28 @@ evidence and should be read as such.
    configuration outside this repository. See "Two MCP servers, one projection".
 8. **`wpcb_publish_enabled` is registered and consumed by nothing.** It is a
    flag with no ability behind it until `transition-content-status` (0.6.0).
+9. **`YoastSeoProvider::get()` returns the first-resolved post's meta for every
+   subsequent post in the same request.** Found 2026-08-08 while verifying the
+   llms.txt leak matrix. The cause is Yoast, not this adapter: raw
+   `YoastSEO()->meta->for_post()` calls with no plugin code involved return
+   the first post's `robots` *and* `title` for later, different posts, and
+   setting `$GLOBALS['post']` with `setup_postdata()` between calls does not
+   help. Reproduced on Yoast SEO Free 28.2 with Yoast Local 15.8.
+
+   This shipped in 0.1.5 and was never noticed because every caller until now
+   resolved a single post per request — `get-seo` is one post per MCP call.
+   `WordPressLlmsSourceSelector::is_noindex()` was the first multi-post caller
+   and leaked a `noindex` page into the public `/llms.txt` document as a
+   result. That path was fixed by moving the decision onto Yoast's indexable
+   data through the order-independent `SeoProvider::is_noindex()`; `get()`
+   itself was deliberately left alone.
+
+   So this is latent, not live: no remaining caller resolves more than one post
+   per request. **Any future one must not use `get()` in a loop.** Clearing
+   Yoast's private context-memoizer cache by reflection does fix `get()` and
+   was rejected — a renamed property would make it fail silently open, which is
+   the wrong failure mode for a filter that keeps content out of a public
+   document. `tests/Integration/llms-txt-verification.php` is the regression.
 
 ## Current phase
 

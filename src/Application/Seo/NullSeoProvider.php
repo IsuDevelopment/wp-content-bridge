@@ -56,4 +56,16 @@ final readonly class NullSeoProvider implements SeoProvider {
 			array( 'No supported SEO provider is active.' )
 		);
 	}
+
+	/**
+	 * No provider means the answer is always unknown.
+	 *
+	 * @param SeoTarget $target Validated target.
+	 * @return bool|null
+	 */
+	public function is_noindex( SeoTarget $target ): ?bool {
+		unset( $target );
+
+		return null;
+	}
 }

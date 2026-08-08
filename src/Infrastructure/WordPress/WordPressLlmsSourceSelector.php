@@ -282,14 +282,19 @@ final class WordPressLlmsSourceSelector implements LlmsSourceSelector {
 	}
 
 	/**
-	 * Asks the active SEO provider whether a post resolves as `noindex`.
+	 * Asks the active SEO provider whether a post resolves as `noindex`, using
+	 * the provider's order-independent {@see SeoProvider::is_noindex()} query
+	 * rather than reading resolved robots off {@see SeoProvider::get()} —
+	 * that path is not safe to call for many posts in one request (see the
+	 * port docblock).
 	 *
-	 * When no provider is active this always returns false: {@see self::select()}
-	 * already recorded the run-level warning that the filter did not execute,
-	 * and a post must never be excluded on a check that could not run. A
-	 * provider failure is treated the same way — a third-party plugin error
-	 * must never take down llms.txt generation, and it is safer to include a
-	 * post than to silently drop public content on an unrelated exception.
+	 * `true` is the only value that excludes a post. `false` and `null`
+	 * (provider unavailable, cannot determine, or a provider failure) both
+	 * fail open and keep the post included: a post must never be excluded on
+	 * a check that could not run, and a third-party plugin error must never
+	 * take down llms.txt generation. This "unknown means included" behaviour
+	 * is a deliberate carry-over of the selector's existing fail-open
+	 * behaviour, not a new decision made by this method.
 	 *
 	 * @param SeoProvider $provider Active SEO provider, possibly the null provider.
 	 * @param int         $post_id  Candidate post ID.
@@ -301,39 +306,10 @@ final class WordPressLlmsSourceSelector implements LlmsSourceSelector {
 		}
 
 		try {
-			$robots = $provider->get( SeoTarget::for_post( $post_id ) )->resolved['robots'] ?? null;
+			return true === $provider->is_noindex( SeoTarget::for_post( $post_id ) );
 		} catch ( Throwable ) {
 			return false;
 		}
-
-		return null !== $robots && self::signals_noindex( $robots->value );
-	}
-
-	/**
-	 * Recognizes a resolved `robots` value as `noindex`, regardless of whether a
-	 * provider normalizes it as a directive list, a keyed directive map (for
-	 * example `['index' => 'noindex']`), or a plain string.
-	 *
-	 * @param mixed $value Normalized resolved `robots` field value.
-	 * @return bool
-	 */
-	private static function signals_noindex( mixed $value ): bool {
-		if ( is_string( $value ) ) {
-			return str_contains( strtolower( $value ), 'noindex' );
-		}
-
-		if ( is_array( $value ) ) {
-			foreach ( $value as $key => $item ) {
-				if ( is_string( $key ) && str_contains( strtolower( $key ), 'noindex' ) ) {
-					return true;
-				}
-				if ( self::signals_noindex( $item ) ) {
-					return true;
-				}
-			}
-		}
-
-		return false;
 	}
 
 	/**
