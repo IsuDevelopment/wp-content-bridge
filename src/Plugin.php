@@ -59,6 +59,8 @@ use IsuDev\WPContentBridge\Application\Seo\SeoProvider;
 use IsuDev\WPContentBridge\Application\Seo\SeoProviderRegistry;
 use IsuDev\WPContentBridge\Domain\Llms\LlmsDocumentBuilder;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\Installer;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\LlmsRegenerationRunner;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\LlmsRegenerationScheduler;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\LlmsTxtEndpoint;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\PhpBlockMarkupValidator;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\PhpBlockTreeSplicer;
@@ -188,6 +190,19 @@ final class Plugin {
 		if ( get_option( Installer::LLMS_ENABLED_OPTION ) ) {
 			( new LlmsTxtEndpoint( $llms_store ) )->register_hooks();
 		}
+
+		/*
+		 * Debounced llms.txt regeneration (ADR 0023 task 6). The trigger
+		 * wiring and the cron batch handler are both registered
+		 * unconditionally, matching LlmsAbilities' own pattern: each checks
+		 * `Installer::LLMS_ENABLED_OPTION` and the stored configuration
+		 * itself before doing anything. The flag watcher is registered
+		 * unconditionally for the same reason LlmsTxtEndpoint's flush watcher
+		 * is — it must observe a flag flip to false in either request.
+		 */
+		( new LlmsRegenerationScheduler( $llms_store ) )->register_hooks();
+		LlmsRegenerationScheduler::register_flag_watcher();
+		( new LlmsRegenerationRunner( $llms_store, $llms_selector, $llms_builder ) )->register_hooks();
 
 		$media_access = new MediaAccessManager( (bool) get_option( Installer::MEDIA_READS_ENABLED_OPTION ) );
 		if ( $media_access->reads_enabled ) {

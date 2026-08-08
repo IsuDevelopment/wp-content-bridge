@@ -123,6 +123,58 @@ final class WordPressLlmsSourceSelector implements LlmsSourceSelector {
 	}
 
 	/**
+	 * Filters a configuration's enabled post types down to those still
+	 * public, non-internal content types, in configured order.
+	 *
+	 * Exposed publicly — unlike {@see self::is_public_content_type()} — so
+	 * {@see LlmsRegenerationRunner}'s cross-tick cursor batching can build the
+	 * same bounded `WP_Query` post-type list {@see self::select()} uses
+	 * internally, without re-deriving or duplicating the public/internal-type
+	 * rule in a second place.
+	 *
+	 * @param LlmsConfig $config Effective configuration.
+	 * @return array
+	 * @phpstan-return list<string>
+	 */
+	public function public_configured_post_types( LlmsConfig $config ): array {
+		return array_values( array_filter( $config->enabled_post_types, array( $this, 'is_public_content_type' ) ) );
+	}
+
+	/**
+	 * Determines whether one already status- and password-filtered candidate
+	 * post is eligible, and if so builds its entry.
+	 *
+	 * Extracted so {@see LlmsRegenerationRunner} can reuse this class's own
+	 * `noindex` check and entry construction instead of duplicating them: the
+	 * cron runner queries its own bounded page of candidate post IDs
+	 * (cursor-tracked offset and limit across cron ticks, per ADR 0023 task
+	 * 6) rather than calling {@see self::select()}, because that method's own
+	 * per-post-type early exit has no notion of resuming across requests.
+	 * Eligibility itself — `noindex` resolution through the same
+	 * {@see SeoProviderRegistry} port, and entry construction — must stay
+	 * identical to {@see self::select()} or the Ability-triggered and
+	 * cron-triggered generation paths could disagree about what belongs in
+	 * the artifact.
+	 *
+	 * @param int        $post_id   Candidate post ID, already known `publish` and non-password-protected.
+	 * @param string     $post_type Candidate post's type.
+	 * @param LlmsConfig $config    Effective configuration.
+	 * @return LlmsSourceEntry|null
+	 */
+	public function eligible_entry( int $post_id, string $post_type, LlmsConfig $config ): ?LlmsSourceEntry {
+		if ( ! $this->is_public_content_type( $post_type ) ) {
+			return null;
+		}
+
+		$provider = $this->seo_providers->active();
+		if ( $this->is_noindex( $provider, $post_id ) ) {
+			return null;
+		}
+
+		return $this->entry_for( $post_id, $post_type, $config );
+	}
+
+	/**
 	 * Re-checks a configured post type against live WordPress registration: a
 	 * type can stop being public, or stop existing, after it was configured.
 	 * Attachments and internal `wp_`-prefixed types are excluded unconditionally,

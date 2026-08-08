@@ -40,11 +40,22 @@ foreach ( array(
 	'wpcb_llms_config',
 	'wpcb_llms_artifact',
 	'wpcb_llms_flush_needed',
+	'wpcb_llms_regen_cursor',
+	'wpcb_llms_regen_staging',
+	'wpcb_llms_regen_dirty',
 	'wpcb_integration_user_id',
 	'wpcb_public_base_url',
 ) as $wpcb_option ) {
 	delete_option( $wpcb_option );
 }
+
+/*
+ * Debounced llms.txt regeneration cron event. Literal hook name, mirroring
+ * `LlmsRegenerationRunner::CRON_HOOK`: this file's autoloader is deliberately
+ * not required (see file docblock), so every plugin-owned identifier here is
+ * a hand-kept literal rather than a class reference.
+ */
+wp_clear_scheduled_hook( 'wpcb_llms_regenerate' );
 
 /*
  * Dedicated capabilities, removed from every role that carries them.

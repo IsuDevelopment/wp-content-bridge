@@ -42,6 +42,39 @@ final class Installer {
 	public const LLMS_FLUSH_NEEDED_OPTION = 'wpcb_llms_flush_needed';
 
 	/**
+	 * Non-autoloaded batching cursor for the debounced llms.txt regeneration
+	 * cron job (`LlmsRegenerationRunner::CRON_HOOK`). Holds
+	 * `['offset', 'started']`; cleared by `LlmsRegenerationRunner` when a run
+	 * completes and by `LlmsRegenerationScheduler::handle_flag_change()` when
+	 * publication is disabled mid-run. See ADR 0023 task 6.
+	 */
+	public const LLMS_REGEN_CURSOR_OPTION = 'wpcb_llms_regen_cursor';
+
+	/**
+	 * Non-autoloaded accumulator for entries a batched regeneration run has
+	 * gathered so far. Never read by the public `/llms.txt` endpoint — only
+	 * `WordPressLlmsArtifactStore::ARTIFACT_OPTION` is public — and replaced
+	 * into it exactly once, atomically, when the run completes; see
+	 * `LlmsRegenerationRunner`.
+	 */
+	public const LLMS_REGEN_STAGING_OPTION = 'wpcb_llms_regen_staging';
+
+	/**
+	 * Non-autoloaded marker recording that a content or SEO transition landed
+	 * *while a batched run was already in progress*, and that the run therefore
+	 * cannot be assumed to reflect it.
+	 *
+	 * A run self-reschedules onto its own cron hook between ticks, so during a
+	 * multi-tick run `wp_next_scheduled()` is always truthy — which would make
+	 * `LlmsRegenerationScheduler::maybe_enqueue()` treat every trigger as
+	 * "already covered" and drop it. This flag is what keeps those triggers
+	 * from being swallowed; `LlmsRegenerationRunner` consumes it when a run
+	 * finalizes and enqueues a fresh one. See
+	 * `LlmsRegenerationScheduler::maybe_enqueue()`.
+	 */
+	public const LLMS_REGEN_DIRTY_OPTION = 'wpcb_llms_regen_dirty';
+
+	/**
 	 * Retired dev-only proxy-base shim option; the plugin never read it.
 	 * Removed here so upgrading and uninstalled sites shed the row.
 	 */
