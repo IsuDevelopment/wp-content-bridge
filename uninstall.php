@@ -39,6 +39,7 @@ foreach ( array(
 	'wpcb_llms_enabled',
 	'wpcb_llms_config',
 	'wpcb_llms_artifact',
+	'wpcb_llms_flush_needed',
 	'wpcb_integration_user_id',
 	'wpcb_public_base_url',
 ) as $wpcb_option ) {

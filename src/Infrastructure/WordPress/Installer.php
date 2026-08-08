@@ -32,6 +32,16 @@ final class Installer {
 	public const LLMS_ENABLED_OPTION = 'wpcb_llms_enabled';
 
 	/**
+	 * Non-autoloaded one-shot flag consumed by `LlmsTxtEndpoint` on the next
+	 * `init`. Set here on activation/upgrade and by `LlmsTxtEndpoint` whenever
+	 * `LLMS_ENABLED_OPTION` changes value, because a rewrite-rule flush is
+	 * only correct once the current request's rule set already reflects the
+	 * new flag value — never mid-request, when it might still reflect the
+	 * old one. See `LlmsTxtEndpoint::maybe_flush_rewrite_rules()`.
+	 */
+	public const LLMS_FLUSH_NEEDED_OPTION = 'wpcb_llms_flush_needed';
+
+	/**
 	 * Retired dev-only proxy-base shim option; the plugin never read it.
 	 * Removed here so upgrading and uninstalled sites shed the row.
 	 */
@@ -56,6 +66,10 @@ final class Installer {
 		add_option( self::INTEGRATION_USER_OPTION, 0, '', false );
 		delete_option( self::LEGACY_PUBLIC_BASE_URL_OPTION );
 		self::create_audit_table();
+		// Activation/upgrade always runs before this request's `init`, so the
+		// rewrite rule this flag is about has not been (re)registered yet in
+		// this request either; the flush must wait for the next one.
+		update_option( self::LLMS_FLUSH_NEEDED_OPTION, true, false );
 		update_option( self::VERSION_OPTION, self::SCHEMA_VERSION, false );
 	}
 

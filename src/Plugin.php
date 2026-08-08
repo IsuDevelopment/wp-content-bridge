@@ -59,6 +59,7 @@ use IsuDev\WPContentBridge\Application\Seo\SeoProvider;
 use IsuDev\WPContentBridge\Application\Seo\SeoProviderRegistry;
 use IsuDev\WPContentBridge\Domain\Llms\LlmsDocumentBuilder;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\Installer;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\LlmsTxtEndpoint;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\PhpBlockMarkupValidator;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\PhpBlockTreeSplicer;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressAuditLog;
@@ -174,6 +175,19 @@ final class Plugin {
 			new UpdateLlmsTxt( $llms_store, $llms_selector, $llms_builder, $llms_audit_log, home_url( '/' ) ),
 			new RegenerateLlmsTxt( $llms_store, $llms_selector, $llms_builder, $llms_audit_log )
 		) )->register_hooks();
+
+		/*
+		 * The virtual `/llms.txt` route (ADR 0023). The flush watcher is
+		 * registered unconditionally so a flag flip in either direction gets
+		 * queued for the next request's `init`; the rewrite rule itself is
+		 * registered only while the flag is on, per the ADR's off-means-
+		 * never-installed requirement — see LlmsTxtEndpoint::register_hooks().
+		 */
+		add_action( 'init', array( LlmsTxtEndpoint::class, 'maybe_flush_rewrite_rules' ), 20 );
+		LlmsTxtEndpoint::register_flush_watcher();
+		if ( get_option( Installer::LLMS_ENABLED_OPTION ) ) {
+			( new LlmsTxtEndpoint( $llms_store ) )->register_hooks();
+		}
 
 		$media_access = new MediaAccessManager( (bool) get_option( Installer::MEDIA_READS_ENABLED_OPTION ) );
 		if ( $media_access->reads_enabled ) {
