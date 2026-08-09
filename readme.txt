@@ -4,7 +4,7 @@ Tags: abilities, mcp, ai, content, seo, yoast
 Requires at least: 7.0
 Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.6.0
+Stable tag: 0.7.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -16,7 +16,7 @@ The read-only content core exposes access-aware search, content detail, provider
 
 Individual Gutenberg blocks can be read and edited by tree path, so changing one paragraph does not require rewriting the whole document.
 
-Safe write abilities (create draft, update content, update SEO, single-block edits, optional structured Service and bounded Custom Schema, and reversible trash with a matching restore) are also available behind off-by-default feature flags, per-post-type write policy, dedicated capabilities, native object checks, and optimistic concurrency. Update content and update SEO each have a matching read-only preview ability that shares the write's exact input contract and never mutates. Schema Extended integrations additionally provide read-before-write and read-only preview abilities when their compatible public contracts are loaded. Publication and other status transitions are not yet supported.
+Safe write abilities (create draft, update content, update SEO, single-block edits, optional structured Service and bounded Custom Schema, and reversible trash with a matching restore) are also available behind off-by-default feature flags, per-post-type write policy, dedicated capabilities, native object checks, and optimistic concurrency. Update content and update SEO each have a matching read-only preview ability that shares the write's exact input contract and never mutates. Schema Extended integrations additionally provide read-before-write and read-only preview abilities when their compatible public contracts are loaded. Status transitions — including publication and scheduling — run against an administrator-configured allowlist of permitted status pairs per post type, which is empty until someone configures it.
 
 MCP transport is provided separately by the official WordPress MCP Adapter and is not bundled with this plugin.
 
@@ -33,6 +33,17 @@ Deleting the plugin removes its options, its dedicated `wpcb_*` capabilities fro
 The `{prefix}wpcb_audit` table is deliberately left in place. It records who changed what through the bridge — field names only, never values — as a rolling window of the most recent 5,000 mutation attempts. Destroying that record silently on delete is not the plugin's call to make. Remove the table deliberately if you want it gone.
 
 == Changelog ==
+
+= 0.7.0 =
+* Added `wp-content-bridge/transition-content-status` and its companion read `wp-content-bridge/get-status-transitions`, completing the draft, review, publish and schedule workflow without adding a free-form `post_status` field to content updates.
+* Transitions run against an **allowlist of ordered status pairs per post type**, not a list of target statuses. That is what lets an administrator permit unpublishing while withholding publishing — the common arrangement for an automated principal, and one a target-only list cannot express. Statuses are limited to `draft`, `pending`, `private`, `publish` and `future`; `trash`, `auto-draft`, `inherit` and plugin-defined statuses are not expressible at all.
+* **The allowlist starts empty, and upgrading adds no write surface.** Until an administrator configures pairs, every transition is refused. A documented editorial preset is available as a button, never as a default.
+* `publish` and `future` require three gates the other transitions do not: the off-by-default `wpcb_publish_enabled` flag, the `wpcb_publish_content` capability, and the native `publish_post` capability. Ordinary editorial transitions need only `wpcb_edit_content`, native `edit_post`, and the per-type policy.
+* Scheduling takes `publish_at` in the site timezone, stores UTC, and returns both. An invalid or past `publish_at` is refused before the write rather than trusted to degrade safely — WordPress stores `publish` when asked for `future` with a past date, so a bad value would put content live immediately.
+* Daylight-saving time is handled deliberately: a local time inside the spring-forward gap does not exist and is rejected, the autumn fold resolves deterministically, and a site on a fixed UTC offset is handled uniformly.
+* Every transition response reports the status **read back from storage**, never the one requested. Where WordPress rewrote the transition, the ability fails and says what was actually stored instead of reporting a success it did not perform.
+* `get-status-transitions` reports whether scheduled publication can actually run on the site. A site with `DISABLE_WP_CRON` and no alternate runner can reach `future` but will never publish it, and that is now stated rather than implied.
+* Expanded the closed MCP profile to 31 potential abilities.
 
 = 0.6.0 =
 * Added a published `/llms.txt`, off by default. While the feature is disabled there is no new public surface at all: no rewrite rule is registered and the path 404s exactly as any unknown URL does, indistinguishable from a plugin that was never installed.

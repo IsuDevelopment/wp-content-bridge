@@ -633,6 +633,28 @@ The only feature in this plugin with an unauthenticated public surface.
   `wpcb_manage_llms`.
 - Runtime evidence: `tests/Integration/llms-txt-verification.php`.
 
+## Status workflow feature
+
+- `Domain/Status/` — `ContentStatus` (the fixed five, single source of truth),
+  `StatusTransition` (an ordered pair), `StatusTransitionGraph` (the per-type
+  allowlist), `StatusTransitionConfig`, and `PublishAt`. All pure. The graph
+  **rejects** unknown statuses, self-pairs, and over-bound input rather than
+  truncating: a silently dropped pair would move an authorization boundary.
+- `Application/Status/` — `GetStatusTransitions`, `TransitionContentStatus`, the
+  `StatusTransitionSettingsRepository` / `StatusTransitionTargetRepository` /
+  `SiteClock` ports, and `StatusTransitionManager`, whose `config()` catches an
+  invalid stored graph and degrades to deny-all rather than fataling.
+- `Infrastructure/WordPress/WordPressStatusTransitionRepository` — the
+  `wpcb_status_transitions` option. Never seeded by `Installer`, because the
+  existence of the option row is what distinguishes "never configured" from
+  "configured to nothing".
+- `WordPressContentMutationRepository::transition_status()` — sets `post_status`
+  with `post_date` and `post_date_gmt` together plus `edit_date`, then re-reads
+  and throws if WordPress stored something else.
+- `Adapter/Abilities/GetStatusTransitionsAbilities` and
+  `TransitionContentStatusAbilities`.
+- Runtime evidence: `tests/Integration/status-workflow-verification.php`.
+
 ## Specification routes
 
 - Product behavior: `docs/spec/REQUIREMENTS.md`.
@@ -656,6 +678,8 @@ The only feature in this plugin with an unauthenticated public surface.
   `docs/adr/0022-block-level-edits-are-addressed-by-tree-path.md`.
 - Virtual llms.txt endpoint decision:
   `docs/adr/0023-llms-txt-is-published-through-a-virtual-endpoint.md`.
+- Status transition graph decision:
+  `docs/adr/0024-status-transitions-are-an-explicit-per-type-pair-allowlist.md`.
 - Agent procedures: `.agents/instructions/`.
 - Milestone 1B evidence: `docs/verification/ABILITIES_VERIFICATION.md`.
 

@@ -98,6 +98,8 @@ annotations.
 | `preview-update-llms-txt` | llms.txt enabled | `wpcb_manage_llms` | Returns the document a configuration would produce, and its diff against the stored one, without writing. |
 | `update-llms-txt` | llms.txt enabled | `wpcb_manage_llms` | Replaces the configuration and regenerates the published snapshot under optimistic concurrency. |
 | `regenerate-llms-txt` | llms.txt enabled | `wpcb_manage_llms` | Rebuilds the snapshot from current content; idempotent for unchanged source and configuration. |
+| `get-status-transitions` | Always | `wpcb_read_content` | Reports one object's current status, the permitted target statuses under the configured allowlist, which gates the caller satisfies for each, and whether scheduled publication can actually run on this site. |
+| `transition-content-status` | Content writes enabled | `wpcb_edit_content` (+ `wpcb_publish_content` for `publish`/`future`) | Moves one object between statuses along an administrator-configured pair, with optimistic concurrency; `publish_at` schedules and is validated before any write. |
 
 A WPCB capability never grants access by itself. Operations also enforce the
 configured policy and the matching native WordPress type or object capability.
@@ -540,6 +542,38 @@ Saving replaces the managed user's exact WPCB capability set. Selecting a new
 user revokes managed WPCB capabilities from the previous user without changing
 unrelated WordPress capabilities. Integration-user management is disabled on
 multisite.
+
+## Status transitions
+
+`create-draft` creates drafts and `update-content` never touches status, so
+publication is impossible through either. Moving content between statuses is a
+separate, semantic ability.
+
+Transitions run against an **allowlist of ordered `from -> to` status pairs, per
+post type**, which is empty until an administrator configures it. Upgrading the
+plugin therefore adds no new write surface. Pairs rather than target statuses is
+the point: it is what lets you permit unpublishing while withholding
+publishing, which a list of allowed targets cannot express.
+
+The five expressible statuses are `draft`, `pending`, `private`, `publish` and
+`future`. `trash` is a separate ability with its own flag, and `auto-draft`,
+`inherit` and plugin-defined statuses cannot be reached by configuration
+mistake.
+
+`publish` and `future` require three gates ordinary editorial transitions do
+not: the off-by-default `wpcb_publish_enabled` flag, the `wpcb_publish_content`
+capability, and native `publish_post`.
+
+Scheduling takes `publish_at` in the site timezone and stores UTC. A past or
+otherwise invalid value is refused **before** the write: asked for `future` with
+a past date, WordPress stores `publish` and the content goes live immediately,
+so degrading gracefully is not an option. Every response reports the status read
+back from storage rather than the one requested.
+
+Use `get-status-transitions` to discover what is permitted for a given object
+and caller instead of guessing — it also reports whether the site can actually
+run scheduled publication, which a site with `DISABLE_WP_CRON` and no alternate
+runner cannot.
 
 ## The published `/llms.txt`
 

@@ -773,6 +773,63 @@ sitewide Yoast indexing setting.
 
 Annotations: `readonly: false`, `destructive: false`, `idempotent: true`.
 
+## Status transition abilities
+
+Two abilities implement ADR 0015's semantic status workflow, shaped by ADR 0024.
+`create-draft` remains draft-only and `update-content` never accepts a status,
+so these are the only way content changes state.
+
+Authorization here is deliberately layered more heavily than elsewhere, because
+publication is the one editorial act an automated principal should not acquire
+by accident.
+
+### `wp-content-bridge/get-status-transitions`
+
+Always registered. Requires `wpcb_read_content`, native `edit_post`, and the
+per-type Read policy; an object the caller cannot see gets the same
+non-enumerating failure as every other read.
+
+Returns the current status, the permitted target statuses from it under the
+configured pair allowlist, and for each target which gates the caller currently
+satisfies and whether `publish_at` is required. Also returns the site timezone
+with its current UTC offset, and whether scheduled publication can actually run
+on this site — a site with `DISABLE_WP_CRON` and no alternate runner can reach
+`future` but will never publish it.
+
+Per-target gate semantics are worth stating because they are easy to misread:
+for a target that does not need the publication gates, `requires_publish_gates`
+is `false` and the three gate booleans report `true` regardless of the real flag
+value. They mean "does this gate block *this* target", not "what is this flag
+set to". A client must read `requires_publish_gates` before interpreting them.
+
+Annotations: `readonly: true`, `destructive: false`, `idempotent: true`.
+
+### `wp-content-bridge/transition-content-status`
+
+Registered only while `wpcb_writes_enabled` is true. Inputs are `post_id`,
+`version_token`, `target_status`, and `publish_at` only when the target is
+`future`.
+
+Seven gates run before any write: the object is readable; the per-type
+`transition_content_status` policy allows it; `wpcb_edit_content` and native
+`edit_post` are held; the exact `(current, target)` pair is in the allowlist for
+that post type; for `publish` and `future`, `wpcb_publish_enabled`,
+`wpcb_publish_content` and native `publish_post` are all satisfied; the
+`version_token` is current; and `publish_at` is present, parseable and strictly
+in the future for `future`, absent otherwise.
+
+`publish_at` is validated before the write rather than trusted to fail safely.
+Measured on WordPress 7.0.2, `wp_update_post()` asked for `future` with a past
+date stores `publish` — the content goes live, which is the opposite of what the
+caller wanted.
+
+The response reports the status read back from storage. Where WordPress stored
+something other than the target, the ability fails and names what was stored.
+That check detects but does not roll back; the seventh gate is what keeps the
+path unreachable.
+
+Annotations: `readonly: false`, `destructive: false`, `idempotent: false`.
+
 ## Versioning
 
 - Additive optional fields may be a minor plugin release.

@@ -21,7 +21,7 @@ allowlists and credentials.
 
 ## Projection profile for current source
 
-The complete WP Content Bridge profile contains 29 potential abilities:
+The complete WP Content Bridge profile contains 31 potential abilities:
 
 ```text
 wp-content-bridge/search-content
@@ -53,6 +53,8 @@ wp-content-bridge/get-llms-txt
 wp-content-bridge/preview-update-llms-txt
 wp-content-bridge/update-llms-txt
 wp-content-bridge/regenerate-llms-txt
+wp-content-bridge/get-status-transitions
+wp-content-bridge/transition-content-status
 ```
 
 The first six are always registered. The remaining abilities enter the
@@ -72,7 +74,13 @@ WordPress registry only when their WP Content Bridge feature flags are enabled:
 - llms.txt writes — `preview-update-llms-txt`, `update-llms-txt`,
   `regenerate-llms-txt`: `wpcb_llms_enabled`. The read, `get-llms-txt`, is
   always registered so an operator can inspect ownership and configuration
-  before enabling publication.
+  before enabling publication;
+- status transitions — `transition-content-status`: `wpcb_writes_enabled`.
+  The read, `get-status-transitions`, is always registered for the same reason
+  as `get-llms-txt`. Note that registration is not the only gate here: a
+  transition also needs its `(from, to)` pair in the per-type allowlist, which
+  is empty until an administrator configures it, and `publish`/`future`
+  additionally need `wpcb_publish_enabled`.
 
 The MCP server should therefore intersect its explicit profile with abilities
 registered in the current request. This keeps disabled operations absent from
@@ -145,6 +153,8 @@ $wpcb_profile = array(
 	'wp-content-bridge/preview-update-llms-txt',
 	'wp-content-bridge/update-llms-txt',
 	'wp-content-bridge/regenerate-llms-txt',
+	'wp-content-bridge/get-status-transitions',
+	'wp-content-bridge/transition-content-status',
 );
 
 add_action(

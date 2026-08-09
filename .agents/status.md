@@ -1,13 +1,12 @@
 # Project status
 
-**Released version: 0.6.0.** Static quality is green at 366 tests / 996
+**Released version: 0.7.0.** Static quality is green at 408 tests / 1,071
 assertions. Runtime verification is defined in `docs/setup/VERIFICATION.md`.
-`0.6.0` adds the published `/llms.txt` — the plugin's first unauthenticated
-public surface, off by default and leaving no public route at all while
-disabled. Writing its verifier found a `noindex` leak into the public document,
-caused by Yoast returning the first-resolved post's meta for every later post in
-the same request; see gap 9 below. Next is `0.7.0`, Slice 2
-(`transition-content-status`).
+`0.7.0` completes the status workflow: transitions run against an
+administrator-configured allowlist of ordered status pairs per post type (ADR
+0024), empty until someone configures it, with `publish` and `future` behind
+three further gates. This closes gap 8 below. Next is `0.8.0`, Slice 3
+(revision inspection and recovery).
 
 ## Block-level edits — 0.5.0, 2026-08-07
 
@@ -118,8 +117,11 @@ evidence and should be read as such.
    the WordPress capability check is independent, but nothing detects either
    condition automatically; both remain manual checks against site
    configuration outside this repository. See "Two MCP servers, one projection".
-8. **`wpcb_publish_enabled` is registered and consumed by nothing.** It is a
-   flag with no ability behind it until `transition-content-status` (0.6.0).
+8. ~~**`wpcb_publish_enabled` is registered and consumed by nothing.**~~
+   **Closed in 0.7.0.** `transition-content-status` now consumes it, together
+   with `wpcb_publish_content` and `ContentOperation::TRANSITION_STATUS`, which
+   were inert for the same reason. All three are exercised by
+   `tests/Integration/status-workflow-verification.php`.
 9. **`YoastSeoProvider::get()` returns the first-resolved post's meta for every
    subsequent post in the same request.** Found 2026-08-08 while verifying the
    llms.txt leak matrix. The cause is Yoast, not this adapter: raw
@@ -729,7 +731,24 @@ Yoast multi-post memoization behind the `noindex` leak (gap 9 above), and
 omitted `parentOrganization` while `LocalSchemaProjector` has always emitted it
 — which broke exactly the multi-location case ADR 0009 exists for.
 
-**Next release is `0.7.0` — Slice 2, `transition-content-status`.**
+**0.7.0 — Slice 2 is complete**, all seven tasks of
+`docs/plan/SLICE_STATUS_WORKFLOW_EXECUTION_PLAN.md`.
+
+Two WordPress behaviours were measured rather than assumed, and one assumption
+in the first draft of ADR 0024 was wrong before it was checked. `wp_update_post()`
+asked for `future` with a past date stores `publish` — a bad `publish_at` puts
+content live — but `publish` with a future date does **not** become `future`, so
+there is no accidental path into scheduling. Implementation found two more: an
+explicit `post_date`/`post_date_gmt` is ignored on update without `edit_date`,
+and requesting `publish` on a post whose date is still in the future silently
+leaves it at `future`.
+
+Known limitation, recorded rather than hidden: the mutation repository's
+read-back check detects a transition WordPress rewrote but does not roll it
+back, so the post stays as stored while the caller is told the write failed. The
+seventh gate keeps that path unreachable through the ability.
+
+**Next release is `0.8.0` — Slice 3, revision inspection and recovery.**
 
 **0.4.5 is complete.** All eight tasks of `docs/plan/RELEASE_0_4_5_PLAN.md` are
 done: `restore-trashed-content`, unifying the preview response flag,
