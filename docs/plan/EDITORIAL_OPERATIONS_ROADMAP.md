@@ -630,9 +630,9 @@ Decided 2026-08-07, superseding the version in each slice heading:
 | Version | Content | State |
 |---|---|---|
 | `0.4.0` | Slice 1A — content and SEO preview | shipped |
-| `0.4.5` | Consolidation and debt (see below) | next |
+| `0.4.5` | Consolidation and debt (see below) | shipped |
 | `0.5.0` | Block-level edits — path-addressed `get-block-tree`/`update-block`/`preview-update-block`/`update-block-attributes` (ADR 0022) | shipped |
-| `0.6.0` | Slice 1B — llms.txt | planned |
+| `0.6.0` | Slice 1B — llms.txt (ADR 0023) | shipped |
 | `0.7.0` | Slice 2 — controlled status workflow | planned |
 | `0.8.0` | Slice 3 — revision inspection and recovery | planned |
 | `0.9.0` | Slice 4 — media metadata and featured image | planned |

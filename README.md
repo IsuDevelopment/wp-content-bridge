@@ -94,6 +94,10 @@ annotations.
 | `update-custom-schema` | Content writes enabled and Schema Extended 0.3+ active | `wpcb_manage_seo` | Writes validated Custom Schema through the provider's public integration contract. |
 | `trash-content` | Content writes and trash enabled | `wpcb_delete_content` | Moves an authorized object to reversible WordPress trash without exposing permanent deletion. |
 | `restore-trashed-content` | Content writes and trash enabled | `wpcb_delete_content` | Restores a trashed object to its safe pre-trash status; never `publish` or `future`. |
+| `get-llms-txt` | Always | `wpcb_manage_llms` | Reads the llms.txt configuration, snapshot summary, ownership state, and a concurrency token. Never returns a filesystem path. |
+| `preview-update-llms-txt` | llms.txt enabled | `wpcb_manage_llms` | Returns the document a configuration would produce, and its diff against the stored one, without writing. |
+| `update-llms-txt` | llms.txt enabled | `wpcb_manage_llms` | Replaces the configuration and regenerates the published snapshot under optimistic concurrency. |
+| `regenerate-llms-txt` | llms.txt enabled | `wpcb_manage_llms` | Rebuilds the snapshot from current content; idempotent for unchanged source and configuration. |
 
 A WPCB capability never grants access by itself. Operations also enforce the
 configured policy and the matching native WordPress type or object capability.
@@ -536,6 +540,34 @@ Saving replaces the managed user's exact WPCB capability set. Selecting a new
 user revokes managed WPCB capabilities from the previous user without changing
 unrelated WordPress capabilities. Integration-user management is disabled on
 multisite.
+
+## The published `/llms.txt`
+
+Off by default, and the only unauthenticated surface this plugin exposes.
+
+While `wpcb_llms_enabled` is false no rewrite rule is registered at all, so
+`/llms.txt` 404s exactly as any unknown URL does — a disabled feature is
+indistinguishable from one that was never installed, rather than answering
+`403` and advertising itself.
+
+When enabled, the route serves a stored snapshot and does nothing else: one
+option read, then those bytes. It never queries posts, calls an SEO provider,
+generates a document, or writes anything, and a missing snapshot returns `404`
+rather than being built on the request. Responses carry a strong `ETag` taken
+from the document's own content hash, a `Last-Modified` from its generation
+time, and a bounded `Cache-Control`; `If-None-Match` and `If-Modified-Since`
+are answered with a bodyless `304`.
+
+Draft, private, password-protected, `noindex`, and non-public-post-type content
+never reaches the document. Regeneration is debounced and runs on cron, in
+bounded batches on large sites, and replaces the snapshot in one step so a
+reader mid-run gets the previous complete document rather than a partial one.
+Un-publishing triggers regeneration, so content an author withdraws leaves the
+document instead of lingering.
+
+If Yoast's own llms.txt feature is active, or a physical `llms.txt` already
+answers the path, that is reported as a blocking ownership conflict. This
+plugin never overwrites or deletes another owner's file.
 
 ## MCP integration
 

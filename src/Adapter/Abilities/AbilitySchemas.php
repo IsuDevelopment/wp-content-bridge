@@ -2165,6 +2165,21 @@ final class AbilitySchemas {
 				'image'                     => $reference,
 				'logo'                      => $reference,
 				'branchOf'                  => $reference,
+
+				/*
+				 * Yoast Local emits `parentOrganization`, not schema.org's
+				 * `branchOf`, to link a branch to its parent — see ADR 0009 and
+				 * `docs/verification/YOAST_PREMIUM_LOCAL.md`. `LocalSchemaProjector`
+				 * has always allowlisted it; this schema never listed it, and
+				 * with `additionalProperties: false` that made the whole
+				 * `get-editorial-context` response fail output validation on any
+				 * site where a branch actually has a parent configured. The
+				 * multi-location case ADR 0009 exists for was therefore the one
+				 * case the ability could not answer. Found 2026-08-08 by
+				 * `local-multilocation-runtime-verification.sh` once the fixture
+				 * site gained a parent organization.
+				 */
+				'parentOrganization'        => $reference,
 				'mainEntityOfPage'          => $reference,
 			),
 			'additionalProperties' => false,

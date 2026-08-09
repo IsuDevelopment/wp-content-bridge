@@ -21,7 +21,7 @@ allowlists and credentials.
 
 ## Projection profile for current source
 
-The complete WP Content Bridge profile contains 25 potential abilities:
+The complete WP Content Bridge profile contains 29 potential abilities:
 
 ```text
 wp-content-bridge/search-content
@@ -49,6 +49,10 @@ wp-content-bridge/preview-update-custom-schema
 wp-content-bridge/update-custom-schema
 wp-content-bridge/trash-content
 wp-content-bridge/restore-trashed-content
+wp-content-bridge/get-llms-txt
+wp-content-bridge/preview-update-llms-txt
+wp-content-bridge/update-llms-txt
+wp-content-bridge/regenerate-llms-txt
 ```
 
 The first six are always registered. The remaining abilities enter the
@@ -64,7 +68,11 @@ WordPress registry only when their WP Content Bridge feature flags are enabled:
   IsuDev Schema Extended plugin;
 - Custom Schema: `wpcb_writes_enabled` plus Schema Extended's compatible public
   `Integration_API` contract;
-- trash and its restore: both `wpcb_writes_enabled` and `wpcb_trash_enabled`.
+- trash and its restore: both `wpcb_writes_enabled` and `wpcb_trash_enabled`;
+- llms.txt writes — `preview-update-llms-txt`, `update-llms-txt`,
+  `regenerate-llms-txt`: `wpcb_llms_enabled`. The read, `get-llms-txt`, is
+  always registered so an operator can inspect ownership and configuration
+  before enabling publication.
 
 The MCP server should therefore intersect its explicit profile with abilities
 registered in the current request. This keeps disabled operations absent from
@@ -133,6 +141,10 @@ $wpcb_profile = array(
 	'wp-content-bridge/update-custom-schema',
 	'wp-content-bridge/trash-content',
 	'wp-content-bridge/restore-trashed-content',
+	'wp-content-bridge/get-llms-txt',
+	'wp-content-bridge/preview-update-llms-txt',
+	'wp-content-bridge/update-llms-txt',
+	'wp-content-bridge/regenerate-llms-txt',
 );
 
 add_action(

@@ -723,6 +723,56 @@ additionally require `wpcb_publish_content`, native `publish_post`, and the
 off-by-default `wpcb_publish_enabled` flag. Internal statuses and `trash` are
 excluded. Draft creation and scheduling remain two separate calls.
 
+## llms.txt abilities
+
+Four abilities manage the published `/llms.txt` document (ADR 0023). All four
+require the dedicated `wpcb_manage_llms` capability. `get-llms-txt` is always
+registered; the three writes are withheld entirely while the off-by-default
+`wpcb_llms_enabled` flag is false, so a disabled feature is not merely
+unauthorized but absent.
+
+Unlike every other ability here, these govern an **unauthenticated public
+surface**. The document they produce is served to anyone, with no capability
+check on the read path — see "The unauthenticated public surface (`/llms.txt`)"
+in `docs/architecture/SECURITY.md`, which states plainly which of this
+document's other guarantees do not apply there.
+
+### `wp-content-bridge/get-llms-txt`
+
+Returns the stored configuration, a summary of the current snapshot (content
+hash, generation time, byte and link counts, warnings), the ownership state,
+and a `version_token` for optimistic concurrency. Never returns a filesystem
+path, including when reporting that another owner's physical file exists.
+
+Annotations: `readonly: true`, `destructive: false`, `idempotent: true`.
+
+### `wp-content-bridge/preview-update-llms-txt`
+
+Returns the document a given configuration would produce, plus a diff against
+the stored one. Writes nothing and is deterministic for unchanged source.
+
+Annotations: `readonly: true`, `destructive: false`, `idempotent: true`.
+
+### `wp-content-bridge/update-llms-txt`
+
+Replaces the configuration and regenerates the snapshot. Requires a
+`version_token`; a stale token is rejected before any write. `site_url` is not
+an input — it is derived from `home_url()` at the composition root, because a
+caller-supplied origin would let a principal holding only `wpcb_manage_llms`
+publish links to a foreign host inside a document written for LLM consumption.
+
+Annotations: `readonly: false`, `destructive: false`, `idempotent: false`.
+
+### `wp-content-bridge/regenerate-llms-txt`
+
+Rebuilds the snapshot from current content under the stored configuration.
+Idempotent for unchanged source and configuration: an unchanged rebuild does
+not churn the stored hash or generation time. This is also the manual escape
+hatch for eligibility changes the debounced triggers do not observe, such as a
+sitewide Yoast indexing setting.
+
+Annotations: `readonly: false`, `destructive: false`, `idempotent: true`.
+
 ## Versioning
 
 - Additive optional fields may be a minor plugin release.

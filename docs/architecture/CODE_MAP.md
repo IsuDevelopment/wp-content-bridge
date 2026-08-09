@@ -598,6 +598,41 @@ Files:
   audit/revision/`post_modified_gmt` change), freeform-node addressing, and
   `update-block-attributes` shallow-merge/removal/escaping.
 
+## llms.txt feature
+
+The only feature in this plugin with an unauthenticated public surface.
+
+- `Domain/Llms/` — `LlmsConfig`, `LlmsArtifact`, `LlmsSourceEntry`, the pure
+  `LlmsDocumentBuilder`, and the diff/preview/result value objects. The builder
+  enforces every bound (document bytes, sections, items per section, excerpt
+  length, links) by truncating and recording a warning, never by failing.
+- `Application/Llms/` — `GetLlmsTxt`, `PreviewUpdateLlmsTxt`, `UpdateLlmsTxt`,
+  `RegenerateLlmsTxt`, plus the `LlmsArtifactStore`, `LlmsSourceSelector`, and
+  `LlmsOwnershipInspector` ports.
+- `Infrastructure/WordPress/WordPressLlmsArtifactStore` — one option holds the
+  configuration, one holds the snapshot. `LlmsTxtEndpoint` reads only the
+  latter.
+- `Infrastructure/WordPress/WordPressLlmsSourceSelector` — eligibility. Excludes
+  draft, private, password-protected, non-public post types, and `noindex`. The
+  `noindex` decision goes through `SeoProvider::is_noindex()`, which is
+  order-independent by design; see gap 9 in `.agents/status.md` for why reading
+  it from `SeoProvider::get()` was wrong.
+- `Infrastructure/WordPress/WordPressLlmsOwnershipInspector` — reports whether
+  Yoast's llms.txt feature or a physical file already owns the path. Probes the
+  directory serving the **home** URL, not `ABSPATH`; the two differ on any
+  subdirectory install and probing `ABSPATH` produced a false negative. Reports
+  existence only, never a path.
+- `Infrastructure/WordPress/LlmsTxtEndpoint` — the virtual route. Registered
+  only while `wpcb_llms_enabled` is true, gated on `WP::$matched_rule` so the
+  canonical path is the only URL that reaches it, and exits during
+  `parse_request` so nothing else in WordPress runs.
+- `Infrastructure/WordPress/LlmsRegenerationScheduler` and
+  `LlmsRegenerationRunner` — the fixed-deadline debounce and the cursor-batched
+  cron run that replaces the snapshot atomically at the end.
+- `Adapter/Abilities/LlmsAbilities` — the four abilities, all behind
+  `wpcb_manage_llms`.
+- Runtime evidence: `tests/Integration/llms-txt-verification.php`.
+
 ## Specification routes
 
 - Product behavior: `docs/spec/REQUIREMENTS.md`.
@@ -619,6 +654,8 @@ Files:
   `docs/adr/0015-content-status-transitions-and-trash-are-separate-intents.md`.
 - Block-level edit path-addressing decision:
   `docs/adr/0022-block-level-edits-are-addressed-by-tree-path.md`.
+- Virtual llms.txt endpoint decision:
+  `docs/adr/0023-llms-txt-is-published-through-a-virtual-endpoint.md`.
 - Agent procedures: `.agents/instructions/`.
 - Milestone 1B evidence: `docs/verification/ABILITIES_VERIFICATION.md`.
 

@@ -4,7 +4,7 @@ Tags: abilities, mcp, ai, content, seo, yoast
 Requires at least: 7.0
 Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.5.0
+Stable tag: 0.6.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -33,6 +33,16 @@ Deleting the plugin removes its options, its dedicated `wpcb_*` capabilities fro
 The `{prefix}wpcb_audit` table is deliberately left in place. It records who changed what through the bridge — field names only, never values — as a rolling window of the most recent 5,000 mutation attempts. Destroying that record silently on delete is not the plugin's call to make. Remove the table deliberately if you want it gone.
 
 == Changelog ==
+
+= 0.6.0 =
+* Added a published `/llms.txt`, off by default. While the feature is disabled there is no new public surface at all: no rewrite rule is registered and the path 404s exactly as any unknown URL does, indistinguishable from a plugin that was never installed.
+* The public route serves a stored snapshot and nothing else. It performs one option read and writes those bytes — no post query, no SEO call, no generation, no write of any kind. If no snapshot exists it returns 404 rather than building one on the request. Responses carry a strong `ETag` derived from the document's own content hash, a `Last-Modified` from its generation time, and a bounded `Cache-Control`; `If-None-Match` and `If-Modified-Since` are answered with a bodyless `304`.
+* Added `wp-content-bridge/get-llms-txt`, `preview-update-llms-txt`, `update-llms-txt`, and `regenerate-llms-txt`, gated by a new `wpcb_manage_llms` capability. The three writes are withheld entirely while publication is disabled.
+* Draft, private, password-protected, `noindex`, and non-public-post-type content never reaches the document. This is asserted by a runtime verifier, not by inspection.
+* **A `noindex` page could reach the document before this release's fix.** Yoast's own surface API returns the first-resolved post's meta for every subsequent post in the same request, and the eligibility check resolved many posts per request. The check now reads Yoast's indexable data instead, which does not depend on call order. If you enabled an earlier build of this feature, regenerate.
+* Regeneration is debounced and batched. Content and SEO transitions queue a single run 90 seconds out, and later triggers never push that deadline back — a sliding window would never fire at all on a steadily edited site. Large sites are processed in bounded batches across cron ticks, and the public document is replaced once, at the end, so a reader mid-run always gets the previous complete snapshot rather than half a document.
+* Un-publishing regenerates. The trigger reads the status a post is *leaving*, not only the one it now has, so content withdrawn by its author leaves the public document instead of lingering until an unrelated scheduled run.
+* A physical `llms.txt` already served by the site, or Yoast's own llms.txt feature, is reported as a blocking ownership conflict. The plugin never overwrites or deletes another owner's file, and no response field exposes a filesystem path.
 
 = 0.5.0 =
 * **Fixed a data-corruption defect present in every release from 0.1.5 to 0.4.5.** `wp_insert_post()` and `wp_update_post()` expect slashed data and call `wp_unslash()` on it; the plugin passed raw input, so every backslash written through `create-draft` or `update-content` was silently stripped. Gutenberg escapes a double quote inside a block's attribute JSON as a backslash-u escape, which was therefore stored as the literal text `u0022`. **Any block whose attributes contained a quote was corrupted by any bridge write to that post** — including blocks the write was never meant to touch. The plugin does **not** repair content already damaged this way: the damaged form is indistinguishable from text a user typed deliberately. If you have written through the bridge, spot-check posts built from blocks that keep text in attributes.

@@ -1,11 +1,13 @@
 # Project status
 
-**Released version: 0.5.0.** Static quality is green at 288 tests / 783
-assertions. Runtime verification is no longer the open gate: the inventory is
-defined in `docs/setup/VERIFICATION.md` and ran green on 2026-08-07. `0.5.0`
-adds block-level editing and fixes a data-corruption defect that shipped in
-every release from 0.1.5 onward; see "Block-level edits" below. Next is
-`0.6.0`, Slice 1B (llms.txt).
+**Released version: 0.6.0.** Static quality is green at 366 tests / 996
+assertions. Runtime verification is defined in `docs/setup/VERIFICATION.md`.
+`0.6.0` adds the published `/llms.txt` — the plugin's first unauthenticated
+public surface, off by default and leaving no public route at all while
+disabled. Writing its verifier found a `noindex` leak into the public document,
+caused by Yoast returning the first-resolved post's meta for every later post in
+the same request; see gap 9 below. Next is `0.7.0`, Slice 2
+(`transition-content-status`).
 
 ## Block-level edits — 0.5.0, 2026-08-07
 
@@ -700,13 +702,34 @@ verified.
 
 ## Next action
 
-Released state: **0.5.0**. Versions 0.2.0 through 0.5.0 all shipped.
+Released state: **0.6.0**. Versions 0.2.0 through 0.6.0 all shipped.
 
-**Next release is `0.6.0` — Slice 1B (llms.txt).** It moved from `0.5.0` when
-the block-edits slice took that number on 2026-08-07. It remains the heaviest
-slice in the roadmap, adds the plugin's first unauthenticated public route, and
-needs its own threat model before any code. `transition-content-status` is now
-`0.7.0`.
+**0.6.0 — Slice 1B (llms.txt) is complete**, all nine tasks of
+`docs/plan/SLICE_LLMS_TXT_EXECUTION_PLAN.md`. It adds the plugin's first
+unauthenticated public route, behind an off-by-default flag that leaves no
+public surface at all while it is false. Its threat model is the
+"unauthenticated public surface" section of `docs/architecture/SECURITY.md`.
+The projection profile grew from 25 to 29 potential abilities.
+
+Three defects were found by verification rather than by inspection, and each is
+recorded where it will be read again:
+
+- `Content-Length` was taken from the stored byte count instead of the bytes
+  being written — two independently deserialized fields of one option.
+- Registering the endpoint's query var publicly made the document reachable at
+  every URL on the site, an unbounded set of cacheable duplicates. The handler
+  now gates on `WP::$matched_rule`.
+- A trigger arriving between ticks of a batched regeneration run was silently
+  dropped, because the run self-reschedules onto the same cron hook. Withdrawn
+  content could stay public indefinitely. See task 6's commit.
+
+Two pre-existing defects surfaced while verifying and were fixed here: the
+Yoast multi-post memoization behind the `noindex` leak (gap 9 above), and
+`get-editorial-context` rejecting its own valid output because the schema
+omitted `parentOrganization` while `LocalSchemaProjector` has always emitted it
+— which broke exactly the multi-location case ADR 0009 exists for.
+
+**Next release is `0.7.0` — Slice 2, `transition-content-status`.**
 
 **0.4.5 is complete.** All eight tasks of `docs/plan/RELEASE_0_4_5_PLAN.md` are
 done: `restore-trashed-content`, unifying the preview response flag,
