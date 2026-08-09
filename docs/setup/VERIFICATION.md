@@ -72,7 +72,8 @@ for v in abilities-runtime-verification \
          schema-service-verification \
          schema-custom-verification \
          llms-txt-verification \
-         status-workflow-verification; do
+         status-workflow-verification \
+         status-matrix-bulk-verification; do
   wp eval "require \"$IT/$v.php\";" >/dev/null 2>&1 \
     && echo "PASS $v" || echo "FAIL $v"
 done
@@ -121,6 +122,7 @@ given machine can run the check at all:
 | `schema-custom-verification.php` | schema | The custom node coexists with Yoast's own nodes in the emitted graph |
 | `llms-txt-verification.php` ³ | core | The flag-off rewrite rule and 404 are indistinguishable from never-installed; exact byte/`ETag`/`Last-Modified` fidelity and `304` handling; the front-end route performs no post query and no write, proven by query count plus option `option_id`/value identity plus a behavioural absence proof; the leak matrix (draft, private, password-protected, `noindex`, non-public-post-type); de-publish staleness after regeneration; `preview-update-llms-txt` purity; `update-llms-txt` rejecting a stale token before any write; `regenerate-llms-txt` idempotency; the physical-artifact ownership conflict and its ABSPATH-vs-web-root regression with no filesystem path leaked; and deterministic bound truncation |
 | `status-workflow-verification.php` | core | `transition-content-status` absent while `wpcb_writes_enabled` is off, `get-status-transitions` always present; the empty-graph deny-all default; the response reporting the status read back from storage; ADR 0024's "may unpublish but not publish" asymmetry; `publish`/`future` refused while `wpcb_publish_enabled` is off despite the pair and capability being held; a stale `version_token` and a past `publish_at` both rejected with the stored row untouched; a scheduled transition storing the exact requested `post_date_gmt`; DST spring-forward-gap rejection and autumn-fold/ordinary-instant round-trips against the real Europe/Warsaw tz database; the revision and field-names-only audit invariants; the full draft → pending → publish flow; the deliberate per-target `gates` semantics for non-privileged targets; and the mutation repository's own read-back defence against a WordPress-rewritten transition |
+| `status-matrix-bulk-verification.php` | core | The settings matrix bulk toggles: one whole-matrix, one per ordered pair, one per content type; both axis attributes on every governed cell; that **no toggle carries a form field name**, so the submitted matrix is byte-for-byte what 0.7.0 submitted; that every toggle ships inside a hidden wrapper and so does nothing without JavaScript; the preset confirmation prompt; that the assets enqueue on the settings screen and on no other, at the current plugin version, with the hook suffix resolved the way `add_options_page()` resolves it rather than hard-coded; and that the content-access matrix above gained no bulk attributes |
 | `http-url-runtime-verification.sh` | http | URL-target resolution through a real HTTP request context, public head parity |
 | `mcp-smoke-verification.sh` | mcp | `initialize` → `tools/list` → `tools/call` over Streamable HTTP as the least-privilege bridge principal |
 | `local-multilocation-runtime-verification.sh` | yoast + http | Branch identity from provider-emitted Local Schema, bounds, and that no private Local option leaks |
@@ -160,6 +162,7 @@ shipped unverified, and that should be visible rather than reconstructable.
 
 | Date | Result | Notes |
 |---|---|---|
+| 2026-08-09 | 22/22 | 0.7.1. Adds `status-matrix-bulk-verification`. No ability, schema, or stored value changed; the run is what proves it, since the release edits the screen that writes the transition allowlist. Also fixes a packaging leak: the maintainer notes file shipped inside every artifact from 0.5.0 through 0.7.0. |
 | 2026-08-09 | 21/21 | 0.7.0. Adds `status-workflow-verification`, which pins the publication gates, the pair-allowlist asymmetry, DST handling driven from the real tz database, and the read-back defence against a WordPress-rewritten transition. |
 | 2026-08-08 | 20/20 | 0.6.0. Adds `llms-txt-verification`. Its `noindex` leg found a leak into the public document caused by Yoast returning the first-resolved post's meta for every later post in one request; `local-multilocation-runtime-verification` found `get-editorial-context` rejecting its own valid output over a missing `parentOrganization` key. Both fixed before the row was written. |
 | 2026-08-07 | 19/19 | 0.5.0. Adds `block-edits-verification`, whose escaping assertion found a backslash-stripping defect shipped since 0.1.5. |

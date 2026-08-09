@@ -89,6 +89,7 @@ jobs:
           /.claude
           /.superpowers
           /.continue-here.md
+          /.uer-notes.md
           /.phpunit.cache
           /.editorconfig
           /build
@@ -110,7 +111,7 @@ jobs:
       - name: Assert no development files in the artifact
         run: |
           LEAKED=$(unzip -l wp-content-bridge.zip \
-            | grep -E 'wp-content-bridge/(docs|tests|stubs|\.agents|\.claude|\.superpowers)/|wp-content-bridge/(AGENTS|CLAUDE|CODEX|GEMINI)\.md$|wp-content-bridge/composer\.(json|lock)$' \
+            | grep -E 'wp-content-bridge/(docs|tests|stubs|\.agents|\.claude|\.superpowers)/|wp-content-bridge/(AGENTS|CLAUDE|CODEX|GEMINI)\.md$|wp-content-bridge/\.(uer-notes|continue-here)\.md$|wp-content-bridge/composer\.(json|lock)$' \
             || true)
           if [ -n "$LEAKED" ]; then
             echo "Development files leaked into the release artifact:"

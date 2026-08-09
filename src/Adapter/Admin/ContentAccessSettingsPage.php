@@ -67,12 +67,57 @@ final readonly class ContentAccessSettingsPage {
 	 * @return void
 	 */
 	public function register_page(): void {
-		add_options_page(
+		$hook_suffix = add_options_page(
 			esc_html__( 'WP Content Bridge', 'wp-content-bridge' ),
 			esc_html__( 'WP Content Bridge', 'wp-content-bridge' ),
 			'wpcb_manage_settings',
 			'wp-content-bridge',
 			array( $this, 'render' )
+		);
+
+		/*
+		 * The returned hook suffix is the only authoritative name for this
+		 * screen. Hard-coding `settings_page_wp-content-bridge` would break
+		 * silently if the menu parent ever moved, and loading the assets on
+		 * every admin screen would be worse.
+		 */
+		if ( ! is_string( $hook_suffix ) || '' === $hook_suffix ) {
+			return;
+		}
+
+		add_action(
+			'admin_enqueue_scripts',
+			function ( string $current_screen ) use ( $hook_suffix ): void {
+				if ( $current_screen === $hook_suffix ) {
+					$this->enqueue_assets();
+				}
+			}
+		);
+	}
+
+	/**
+	 * Enqueues the status transition matrix bulk-selection assets.
+	 *
+	 * Both are progressive enhancement: the bulk toggles submit nothing and
+	 * stay hidden without them, so a failed enqueue degrades to the matrix as
+	 * it shipped in 0.7.0 rather than to a broken form.
+	 *
+	 * @return void
+	 */
+	private function enqueue_assets(): void {
+		wp_enqueue_style(
+			'wpcb-status-transitions',
+			plugins_url( 'assets/admin/status-transitions.css', WPCB_FILE ),
+			array(),
+			WPCB_VERSION
+		);
+
+		wp_enqueue_script(
+			'wpcb-status-transitions',
+			plugins_url( 'assets/admin/status-transitions.js', WPCB_FILE ),
+			array(),
+			WPCB_VERSION,
+			true
 		);
 	}
 
@@ -257,13 +302,34 @@ final readonly class ContentAccessSettingsPage {
 				<?php if ( ! $this->status_transitions->is_configured() ) : ?>
 					<div class="notice notice-warning inline"><p><?php echo esc_html__( 'Status transitions have never been saved on this site. Every transition is currently denied.', 'wp-content-bridge' ); ?></p></div>
 				<?php endif; ?>
-				<div style="overflow-x: auto;">
+				<div id="wpcb-status-transitions" style="overflow-x: auto;">
 					<table class="widefat striped" aria-describedby="wpcb-status-transitions-help">
 						<thead>
 							<tr>
-								<th scope="col"><?php echo esc_html__( 'Content type', 'wp-content-bridge' ); ?></th>
+								<th scope="col">
+									<?php echo esc_html__( 'Content type', 'wp-content-bridge' ); ?>
+									<span class="wpcb-bulk-toggle" hidden>
+										<label>
+											<input type="checkbox" data-wpcb-scope="all">
+											<?php echo esc_html__( 'Select every pair', 'wp-content-bridge' ); ?>
+										</label>
+									</span>
+								</th>
 								<?php foreach ( StatusTransition::all_possible() as $pair ) : ?>
-									<th scope="col"><?php echo esc_html( $pair->from->value . ' → ' . $pair->to->value ); ?></th>
+									<th scope="col">
+										<?php echo esc_html( $pair->from->value . ' → ' . $pair->to->value ); ?>
+										<span class="wpcb-bulk-toggle" hidden>
+											<label>
+												<input type="checkbox" data-wpcb-scope="column" data-wpcb-key="<?php echo esc_attr( $pair->from->value . ':' . $pair->to->value ); ?>">
+												<span class="screen-reader-text">
+													<?php
+													/* translators: %s: a status pair such as "draft to pending". */
+													printf( esc_html__( 'Select %s for every content type', 'wp-content-bridge' ), esc_html( $pair->from->value . ' to ' . $pair->to->value ) );
+													?>
+												</span>
+											</label>
+										</span>
+									</th>
 								<?php endforeach; ?>
 							</tr>
 						</thead>
@@ -274,12 +340,23 @@ final readonly class ContentAccessSettingsPage {
 									<th scope="row">
 										<?php echo esc_html( $definition->label ); ?>
 										<code><?php echo esc_html( $definition->name ); ?></code>
+										<span class="wpcb-bulk-toggle" hidden>
+											<label>
+												<input type="checkbox" data-wpcb-scope="row" data-wpcb-key="<?php echo esc_attr( $definition->name ); ?>">
+												<span class="screen-reader-text">
+													<?php
+													/* translators: %s: a content type label. */
+													printf( esc_html__( 'Select every pair for %s', 'wp-content-bridge' ), esc_html( $definition->label ) );
+													?>
+												</span>
+											</label>
+										</span>
 									</th>
 									<?php foreach ( StatusTransition::all_possible() as $pair ) : ?>
 										<td>
 											<input type="hidden" name="<?php echo esc_attr( WordPressStatusTransitionRepository::OPTION_NAME ); ?>[<?php echo esc_attr( $definition->name ); ?>][<?php echo esc_attr( $pair->from->value ); ?>][<?php echo esc_attr( $pair->to->value ); ?>]" value="0">
 											<label>
-												<input type="checkbox" name="<?php echo esc_attr( WordPressStatusTransitionRepository::OPTION_NAME ); ?>[<?php echo esc_attr( $definition->name ); ?>][<?php echo esc_attr( $pair->from->value ); ?>][<?php echo esc_attr( $pair->to->value ); ?>]" value="1" <?php checked( $status_config->graph->permits( $definition->name, $pair->from->value, $pair->to->value ) ); ?>>
+												<input type="checkbox" name="<?php echo esc_attr( WordPressStatusTransitionRepository::OPTION_NAME ); ?>[<?php echo esc_attr( $definition->name ); ?>][<?php echo esc_attr( $pair->from->value ); ?>][<?php echo esc_attr( $pair->to->value ); ?>]" value="1" data-wpcb-row="<?php echo esc_attr( $definition->name ); ?>" data-wpcb-col="<?php echo esc_attr( $pair->from->value . ':' . $pair->to->value ); ?>" <?php checked( $status_config->graph->permits( $definition->name, $pair->from->value, $pair->to->value ) ); ?>>
 												<span class="screen-reader-text"><?php echo esc_html( $definition->label . ': ' . $pair->from->value . ' to ' . $pair->to->value ); ?></span>
 											</label>
 										</td>
@@ -470,7 +547,24 @@ final readonly class ContentAccessSettingsPage {
 		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 			<input type="hidden" name="action" value="<?php echo esc_attr( self::PRESET_ACTION ); ?>">
 			<?php wp_nonce_field( self::PRESET_NONCE ); ?>
-			<?php submit_button( esc_html__( 'Apply editorial preset', 'wp-content-bridge' ), 'secondary' ); ?>
+			<?php
+			/*
+			 * The preset replaces every rendered content type's row outright.
+			 * One click therefore discards a hand-built matrix, which the
+			 * paragraph above states but the button did not. The confirmation
+			 * is attached by the enqueued script; without JavaScript the
+			 * button behaves as it did in 0.7.0.
+			 */
+			submit_button(
+				esc_html__( 'Apply editorial preset', 'wp-content-bridge' ),
+				'secondary',
+				'submit',
+				true,
+				array(
+					'data-wpcb-confirm' => esc_attr__( 'Applying the preset replaces the configured status pairs for every content type shown above. Continue?', 'wp-content-bridge' ),
+				)
+			);
+			?>
 		</form>
 		<?php
 	}

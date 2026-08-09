@@ -1,0 +1,20 @@
+/**
+ * Status transition matrix bulk toggles.
+ *
+ * `display: block` is declared here rather than as an inline style because an
+ * inline `display` beats the user-agent `[hidden] { display: none }` rule and
+ * would leave the toggles visible with JavaScript off, where they do nothing.
+ *
+ * @package IsuDev\WPContentBridge
+ */
+
+.wpcb-bulk-toggle {
+	display: block;
+	margin-top: 4px;
+	font-weight: 400;
+	white-space: nowrap;
+}
+
+.wpcb-bulk-toggle[hidden] {
+	display: none;
+}

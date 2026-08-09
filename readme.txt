@@ -4,7 +4,7 @@ Tags: abilities, mcp, ai, content, seo, yoast
 Requires at least: 7.0
 Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.7.0
+Stable tag: 0.7.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -33,6 +33,12 @@ Deleting the plugin removes its options, its dedicated `wpcb_*` capabilities fro
 The `{prefix}wpcb_audit` table is deliberately left in place. It records who changed what through the bridge — field names only, never values — as a rolling window of the most recent 5,000 mutation attempts. Destroying that record silently on delete is not the plugin's call to make. Remove the table deliberately if you want it gone.
 
 == Changelog ==
+
+= 0.7.1 =
+* Added row, column, and whole-matrix bulk selection to the **Status transitions** settings matrix. Five statuses produce twenty ordered pairs per content type, and ticking that by hand was the practical barrier to configuring the allowlist at all.
+* The bulk toggles are progressive enhancement. They carry no form field, stay hidden without JavaScript, and change nothing about how a submitted matrix is normalized — the same server-side sanitization runs, and a selected pair still grants no publication without the publication flag, the `wpcb_publish_content` capability, and native `publish_post`.
+* A partially selected row or column now shows an indeterminate toggle rather than an unchecked one, so "some of these are on" is distinguishable from "none of these are on".
+* Fixed a packaging leak: the maintainer notes file was shipped inside the release artifact from 0.5.0 through 0.7.0. It is now excluded from the build and asserted absent, alongside the existing development-file check.
 
 = 0.7.0 =
 * Added `wp-content-bridge/transition-content-status` and its companion read `wp-content-bridge/get-status-transitions`, completing the draft, review, publish and schedule workflow without adding a free-form `post_status` field to content updates.

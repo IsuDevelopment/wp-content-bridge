@@ -1,12 +1,22 @@
 # Project status
 
-**Released version: 0.7.0.** Static quality is green at 408 tests / 1,071
+**Released version: 0.7.1.** Static quality is green at 408 tests / 1,071
 assertions. Runtime verification is defined in `docs/setup/VERIFICATION.md`.
 `0.7.0` completes the status workflow: transitions run against an
 administrator-configured allowlist of ordered status pairs per post type (ADR
 0024), empty until someone configures it, with `publish` and `future` behind
-three further gates. This closes gap 8 below. Next is `0.8.0`, Slice 3
-(revision inspection and recovery).
+three further gates. This closes gap 8 below.
+
+`0.7.1` is a patch with no ability, schema, or stored-value change. It makes
+that allowlist practical to configure — five statuses give twenty ordered pairs
+per content type, so the reference site's three types render sixty checkboxes —
+by adding row, column, and whole-matrix bulk selection, and it warns before the
+editorial preset discards a hand-built matrix. The toggles carry no form field,
+so what the matrix submits is unchanged. It also fixes a packaging leak: the
+maintainer notes file shipped inside every release artifact from 0.5.0 through
+0.7.0.
+
+Next is `0.8.0`, Slice 3 (revision inspection and recovery).
 
 ## Block-level edits — 0.5.0, 2026-08-07
 
