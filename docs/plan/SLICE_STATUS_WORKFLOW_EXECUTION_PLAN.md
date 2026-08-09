@@ -158,7 +158,11 @@ string.
 `block-edits-verification.php`, restoring every option and post in a `finally`.
 Assert:
 
-1. with `wpcb_writes_enabled` off, neither ability is registered;
+1. with `wpcb_writes_enabled` off, `transition-content-status` is not
+   registered, while `get-status-transitions` still is. An earlier draft of
+   this line said "neither ability", which contradicted task 3 above: the read
+   is always registered, like every other read in this plugin, so that an
+   operator can inspect the configured graph before enabling writes;
 2. with an empty graph, every transition is refused and nothing is written;
 3. a configured pair transitions, and the response reports the **stored** status;
 4. the reverse pair, if unlisted, is refused — the "may unpublish but not

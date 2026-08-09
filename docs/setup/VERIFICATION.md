@@ -71,7 +71,8 @@ for v in abilities-runtime-verification \
          writes-seo-verification \
          schema-service-verification \
          schema-custom-verification \
-         llms-txt-verification; do
+         llms-txt-verification \
+         status-workflow-verification; do
   wp eval "require \"$IT/$v.php\";" >/dev/null 2>&1 \
     && echo "PASS $v" || echo "FAIL $v"
 done
@@ -119,6 +120,7 @@ given machine can run the check at all:
 | `schema-service-verification.php` | schema | Service / `areaServed` / `hasOfferCatalog` parity in the rendered front-end JSON-LD graph |
 | `schema-custom-verification.php` | schema | The custom node coexists with Yoast's own nodes in the emitted graph |
 | `llms-txt-verification.php` ³ | core | The flag-off rewrite rule and 404 are indistinguishable from never-installed; exact byte/`ETag`/`Last-Modified` fidelity and `304` handling; the front-end route performs no post query and no write, proven by query count plus option `option_id`/value identity plus a behavioural absence proof; the leak matrix (draft, private, password-protected, `noindex`, non-public-post-type); de-publish staleness after regeneration; `preview-update-llms-txt` purity; `update-llms-txt` rejecting a stale token before any write; `regenerate-llms-txt` idempotency; the physical-artifact ownership conflict and its ABSPATH-vs-web-root regression with no filesystem path leaked; and deterministic bound truncation |
+| `status-workflow-verification.php` | core | `transition-content-status` absent while `wpcb_writes_enabled` is off, `get-status-transitions` always present; the empty-graph deny-all default; the response reporting the status read back from storage; ADR 0024's "may unpublish but not publish" asymmetry; `publish`/`future` refused while `wpcb_publish_enabled` is off despite the pair and capability being held; a stale `version_token` and a past `publish_at` both rejected with the stored row untouched; a scheduled transition storing the exact requested `post_date_gmt`; DST spring-forward-gap rejection and autumn-fold/ordinary-instant round-trips against the real Europe/Warsaw tz database; the revision and field-names-only audit invariants; the full draft → pending → publish flow; the deliberate per-target `gates` semantics for non-privileged targets; and the mutation repository's own read-back defence against a WordPress-rewritten transition |
 | `http-url-runtime-verification.sh` | http | URL-target resolution through a real HTTP request context, public head parity |
 | `mcp-smoke-verification.sh` | mcp | `initialize` → `tools/list` → `tools/call` over Streamable HTTP as the least-privilege bridge principal |
 | `local-multilocation-runtime-verification.sh` | yoast + http | Branch identity from provider-emitted Local Schema, bounds, and that no private Local option leaks |
