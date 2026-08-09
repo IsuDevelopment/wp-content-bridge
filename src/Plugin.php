@@ -22,6 +22,7 @@ use IsuDev\WPContentBridge\Adapter\Abilities\SeoAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\ServiceSchemaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\TrashAbilities;
 use IsuDev\WPContentBridge\Application\Access\IntegrationAccessManager;
+use IsuDev\WPContentBridge\Application\Status\StatusTransitionManager;
 use IsuDev\WPContentBridge\Application\Content\GetBlockTree;
 use IsuDev\WPContentBridge\Application\Content\GetContent;
 use IsuDev\WPContentBridge\Application\Content\SearchContent;
@@ -82,6 +83,7 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressPostCacheInvalidato
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressRenderedSchemaReader;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoImageRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressStatusTransitionRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressTaxonomyCatalog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoTargetAccess;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressTransientIdempotencyStore;
@@ -126,7 +128,8 @@ final class Plugin {
 
 			( new ContentAccessSettingsPage(
 				$manager,
-				new IntegrationAccessManager( new WordPressIntegrationAccessRepository() )
+				new IntegrationAccessManager( new WordPressIntegrationAccessRepository() ),
+				new StatusTransitionManager( new WordPressStatusTransitionRepository() )
 			) )->register_hooks();
 		}
 

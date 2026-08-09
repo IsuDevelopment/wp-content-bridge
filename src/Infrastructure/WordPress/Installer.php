@@ -97,6 +97,16 @@ final class Installer {
 		add_option( self::TRASH_ENABLED_OPTION, false, '', false );
 		add_option( self::LLMS_ENABLED_OPTION, false, '', false );
 		add_option( self::INTEGRATION_USER_OPTION, 0, '', false );
+
+		/*
+		 * `WordPressStatusTransitionRepository::OPTION_NAME` is deliberately
+		 * absent from the list above, and must stay absent. ADR 0024 requires
+		 * the settings screen to tell "never configured" from "configured to
+		 * nothing", and that repository distinguishes them by whether the
+		 * option row exists at all. Seeding it here with `array()`, the way
+		 * every other array-shaped option above is seeded, would make every
+		 * fresh install look like an administrator who saved an empty matrix.
+		 */
 		delete_option( self::LEGACY_PUBLIC_BASE_URL_OPTION );
 		self::create_audit_table();
 		// Activation/upgrade always runs before this request's `init`, so the

@@ -45,6 +45,7 @@ foreach ( array(
 	'wpcb_llms_regen_dirty',
 	'wpcb_integration_user_id',
 	'wpcb_public_base_url',
+	'wpcb_status_transitions',
 ) as $wpcb_option ) {
 	delete_option( $wpcb_option );
 }

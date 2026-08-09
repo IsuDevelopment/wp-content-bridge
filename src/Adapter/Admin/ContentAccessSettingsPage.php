@@ -12,10 +12,14 @@ namespace IsuDev\WPContentBridge\Adapter\Admin;
 use IsuDev\WPContentBridge\Application\Access\IntegrationAccessManager;
 use IsuDev\WPContentBridge\Application\Access\IntegrationAccessProblem;
 use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessManager;
+use IsuDev\WPContentBridge\Application\Status\StatusTransitionManager;
 use IsuDev\WPContentBridge\Domain\Access\IntegrationCapability;
 use IsuDev\WPContentBridge\Domain\ContentAccess\ContentOperation;
+use IsuDev\WPContentBridge\Domain\ContentAccess\ContentTypeDefinition;
+use IsuDev\WPContentBridge\Domain\Status\StatusTransition;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\Installer;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentAccessSettingsRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressStatusTransitionRepository;
 use Throwable;
 
 /**
@@ -23,19 +27,24 @@ use Throwable;
  */
 final readonly class ContentAccessSettingsPage {
 
-	private const OPTION_GROUP  = 'wpcb_content_access';
-	private const ACCESS_ACTION = 'wpcb_update_integration_access';
-	private const ACCESS_NONCE  = 'wpcb_integration_access';
+	private const OPTION_GROUP            = 'wpcb_content_access';
+	private const ACCESS_ACTION           = 'wpcb_update_integration_access';
+	private const ACCESS_NONCE            = 'wpcb_integration_access';
+	private const PRESET_ACTION           = 'wpcb_apply_status_transition_preset';
+	private const PRESET_NONCE            = 'wpcb_status_transition_preset';
+	private const PRESET_STATUS_QUERY_ARG = 'wpcb_status_preset_status';
 
 	/**
 	 * Creates the Settings API adapter.
 	 *
-	 * @param ContentAccessManager     $manager            Shared access policy service.
-	 * @param IntegrationAccessManager $integration_access Integration-principal access service.
+	 * @param ContentAccessManager     $manager             Shared access policy service.
+	 * @param IntegrationAccessManager $integration_access   Integration-principal access service.
+	 * @param StatusTransitionManager  $status_transitions   Status transition graph configuration service.
 	 */
 	public function __construct(
 		private ContentAccessManager $manager,
-		private IntegrationAccessManager $integration_access
+		private IntegrationAccessManager $integration_access,
+		private StatusTransitionManager $status_transitions,
 	) {
 	}
 
@@ -48,6 +57,7 @@ final readonly class ContentAccessSettingsPage {
 		add_action( 'admin_menu', array( $this, 'register_page' ) );
 		add_action( 'admin_init', array( $this, 'register_setting' ) );
 		add_action( 'admin_post_' . self::ACCESS_ACTION, array( $this, 'update_integration_access' ) );
+		add_action( 'admin_post_' . self::PRESET_ACTION, array( $this, 'apply_status_transition_preset' ) );
 		add_filter( 'option_page_capability_' . self::OPTION_GROUP, array( $this, 'settings_capability' ) );
 	}
 
@@ -137,6 +147,17 @@ final readonly class ContentAccessSettingsPage {
 				'show_in_rest'      => false,
 			)
 		);
+
+		register_setting(
+			self::OPTION_GROUP,
+			WordPressStatusTransitionRepository::OPTION_NAME,
+			array(
+				'type'              => 'array',
+				'default'           => array(),
+				'sanitize_callback' => array( $this, 'sanitize_status_transitions' ),
+				'show_in_rest'      => false,
+			)
+		);
 	}
 
 	/**
@@ -157,6 +178,16 @@ final readonly class ContentAccessSettingsPage {
 	 */
 	public function sanitize( mixed $value ): array {
 		return $this->manager->normalize_submitted( $value );
+	}
+
+	/**
+	 * Normalizes the status transition matrix submitted through options.php.
+	 *
+	 * @param mixed $value Submitted option value.
+	 * @return array<string, mixed>
+	 */
+	public function sanitize_status_transitions( mixed $value ): array {
+		return $this->status_transitions->normalize_submitted( $value, $this->eligible_post_types() );
 	}
 
 	/**
@@ -219,7 +250,46 @@ final readonly class ContentAccessSettingsPage {
 					</tbody>
 				</table>
 				<p id="wpcb-content-access-help" class="description"><?php echo esc_html__( 'Search and every write operation require Read. Invalid combinations are disabled when settings are saved.', 'wp-content-bridge' ); ?></p>
-				<p class="description"><?php echo esc_html__( 'Status-transition policy is reserved for the planned transition-content-status ability. Public and scheduled transitions will additionally require the publication flag and capability.', 'wp-content-bridge' ); ?></p>
+				<p class="description"><?php echo esc_html__( 'The Change status column above only enables the transition-content-status ability for a type. Which specific status moves are allowed is configured in the matrix below.', 'wp-content-bridge' ); ?></p>
+
+				<h2><?php echo esc_html__( 'Status transitions', 'wp-content-bridge' ); ?></h2>
+				<p><?php echo esc_html__( 'Choose the exact status moves each content type may perform. A pair such as publish → draft does not imply the reverse draft → publish; each direction must be listed on its own.', 'wp-content-bridge' ); ?></p>
+				<?php if ( ! $this->status_transitions->is_configured() ) : ?>
+					<div class="notice notice-warning inline"><p><?php echo esc_html__( 'Status transitions have never been saved on this site. Every transition is currently denied.', 'wp-content-bridge' ); ?></p></div>
+				<?php endif; ?>
+				<div style="overflow-x: auto;">
+					<table class="widefat striped" aria-describedby="wpcb-status-transitions-help">
+						<thead>
+							<tr>
+								<th scope="col"><?php echo esc_html__( 'Content type', 'wp-content-bridge' ); ?></th>
+								<?php foreach ( StatusTransition::all_possible() as $pair ) : ?>
+									<th scope="col"><?php echo esc_html( $pair->from->value . ' → ' . $pair->to->value ); ?></th>
+								<?php endforeach; ?>
+							</tr>
+						</thead>
+						<tbody>
+							<?php $status_config = $this->status_transitions->config(); ?>
+							<?php foreach ( $this->manager->content_types() as $definition ) : ?>
+								<tr>
+									<th scope="row">
+										<?php echo esc_html( $definition->label ); ?>
+										<code><?php echo esc_html( $definition->name ); ?></code>
+									</th>
+									<?php foreach ( StatusTransition::all_possible() as $pair ) : ?>
+										<td>
+											<input type="hidden" name="<?php echo esc_attr( WordPressStatusTransitionRepository::OPTION_NAME ); ?>[<?php echo esc_attr( $definition->name ); ?>][<?php echo esc_attr( $pair->from->value ); ?>][<?php echo esc_attr( $pair->to->value ); ?>]" value="0">
+											<label>
+												<input type="checkbox" name="<?php echo esc_attr( WordPressStatusTransitionRepository::OPTION_NAME ); ?>[<?php echo esc_attr( $definition->name ); ?>][<?php echo esc_attr( $pair->from->value ); ?>][<?php echo esc_attr( $pair->to->value ); ?>]" value="1" <?php checked( $status_config->graph->permits( $definition->name, $pair->from->value, $pair->to->value ) ); ?>>
+												<span class="screen-reader-text"><?php echo esc_html( $definition->label . ': ' . $pair->from->value . ' to ' . $pair->to->value ); ?></span>
+											</label>
+										</td>
+									<?php endforeach; ?>
+								</tr>
+							<?php endforeach; ?>
+						</tbody>
+					</table>
+				</div>
+				<p id="wpcb-status-transitions-help" class="description"><?php echo esc_html__( 'A pair alone is not enough: a move to publish or future additionally requires the reserved publication flag, the Publish content capability, and native publish_post, none of which are affected by this matrix.', 'wp-content-bridge' ); ?></p>
 
 				<h2><?php echo esc_html__( 'Media reads', 'wp-content-bridge' ); ?></h2>
 				<table class="widefat striped" aria-describedby="wpcb-media-reads-enabled-help">
@@ -309,6 +379,7 @@ final readonly class ContentAccessSettingsPage {
 				<?php submit_button(); ?>
 			</form>
 
+			<?php $this->render_status_transition_preset(); ?>
 			<?php $this->render_integration_access(); ?>
 		</div>
 		<?php
@@ -358,6 +429,108 @@ final readonly class ContentAccessSettingsPage {
 		} catch ( Throwable ) {
 			$this->redirect_access_status( 'update_failed' );
 		}
+	}
+
+	/**
+	 * Applies the ADR 0024 editorial preset to every currently eligible
+	 * content type.
+	 *
+	 * This is a deliberate administrator action, never a default: nothing
+	 * in activation or upgrade calls the equivalent application-service
+	 * method, and pressing this button always overwrites the matrix rows
+	 * for eligible types rather than merging into whatever an administrator
+	 * already configured for them.
+	 *
+	 * @return void
+	 */
+	public function apply_status_transition_preset(): void {
+		check_admin_referer( self::PRESET_NONCE );
+
+		if ( ! current_user_can( 'wpcb_manage_settings' ) ) {
+			wp_die( esc_html__( 'You are not allowed to manage WP Content Bridge settings.', 'wp-content-bridge' ) );
+		}
+
+		$this->status_transitions->apply_editorial_preset( $this->eligible_post_types() );
+		$this->redirect_status_preset_status( 'applied' );
+	}
+
+	/**
+	 * Renders the editorial-preset action as its own discrete form, matching
+	 * the integration-access section's separate admin-post.php submission
+	 * rather than folding it into the options.php matrix save.
+	 *
+	 * @return void
+	 */
+	private function render_status_transition_preset(): void {
+		?>
+		<hr>
+		<h2><?php echo esc_html__( 'Status transition preset', 'wp-content-bridge' ); ?></h2>
+		<p><?php echo esc_html__( 'Applies the documented editorial preset (draft and pending may move to each other, and either may move to private) to every content type listed above. It never adds a publish or future pair. Existing rows for those content types are replaced.', 'wp-content-bridge' ); ?></p>
+		<?php $this->render_status_preset_notice(); ?>
+		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+			<input type="hidden" name="action" value="<?php echo esc_attr( self::PRESET_ACTION ); ?>">
+			<?php wp_nonce_field( self::PRESET_NONCE ); ?>
+			<?php submit_button( esc_html__( 'Apply editorial preset', 'wp-content-bridge' ), 'secondary' ); ?>
+		</form>
+		<?php
+	}
+
+	/**
+	 * Renders a bounded status message after a preset action.
+	 *
+	 * @return void
+	 */
+	private function render_status_preset_notice(): void {
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Read-only, bounded status message after a redirect.
+		$status = isset( $_GET[ self::PRESET_STATUS_QUERY_ARG ] ) && is_string( $_GET[ self::PRESET_STATUS_QUERY_ARG ] )
+			? sanitize_key( wp_unslash( $_GET[ self::PRESET_STATUS_QUERY_ARG ] ) )
+			: '';
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+		$messages = array(
+			'applied' => array( 'success', __( 'The editorial preset was applied to every eligible content type.', 'wp-content-bridge' ) ),
+		);
+
+		if ( ! isset( $messages[ $status ] ) ) {
+			return;
+		}
+
+		$message = $messages[ $status ];
+		?>
+		<div class="notice notice-<?php echo esc_attr( $message[0] ); ?> inline"><p><?php echo esc_html( $message[1] ); ?></p></div>
+		<?php
+	}
+
+	/**
+	 * Redirects to a bounded status message on the settings page.
+	 *
+	 * @param string $status Stable status code.
+	 * @return never
+	 */
+	private function redirect_status_preset_status( string $status ): never {
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'                        => 'wp-content-bridge',
+					self::PRESET_STATUS_QUERY_ARG => sanitize_key( $status ),
+				),
+				admin_url( 'options-general.php' )
+			)
+		);
+		exit;
+	}
+
+	/**
+	 * Lists the post types the status transition matrix currently renders
+	 * rows for.
+	 *
+	 * @return array
+	 * @phpstan-return list<string>
+	 */
+	private function eligible_post_types(): array {
+		return array_map(
+			static fn ( ContentTypeDefinition $definition ): string => $definition->name,
+			$this->manager->content_types()
+		);
 	}
 
 	/**
