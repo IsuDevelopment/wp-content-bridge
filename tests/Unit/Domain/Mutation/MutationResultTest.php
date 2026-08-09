@@ -72,4 +72,42 @@ final class MutationResultTest extends TestCase {
 
 		self::assertArrayNotHasKey( 'effective_seo', $result->to_array() );
 	}
+
+	/**
+	 * The wire representation includes publish_at when present.
+	 */
+	public function test_to_array_includes_publish_at_when_present(): void {
+		$version = new VersionToken( 'abcdef0123456789', '2026-07-20 12:30:00' );
+		$result  = new MutationResult(
+			42,
+			'post',
+			'future',
+			$version,
+			array( 'status' ),
+			false,
+			null,
+			array(
+				'local' => '2026-09-01T09:00:00+02:00',
+				'utc'   => '2026-09-01T07:00:00Z',
+			)
+		);
+
+		self::assertSame(
+			array(
+				'local' => '2026-09-01T09:00:00+02:00',
+				'utc'   => '2026-09-01T07:00:00Z',
+			),
+			$result->to_array()['publish_at']
+		);
+	}
+
+	/**
+	 * The wire representation omits publish_at when absent.
+	 */
+	public function test_to_array_omits_publish_at_when_absent(): void {
+		$version = new VersionToken( 'abcdef0123456789', '2026-07-20 12:30:00' );
+		$result  = new MutationResult( 42, 'post', 'draft', $version, array( 'status' ), false );
+
+		self::assertArrayNotHasKey( 'publish_at', $result->to_array() );
+	}
 }

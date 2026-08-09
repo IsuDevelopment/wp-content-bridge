@@ -13,6 +13,7 @@ use IsuDev\WPContentBridge\Adapter\Admin\ContentAccessSettingsPage;
 use IsuDev\WPContentBridge\Adapter\Abilities\BlockMutationAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\ContentAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\CustomSchemaAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\GetStatusTransitionsAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\LlmsAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\MediaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\MutationAbilities;
@@ -21,8 +22,11 @@ use IsuDev\WPContentBridge\Adapter\Abilities\RestoreTrashedContentAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\SeoAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\ServiceSchemaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\TrashAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\TransitionContentStatusAbilities;
 use IsuDev\WPContentBridge\Application\Access\IntegrationAccessManager;
+use IsuDev\WPContentBridge\Application\Status\GetStatusTransitions;
 use IsuDev\WPContentBridge\Application\Status\StatusTransitionManager;
+use IsuDev\WPContentBridge\Application\Status\TransitionContentStatus;
 use IsuDev\WPContentBridge\Application\Content\GetBlockTree;
 use IsuDev\WPContentBridge\Application\Content\GetContent;
 use IsuDev\WPContentBridge\Application\Content\SearchContent;
@@ -83,7 +87,9 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressPostCacheInvalidato
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressRenderedSchemaReader;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoImageRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSiteClock;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressStatusTransitionRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressStatusTransitionTargetRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressTaxonomyCatalog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoTargetAccess;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressTransientIdempotencyStore;
@@ -124,12 +130,17 @@ final class Plugin {
 			new WordPressContentTypeCatalog()
 		);
 
+		// Shared with the admin settings screen below and with the always-on
+		// get-status-transitions read further down: the effective transition
+		// graph is needed regardless of `wpcb_writes_enabled`.
+		$status_transitions = new StatusTransitionManager( new WordPressStatusTransitionRepository() );
+
 		if ( is_admin() ) {
 
 			( new ContentAccessSettingsPage(
 				$manager,
 				new IntegrationAccessManager( new WordPressIntegrationAccessRepository() ),
-				new StatusTransitionManager( new WordPressStatusTransitionRepository() )
+				$status_transitions
 			) )->register_hooks();
 		}
 
@@ -160,6 +171,27 @@ final class Plugin {
 		( new SeoAbilities(
 			new GetSeo( $seo_providers, new WordPressSeoTargetAccess( $manager, $content_repository ) ),
 			new SameSiteSeoTargetFactory( home_url( '/' ) )
+		) )->register_hooks();
+
+		/*
+		 * `wpcb_publish_enabled` gates the `publish`/`future` targets of
+		 * `transition-content-status` (below) and is also reported by the
+		 * always-on `get-status-transitions` read, so it is read once here
+		 * rather than twice.
+		 */
+		$publish_enabled          = (bool) get_option( Installer::PUBLISH_ENABLED_OPTION );
+		$status_target_repository = new WordPressStatusTransitionTargetRepository();
+		$site_clock               = new WordPressSiteClock();
+
+		/*
+		 * get-status-transitions (Slice 2 task 3, ADR 0024) is a read: it
+		 * must remain available regardless of `wpcb_writes_enabled`, exactly
+		 * like the other reads registered above. The write half of this
+		 * feature area, transition-content-status, is registered further
+		 * below, only inside the `wpcb_writes_enabled` block.
+		 */
+		( new GetStatusTransitionsAbilities(
+			new GetStatusTransitions( $manager, $status_target_repository, $status_transitions, $site_clock, $publish_enabled )
 		) )->register_hooks();
 
 		/*
@@ -277,6 +309,26 @@ final class Plugin {
 					new RestoreTrashedContent( $manager, $trash_repository, $audit_log )
 				) )->register_hooks();
 			}
+
+			/*
+			 * transition-content-status (Slice 2 task 4, ADR 0024) is
+			 * registered only here, inside `wpcb_writes_enabled`: the write
+			 * must be unregistered while that flag is off, never
+			 * registered-and-refusing. Its own publication gates
+			 * (`wpcb_publish_enabled`, `wpcb_publish_content`, native
+			 * `publish_post`) are enforced inside the use case regardless.
+			 */
+			( new TransitionContentStatusAbilities(
+				new TransitionContentStatus(
+					$manager,
+					$status_target_repository,
+					$status_transitions,
+					$mutation_repository,
+					$site_clock,
+					$publish_enabled,
+					$audit_log
+				)
+			) )->register_hooks();
 		}
 
 		/**

@@ -171,6 +171,60 @@ final class WordPressContentMutationRepository implements ContentMutationReposit
 	}
 
 	/**
+	 * Applies a status transition and re-reads the result to confirm
+	 * WordPress stored exactly what was requested.
+	 *
+	 * `edit_date => true` is required whenever `$scheduled_at` is given:
+	 * measured on WordPress 7.0.3, `wp_update_post()` otherwise silently
+	 * ignores an explicit `post_date`/`post_date_gmt` on an update and
+	 * recomputes both to "now", which downgrades a `future` request to
+	 * `publish` regardless of the date actually supplied. `post_date` and
+	 * `post_date_gmt` are always set together for the same reason ADR 0024
+	 * calls out: setting one and letting WordPress derive the other is how
+	 * scheduled times drift.
+	 *
+	 * @param int                                    $post_id       Post ID to transition.
+	 * @param string                                 $target_status One of the five fixed statuses.
+	 * @param array{local: string, utc: string}|null $scheduled_at MySQL-format local/UTC date pair, or null to leave dates untouched.
+	 * @return MutationResult
+	 * @throws MutationWriteFailed When WordPress rejects the write, or stores a status or scheduled date other than what was requested.
+	 */
+	public function transition_status( int $post_id, string $target_status, ?array $scheduled_at ): MutationResult {
+		$args = array(
+			'ID'          => $post_id,
+			'post_status' => self::slashed( $target_status ),
+		);
+
+		if ( null !== $scheduled_at ) {
+			$args['post_date']     = self::slashed( $scheduled_at['local'] );
+			$args['post_date_gmt'] = self::slashed( $scheduled_at['utc'] );
+			$args['edit_date']     = true;
+		}
+
+		$result = wp_update_post( $args, true );
+		// @phpstan-ignore identical.alwaysFalse
+		if ( is_wp_error( $result ) || 0 === $result ) {
+			throw new MutationWriteFailed( 'WordPress rejected the status transition.' );
+		}
+
+		$post = get_post( $post_id );
+		if ( ! $post instanceof WP_Post ) {
+			throw new MutationWriteFailed( 'The transitioned post could not be re-read.' );
+		}
+
+		if ( $post->post_status !== $target_status ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- internal exception message, never rendered as HTML.
+			throw new MutationWriteFailed( "WordPress stored status '{$post->post_status}' instead of the requested '{$target_status}'." );
+		}
+		if ( null !== $scheduled_at && $post->post_date_gmt !== $scheduled_at['utc'] ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- internal exception message, never rendered as HTML.
+			throw new MutationWriteFailed( "WordPress stored a scheduled time of '{$post->post_date_gmt}' instead of the requested '{$scheduled_at['utc']}'." );
+		}
+
+		return $this->built_result( $post_id, false, array( 'status' ) );
+	}
+
+	/**
 	 * Applies taxonomy assignments to a post, replacing existing terms.
 	 *
 	 * @param int   $post_id    Post ID to assign terms to.

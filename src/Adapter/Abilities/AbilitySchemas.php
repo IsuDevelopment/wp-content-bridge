@@ -1708,6 +1708,158 @@ final class AbilitySchemas {
 	}
 
 	/**
+	 * Returns the get-status-transitions input schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function get_status_transitions_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'post_id' ),
+			'properties'           => array(
+				'post_id' => array(
+					'description' => 'WordPress content object ID.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the get-status-transitions output schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function get_status_transitions_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'schema_version', 'post_id', 'post_type', 'current_status', 'version_token', 'targets', 'scheduling', 'provenance' ),
+			'properties'           => array(
+				'schema_version' => array( 'type' => 'string' ),
+				'post_id'        => array( 'type' => 'integer' ),
+				'post_type'      => array( 'type' => 'string' ),
+				'current_status' => array(
+					'type' => 'string',
+					'enum' => array( 'draft', 'pending', 'private', 'publish', 'future' ),
+				),
+				'version_token'  => array( 'type' => 'string' ),
+				'targets'        => array(
+					'type'     => 'array',
+					'maxItems' => 20,
+					'items'    => self::status_transition_target(),
+				),
+				'scheduling'     => array(
+					'type'                 => 'object',
+					'required'             => array( 'site_timezone', 'utc_offset_seconds', 'scheduled_publication_can_run' ),
+					'properties'           => array(
+						'site_timezone'                 => array( 'type' => 'string' ),
+						'utc_offset_seconds'            => array( 'type' => 'integer' ),
+						'scheduled_publication_can_run' => array( 'type' => 'boolean' ),
+					),
+					'additionalProperties' => false,
+				),
+				'provenance'     => self::provenance(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns one permitted-target descriptor for get-status-transitions.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function status_transition_target(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'target_status', 'requires_publish_at', 'requires_publish_gates', 'gates' ),
+			'properties'           => array(
+				'target_status'          => array(
+					'type' => 'string',
+					'enum' => array( 'draft', 'pending', 'private', 'publish', 'future' ),
+				),
+				'requires_publish_at'    => array( 'type' => 'boolean' ),
+				'requires_publish_gates' => array( 'type' => 'boolean' ),
+				'gates'                  => array(
+					'type'                 => 'object',
+					'required'             => array( 'publish_enabled', 'publish_capability', 'native_publish_post' ),
+					'properties'           => array(
+						'publish_enabled'     => array( 'type' => 'boolean' ),
+						'publish_capability'  => array( 'type' => 'boolean' ),
+						'native_publish_post' => array( 'type' => 'boolean' ),
+					),
+					'additionalProperties' => false,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the transition-content-status input schema.
+	 *
+	 * `publish_at` is deliberately not RFC 3339 `format: date-time`: that
+	 * format requires a UTC offset or `Z`, and `publish_at` is defined to be
+	 * site-local with no offset of its own — the pattern below is the wire
+	 * shape {@see \IsuDev\WPContentBridge\Domain\Status\PublishAt} parses.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function transition_content_status_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'post_id', 'version_token', 'target_status' ),
+			'properties'           => array(
+				'post_id'       => array(
+					'description' => 'Target post ID.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+				),
+				'version_token' => array(
+					'description' => 'Optimistic-concurrency token from get-content.',
+					'type'        => 'string',
+					'minLength'   => 18,
+					'maxLength'   => 191,
+				),
+				'target_status' => array(
+					'description' => "Status to transition to; must be permitted from the object's current status by the configured transition graph.",
+					'type'        => 'string',
+					'enum'        => array( 'draft', 'pending', 'private', 'publish', 'future' ),
+				),
+				'publish_at'    => array(
+					'description' => 'Site-local date-time at which to schedule publication, in the form YYYY-MM-DDTHH:MM:SS with no UTC offset. Required when target_status is future; rejected for every other target_status.',
+					'type'        => 'string',
+					'pattern'     => '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$',
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the transition-content-status output schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function transition_content_status_output(): array {
+		$schema                             = self::mutation_output();
+		$schema['properties']['publish_at'] = array(
+			'description'          => 'Present only when the stored status is future: the scheduled instant, in both site-local and UTC forms.',
+			'type'                 => 'object',
+			'required'             => array( 'local', 'utc' ),
+			'properties'           => array(
+				'local' => array( 'type' => 'string' ),
+				'utc'   => array( 'type' => 'string' ),
+			),
+			'additionalProperties' => false,
+		);
+
+		return $schema;
+	}
+
+	/**
 	 * Returns the strict effective Service configuration document.
 	 *
 	 * @return array<string, mixed>

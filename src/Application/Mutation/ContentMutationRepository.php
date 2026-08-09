@@ -63,4 +63,23 @@ interface ContentMutationRepository {
 	 * @return MutationResult|null
 	 */
 	public function result_for( int $post_id ): ?MutationResult;
+
+	/**
+	 * Applies a status transition, optionally pinning `post_date` and
+	 * `post_date_gmt` together, and re-reads the result from storage to
+	 * confirm WordPress stored exactly what was requested.
+	 *
+	 * `$scheduled_at` is provided for `future` (the validated `publish_at`)
+	 * and for `publish` (the current instant, so a stale future date
+	 * carried over from a prior `future` status cannot keep WordPress
+	 * treating the post as still scheduled); it is omitted for every other
+	 * target, which are not subject to that date/status coherency check.
+	 *
+	 * @param int                                    $post_id       Post ID to transition.
+	 * @param string                                 $target_status One of the five fixed statuses.
+	 * @param array{local: string, utc: string}|null $scheduled_at  MySQL-format local/UTC date pair to pin together, or null to leave dates untouched.
+	 * @return MutationResult
+	 * @throws MutationWriteFailed When WordPress rejects the write, or stores a status or scheduled date other than what was requested.
+	 */
+	public function transition_status( int $post_id, string $target_status, ?array $scheduled_at ): MutationResult;
 }

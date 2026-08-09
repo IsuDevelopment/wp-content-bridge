@@ -490,6 +490,18 @@ final class CreateDraftTest extends TestCase {
 			public function result_for( int $post_id ): ?MutationResult {
 				return null;
 			}
+
+			/**
+			 * Not used by these tests.
+			 *
+			 * @param int                                    $post_id       Unused post ID.
+			 * @param string                                 $target_status Unused target status.
+			 * @param array{local: string, utc: string}|null $scheduled_at  Unused.
+			 * @throws \LogicException Always; this fake is not exercised by these tests.
+			 */
+			public function transition_status( int $post_id, string $target_status, ?array $scheduled_at ): MutationResult {
+				throw new \LogicException( 'not used' );
+			}
 		};
 	}
 
@@ -551,6 +563,18 @@ final class CreateDraftTest extends TestCase {
 			 */
 			public function result_for( int $post_id ): ?MutationResult {
 				return null;
+			}
+
+			/**
+			 * Not used by these tests.
+			 *
+			 * @param int                                    $post_id       Unused post ID.
+			 * @param string                                 $target_status Unused target status.
+			 * @param array{local: string, utc: string}|null $scheduled_at  Unused.
+			 * @throws \LogicException Always; this fake is not exercised by these tests.
+			 */
+			public function transition_status( int $post_id, string $target_status, ?array $scheduled_at ): MutationResult {
+				throw new \LogicException( 'not used' );
 			}
 		};
 	}
@@ -633,6 +657,18 @@ final class CreateDraftTest extends TestCase {
 					array(),
 					false
 				);
+			}
+
+			/**
+			 * Not used by these tests.
+			 *
+			 * @param int                                    $post_id       Unused post ID.
+			 * @param string                                 $target_status Unused target status.
+			 * @param array{local: string, utc: string}|null $scheduled_at  Unused.
+			 * @throws \LogicException Always; this fake is not exercised by these tests.
+			 */
+			public function transition_status( int $post_id, string $target_status, ?array $scheduled_at ): MutationResult {
+				throw new \LogicException( 'not used' );
 			}
 		};
 	}

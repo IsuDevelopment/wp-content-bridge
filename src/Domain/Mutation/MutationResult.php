@@ -17,13 +17,14 @@ final readonly class MutationResult {
 	/**
 	 * Creates a mutation result.
 	 *
-	 * @param int                       $post_id        The post ID.
-	 * @param string                    $post_type      The post type.
-	 * @param string                    $status         The post status.
-	 * @param VersionToken              $version        The version token.
-	 * @param array<int, string>        $changed_fields Field names that changed (never values).
-	 * @param bool                      $created        Whether the post was created.
-	 * @param array<string, mixed>|null $effective_seo Re-read normalized SEO document, SEO writes only.
+	 * @param int                                    $post_id        The post ID.
+	 * @param string                                 $post_type      The post type.
+	 * @param string                                 $status         The post status.
+	 * @param VersionToken                           $version        The version token.
+	 * @param array<int, string>                     $changed_fields Field names that changed (never values).
+	 * @param bool                                   $created        Whether the post was created.
+	 * @param array<string, mixed>|null              $effective_seo Re-read normalized SEO document, SEO writes only.
+	 * @param array{local: string, utc: string}|null $publish_at Re-read scheduled instant, `transition-content-status` targeting `future` only.
 	 */
 	public function __construct(
 		public int $post_id,
@@ -33,6 +34,7 @@ final readonly class MutationResult {
 		public array $changed_fields,
 		public bool $created,
 		public ?array $effective_seo = null,
+		public ?array $publish_at = null,
 	) {}
 
 	/**
@@ -57,6 +59,10 @@ final readonly class MutationResult {
 
 		if ( null !== $this->effective_seo ) {
 			$array['effective_seo'] = $this->effective_seo;
+		}
+
+		if ( null !== $this->publish_at ) {
+			$array['publish_at'] = $this->publish_at;
 		}
 
 		return $array;

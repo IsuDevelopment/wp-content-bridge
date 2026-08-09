@@ -74,6 +74,8 @@ final class WPCB_Abilities_Runtime_Verification {
 		'wp-content-bridge/get-custom-schema',
 		'wp-content-bridge/preview-update-custom-schema',
 		'wp-content-bridge/update-custom-schema',
+		'wp-content-bridge/get-status-transitions',
+		'wp-content-bridge/transition-content-status',
 	);
 
 	/**
