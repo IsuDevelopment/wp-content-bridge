@@ -19,6 +19,15 @@ maintainer notes file shipped inside every release artifact from 0.5.0 through
 `0.8.0` makes the plugin project its own abilities (see the section below). Slice
 3 (revision inspection and recovery) moves to `0.9.0`.
 
+Recorded 2026-08-11, unscheduled and undecided: an in-editor AI schema assist —
+one button that proposes structured data and writes only on an explicit accept,
+built on the core AI Client rather than the experimental `WordPress/ai` plugin.
+The domain layer for it already shipped; what it needs is a model call, an editor
+surface, and a prompt-injection design that keeps model output out of the write
+path. Requirements and the required mitigations are in the "Future backlog —
+in-editor AI schema assist" section of `docs/plan/IMPLEMENTATION_PLAN.md`. No ADR
+yet, so nothing may be implemented from it.
+
 ## MCP projection is owned by the plugin — 0.8.0, 2026-08-11
 
 ADR 0025. Registering abilities was never enough to use them: the official
