@@ -33,4 +33,10 @@ enum LlmsOwnershipConflict: string {
 	 * regardless of who or what created it.
 	 */
 	case PHYSICAL_ARTIFACT_PRESENT = 'physical_artifact_present';
+
+	/**
+	 * The bridge is enabled but WordPress uses plain query-string permalinks,
+	 * so the virtual root-path rewrite can never be matched.
+	 */
+	case BRIDGE_ROUTE_UNROUTABLE = 'bridge_route_unroutable';
 }

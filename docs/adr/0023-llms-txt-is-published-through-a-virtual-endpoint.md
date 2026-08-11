@@ -1,6 +1,6 @@
 # ADR 0023: llms.txt is published through a virtual endpoint serving a stored snapshot
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-08-07
 
 ## Context
@@ -29,10 +29,11 @@ The roadmap anticipated an active ownership conflict. There is none today:
 | LLMagnet 3.4.3 | active, but publishing nothing at `/llms.txt` |
 | Rewrite rules matching `llms` | none |
 
-The field is clean. Detection is still mandatory — the conflict can appear at
-any time from a plugin update or an administrator toggling Yoast's AI tools —
-but the blocking path will ship without ever having fired in anger, and that
-must be recorded as a gap rather than mistaken for coverage.
+The field was clean during initial implementation. Production evidence on
+2026-08-11 later showed the complementary failure mode: LLMagnet was disabled,
+but its generated `llms.txt`, `llms-full.txt`, and `llms-docs` artifacts could
+remain in the web root. Plugin deactivation therefore does not resolve
+ownership, and a non-technical operator needs a bounded recovery path.
 
 ### What the reference implementation does about anonymity
 
@@ -67,9 +68,20 @@ rewrite rule and answers on `parse_request`, before the main query runs and
 before any theme or template code executes. It never writes a file under
 `ABSPATH`.
 
-A physical `/llms.txt` wins routing at the web-server level and the plugin
-cannot and must not remove it. Its presence is an **ownership conflict**: the
-bridge reports it and refuses to claim its artifact is public.
+A physical `/llms.txt` wins routing at the web-server level. Its presence is an
+**ownership conflict**: the bridge reports it and refuses to claim its artifact
+is public. Since 0.8.1, an explicit wp-admin-only adoption action may rename the
+three exact known legacy targets (`llms.txt`, `llms-full.txt`, `llms-docs`) to a
+shared timestamped `.backup_YYYYmmdd_His` suffix. It accepts no caller path,
+rejects symlinks and unexpected object types, never overwrites a destination,
+rolls a partial move back best-effort, and never deletes. It requires a complete
+bridge snapshot, enabled publication, a routable pretty-permalink endpoint,
+disabled Yoast generation, `wpcb_manage_settings`, and native
+`activate_plugins`. Multisite is rejected.
+
+This is a narrow operator migration exception to the no-web-root-write rule,
+not a publication mechanism. It exists only in wp-admin, records a redacted
+audit event, and is deliberately absent from the Abilities registry and MCP.
 
 ### The response is a stored snapshot, always
 
@@ -145,3 +157,10 @@ first uncached request after any invalidation becomes a full site query
 reachable by anonymous traffic. Serving through the REST API under
 `/wp-json/…` was rejected because the llms.txt proposal specifies the root path,
 and a redirect from the root would still need the rewrite this ADR describes.
+
+LLMagnet's `/llms-docs/` layout is recognized only as a legacy migration target,
+not adopted as a feature. The llms.txt v2 proposal recommends Markdown
+alternates at the canonical URL plus `.md`, rather than a vendor-specific
+mirror directory. Implementing those alternates would multiply anonymous
+routes and duplicate public content, so it requires a separate ADR,
+cache/eligibility model, and runtime leak matrix.

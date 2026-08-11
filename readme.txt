@@ -4,7 +4,7 @@ Tags: abilities, mcp, ai, content, seo, yoast
 Requires at least: 7.0
 Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.8.0
+Stable tag: 0.8.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -33,6 +33,14 @@ Deleting the plugin removes its options, its dedicated `wpcb_*` capabilities fro
 The `{prefix}wpcb_audit` table is deliberately left in place. It records who changed what through the bridge — field names only, never values — as a rolling window of the most recent 5,000 mutation attempts. Destroying that record silently on delete is not the plugin's call to make. Remove the table deliberately if you want it gone.
 
 == Changelog ==
+
+= 0.8.1 =
+* Added an explicit administrator-only ownership-adoption action for sites left with physical `llms.txt`, `llms-full.txt`, or `llms-docs` artifacts by a retired generator. It renames only those exact known targets to timestamped `.backup_YYYYmmdd_His` names; it never deletes them and accepts no caller-supplied path.
+* Adoption is fail-closed: a complete bridge configuration and snapshot, enabled publication, a routable pretty-permalink endpoint, disabled Yoast llms.txt generation, writable web root, expected filesystem object types, and collision-free backup names are all required before anything moves. Symlinks are rejected and a partial multi-target failure is rolled back best-effort.
+* The migration exists only in **Settings -> WP Content Bridge** and additionally requires native `activate_plugins`. It is deliberately not an Ability and cannot be projected through MCP; filesystem ownership remains a local administrator operation.
+* llms.txt diagnostics now report legacy companion artifacts and whether the bridge rewrite route is routable. A physical-file conflict points administrators to the adoption action instead of asking them to move files manually.
+* Public endpoint verification now runs even before a bridge configuration exists, mutation results include the post-write ownership state, and the `update-llms-txt` Ability correctly declares itself non-idempotent while `regenerate-llms-txt` remains idempotent.
+* WPCB does not recreate LLMagnet's proprietary `/llms-docs/` layout. The current llms.txt v2 proposal recommends Markdown alternates beside their canonical URLs; that broader public-surface feature is deferred to a separate design and security decision.
 
 = 0.8.0 =
 * **The plugin now projects its own abilities as MCP tools.** Install the official WordPress MCP Adapter and the endpoint exists at `/wp-json/wpcb-mcp/mcp`. Until this release, turning registered abilities into tools required writing a site-level MU-plugin holding a hand-maintained list of ability names — so a fresh install had no usable path to any of them without hand-written PHP.

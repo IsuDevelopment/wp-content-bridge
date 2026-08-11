@@ -1,6 +1,6 @@
 # Project status
 
-**Released version: 0.8.0.** Static quality is green at 416 tests / 1,087
+**Released version: 0.8.1.** Static quality is green at 425 tests / 1,126
 assertions. Runtime verification is defined in `docs/setup/VERIFICATION.md`.
 `0.7.0` completes the status workflow: transitions run against an
 administrator-configured allowlist of ordered status pairs per post type (ADR
@@ -18,6 +18,30 @@ maintainer notes file shipped inside every release artifact from 0.5.0 through
 
 `0.8.0` makes the plugin project its own abilities (see the section below). Slice
 3 (revision inspection and recovery) moves to `0.9.0`.
+
+`0.8.1` closes the production ownership-migration gap. An inactive LLMagnet can
+leave physical `llms.txt`, `llms-full.txt`, and `llms-docs` outputs in the web
+root, where the first file wins before WordPress and the companions keep stale
+content public. WPCB now detects all three and offers an explicit wp-admin-only
+adoption action after its own configuration, snapshot, publication flag, and
+pretty-permalink route are ready. Only those exact targets can move, all receive
+one `.backup_YYYYmmdd_His` suffix, symlinks/type mismatches/collisions fail
+closed, no target is deleted, and a partial multi-target failure is rolled back
+best-effort. The action additionally requires native `activate_plugins`, rejects
+multisite, records a redacted audit event, and is not an Ability or MCP tool.
+
+The same patch makes route readiness and legacy companions visible in ownership
+diagnostics, verifies the public endpoint before configuration exists, returns
+post-write ownership with llms mutations, and corrects the update/regenerate
+idempotency annotations. The full 22/22 runtime inventory and the static gate
+(PHPCS, PHPStan, 425 tests / 1,126 assertions) passed on 2026-08-11.
+
+Production evidence taken through Kormas Live MCP before the release: WPCB
+0.8.0 was active with publication enabled but no stored config or artifact;
+Yoast llms.txt was disabled; a 7,916-byte physical `/llms.txt` still owned the
+path and failed the H1 requirement. LLMagnet's `/llms-docs/` layout is migration
+input only. WPCB does not reproduce it; llms.txt v2 Markdown alternates would be
+a separate anonymous-surface feature requiring a new ADR and leak matrix.
 
 Recorded 2026-08-11, unscheduled and undecided: an in-editor AI schema assist —
 one button that proposes structured data and writes only on an explicit accept,

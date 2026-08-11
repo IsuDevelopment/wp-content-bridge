@@ -28,12 +28,14 @@ final readonly class LlmsMutationResult {
 	 * @param LlmsConfig         $config         Effective configuration after the write.
 	 * @param LlmsArtifact       $artifact       Effective snapshot after the write.
 	 * @param array<int, string> $changed_fields Top-level field names that changed, never values.
+	 * @param LlmsOwnershipState $ownership      Local publication state after the write.
 	 */
 	public function __construct(
 		public VersionToken $version,
 		public LlmsConfig $config,
 		public LlmsArtifact $artifact,
 		public array $changed_fields,
+		public LlmsOwnershipState $ownership,
 	) {
 	}
 
@@ -49,6 +51,7 @@ final readonly class LlmsMutationResult {
 			'config'         => $this->config->to_array(),
 			'artifact'       => $this->artifact->to_summary_array(),
 			'changed_fields' => array_values( $this->changed_fields ),
+			'ownership'      => $this->ownership->to_array(),
 			'provenance'     => array(
 				'source'    => 'wordpress-llms-txt',
 				'untrusted' => true,

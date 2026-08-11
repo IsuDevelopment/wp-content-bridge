@@ -21,6 +21,7 @@ use IsuDev\WPContentBridge\Domain\Llms\LlmsConfig;
 use IsuDev\WPContentBridge\Domain\Llms\LlmsDocumentBuilder;
 use IsuDev\WPContentBridge\Domain\Llms\LlmsSourceEntry;
 use IsuDev\WPContentBridge\Domain\Mutation\VersionToken;
+use IsuDev\WPContentBridge\Tests\Support\FixedLlmsOwnershipInspector;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -45,7 +46,7 @@ final class UpdateLlmsTxtTest extends TestCase {
 		$store    = $this->store( null, null );
 		$selector = $this->selector( array( new LlmsSourceEntry( 'Hello', 'https://example.test/hello', null, 'post' ) ) );
 		$audit    = $this->audit_spy();
-		$use      = new UpdateLlmsTxt( $store, $selector, new LlmsDocumentBuilder(), $audit, self::SITE_URL );
+		$use      = new UpdateLlmsTxt( $store, $selector, new LlmsDocumentBuilder(), $audit, new FixedLlmsOwnershipInspector(), self::SITE_URL );
 
 		$token  = VersionToken::for_llms( null, null )->to_string();
 		$result = $use->execute( array_merge( $this->config_input(), array( 'version_token' => $token ) ), 7 );
@@ -55,6 +56,7 @@ final class UpdateLlmsTxtTest extends TestCase {
 		self::assertContains( 'site_url', $result->changed_fields );
 		self::assertContains( 'sections', $result->changed_fields );
 		self::assertSame( 1, $result->artifact->link_count );
+		self::assertSame( 'bridge', $result->to_array()['ownership']['owner'] );
 		self::assertSame( 'success', $audit->events[0]->outcome );
 		self::assertSame( UpdateLlmsTxt::ABILITY, $audit->events[0]->ability );
 		self::assertContains( 'site_url', $audit->events[0]->changed_fields );
@@ -68,7 +70,7 @@ final class UpdateLlmsTxtTest extends TestCase {
 		$store    = $this->store( null, null );
 		$selector = $this->selector( array() );
 		$audit    = $this->audit_spy();
-		$use      = new UpdateLlmsTxt( $store, $selector, new LlmsDocumentBuilder(), $audit, self::SITE_URL );
+		$use      = new UpdateLlmsTxt( $store, $selector, new LlmsDocumentBuilder(), $audit, new FixedLlmsOwnershipInspector(), self::SITE_URL );
 
 		$this->expectException( MutationConflict::class );
 		try {
@@ -92,7 +94,7 @@ final class UpdateLlmsTxtTest extends TestCase {
 		$store    = $this->store( $config, $artifact );
 		$selector = $this->selector( $entries );
 		$audit    = $this->audit_spy();
-		$use      = new UpdateLlmsTxt( $store, $selector, new LlmsDocumentBuilder(), $audit, self::SITE_URL );
+		$use      = new UpdateLlmsTxt( $store, $selector, new LlmsDocumentBuilder(), $audit, new FixedLlmsOwnershipInspector(), self::SITE_URL );
 
 		$token  = VersionToken::for_llms( $config->to_array(), $artifact->content_hash )->to_string();
 		$result = $use->execute( array_merge( $this->config_input(), array( 'version_token' => $token ) ), 7 );
@@ -108,7 +110,7 @@ final class UpdateLlmsTxtTest extends TestCase {
 		$store    = $this->broken_store();
 		$selector = $this->selector( array() );
 		$audit    = $this->audit_spy();
-		$use      = new UpdateLlmsTxt( $store, $selector, new LlmsDocumentBuilder(), $audit, self::SITE_URL );
+		$use      = new UpdateLlmsTxt( $store, $selector, new LlmsDocumentBuilder(), $audit, new FixedLlmsOwnershipInspector(), self::SITE_URL );
 
 		$token = VersionToken::for_llms( null, null )->to_string();
 

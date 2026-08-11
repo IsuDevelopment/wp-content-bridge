@@ -36,16 +36,18 @@ final readonly class RegenerateLlmsTxt {
 	/**
 	 * Creates the use case.
 	 *
-	 * @param LlmsArtifactStore   $store    Configuration and snapshot read/write port.
-	 * @param LlmsSourceSelector  $selector Eligible-entry selection port.
-	 * @param LlmsDocumentBuilder $builder  Pure document generator.
-	 * @param AuditLog            $audit    Audit sink.
+	 * @param LlmsArtifactStore      $store    Configuration and snapshot read/write port.
+	 * @param LlmsSourceSelector     $selector Eligible-entry selection port.
+	 * @param LlmsDocumentBuilder    $builder  Pure document generator.
+	 * @param AuditLog               $audit    Audit sink.
+	 * @param LlmsOwnershipInspector $ownership Local ownership/readiness inspector.
 	 */
 	public function __construct(
 		private LlmsArtifactStore $store,
 		private LlmsSourceSelector $selector,
 		private LlmsDocumentBuilder $builder,
 		private AuditLog $audit,
+		private LlmsOwnershipInspector $ownership,
 	) {
 	}
 
@@ -118,7 +120,7 @@ final readonly class RegenerateLlmsTxt {
 			)
 		);
 
-		return new LlmsMutationResult( $version, $config, $artifact, $changed_fields );
+		return new LlmsMutationResult( $version, $config, $artifact, $changed_fields, $this->ownership->inspect() );
 	}
 
 	/**

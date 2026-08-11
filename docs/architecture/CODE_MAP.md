@@ -612,8 +612,10 @@ The only feature in this plugin with an unauthenticated public surface.
   enforces every bound (document bytes, sections, items per section, excerpt
   length, links) by truncating and recording a warning, never by failing.
 - `Application/Llms/` — `GetLlmsTxt`, `PreviewUpdateLlmsTxt`, `UpdateLlmsTxt`,
-  `RegenerateLlmsTxt`, plus the `LlmsArtifactStore`, `LlmsSourceSelector`, and
-  `LlmsOwnershipInspector` ports.
+  `RegenerateLlmsTxt`, `AdoptLlmsTxtOwnership`, plus the `LlmsArtifactStore`,
+  `LlmsSourceSelector`, `LlmsOwnershipInspector`, and closed-target
+  `LlmsLegacyArtifactArchiver` ports. Ownership adoption is used only by the
+  admin adapter and never registered as an Ability.
 - `Infrastructure/WordPress/WordPressLlmsArtifactStore` — one option holds the
   configuration, one holds the snapshot. `LlmsTxtEndpoint` reads only the
   latter.
@@ -623,10 +625,16 @@ The only feature in this plugin with an unauthenticated public surface.
   order-independent by design; see gap 9 in `.agents/status.md` for why reading
   it from `SeoProvider::get()` was wrong.
 - `Infrastructure/WordPress/WordPressLlmsOwnershipInspector` — reports whether
-  Yoast's llms.txt feature or a physical file already owns the path. Probes the
+  Yoast's llms.txt feature or a physical file already owns the path, whether
+  legacy companion outputs remain, and whether pretty permalinks can route the
+  virtual endpoint. Probes the
   directory serving the **home** URL, not `ABSPATH`; the two differ on any
   subdirectory install and probing `ABSPATH` produced a false negative. Reports
   existence only, never a path.
+- `Infrastructure/WordPress/WordPressLlmsWebRoot` and
+  `WordPressLlmsLegacyArtifactArchiver` — share the correct home web-root
+  resolution and implement the wp-admin-only, exact-target timestamped archive
+  migration with symlink/type/collision checks and best-effort rollback.
 - `Infrastructure/WordPress/LlmsTxtEndpoint` — the virtual route. Registered
   only while `wpcb_llms_enabled` is true, gated on `WP::$matched_rule` so the
   canonical path is the only URL that reaches it, and exits during

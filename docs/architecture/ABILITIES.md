@@ -743,6 +743,9 @@ Returns the stored configuration, a summary of the current snapshot (content
 hash, generation time, byte and link counts, warnings), the ownership state,
 and a `version_token` for optimistic concurrency. Never returns a filesystem
 path, including when reporting that another owner's physical file exists.
+Ownership additionally reports legacy `llms-full.txt` / `llms-docs` presence
+and whether the bridge rewrite route is routable. `verify_public_endpoint`
+performs a bounded same-site check even before configuration exists.
 
 Annotations: `readonly: true`, `destructive: false`, `idempotent: true`.
 
@@ -760,6 +763,9 @@ Replaces the configuration and regenerates the snapshot. Requires a
 an input — it is derived from `home_url()` at the composition root, because a
 caller-supplied origin would let a principal holding only `wpcb_manage_llms`
 publish links to a foreign host inside a document written for LLM consumption.
+The successful mutation result includes the ownership state re-read after the
+write, so clients do not have to infer publication readiness from a stale
+pre-write diagnostic.
 
 Annotations: `readonly: false`, `destructive: false`, `idempotent: false`.
 
@@ -772,6 +778,10 @@ hatch for eligibility changes the debounced triggers do not observe, such as a
 sitewide Yoast indexing setting.
 
 Annotations: `readonly: false`, `destructive: false`, `idempotent: true`.
+
+Filesystem ownership adoption is intentionally not an Ability. It is a local
+wp-admin operation requiring native plugin-management authority; MCP principals
+cannot rename or select files.
 
 ## Status transition abilities
 

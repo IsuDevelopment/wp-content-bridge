@@ -39,18 +39,20 @@ final readonly class UpdateLlmsTxt {
 	/**
 	 * Creates the use case.
 	 *
-	 * @param LlmsArtifactStore   $store    Configuration and snapshot read/write port.
-	 * @param LlmsSourceSelector  $selector Eligible-entry selection port.
-	 * @param LlmsDocumentBuilder $builder  Pure document generator.
-	 * @param AuditLog            $audit    Audit sink.
-	 * @param string              $site_url Canonical absolute site origin; a site fact supplied by the
-	 *                                       WordPress adapter, never taken from caller input.
+	 * @param LlmsArtifactStore      $store    Configuration and snapshot read/write port.
+	 * @param LlmsSourceSelector     $selector Eligible-entry selection port.
+	 * @param LlmsDocumentBuilder    $builder  Pure document generator.
+	 * @param AuditLog               $audit    Audit sink.
+	 * @param LlmsOwnershipInspector $ownership Local ownership/readiness inspector.
+	 * @param string                 $site_url Canonical absolute site origin; a site fact supplied by the
+	 *                                          WordPress adapter, never taken from caller input.
 	 */
 	public function __construct(
 		private LlmsArtifactStore $store,
 		private LlmsSourceSelector $selector,
 		private LlmsDocumentBuilder $builder,
 		private AuditLog $audit,
+		private LlmsOwnershipInspector $ownership,
 		private string $site_url,
 	) {
 	}
@@ -133,7 +135,7 @@ final readonly class UpdateLlmsTxt {
 			)
 		);
 
-		return new LlmsMutationResult( $version, $stored_config, $stored_artifact, $changed_fields );
+		return new LlmsMutationResult( $version, $stored_config, $stored_artifact, $changed_fields, $this->ownership->inspect() );
 	}
 
 	/**

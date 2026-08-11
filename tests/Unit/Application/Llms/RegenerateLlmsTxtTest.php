@@ -20,6 +20,7 @@ use IsuDev\WPContentBridge\Domain\Llms\LlmsConfig;
 use IsuDev\WPContentBridge\Domain\Llms\LlmsDocumentBuilder;
 use IsuDev\WPContentBridge\Domain\Llms\LlmsSourceEntry;
 use PHPUnit\Framework\TestCase;
+use IsuDev\WPContentBridge\Tests\Support\FixedLlmsOwnershipInspector;
 
 /**
  * Verifies regeneration requires prior configuration, accepts no input, and
@@ -42,7 +43,7 @@ final class RegenerateLlmsTxtTest extends TestCase {
 		$store    = $this->store( null, null );
 		$selector = $this->selector( array() );
 		$audit    = $this->audit_spy();
-		$use      = new RegenerateLlmsTxt( $store, $selector, new LlmsDocumentBuilder(), $audit );
+		$use      = new RegenerateLlmsTxt( $store, $selector, new LlmsDocumentBuilder(), $audit, new FixedLlmsOwnershipInspector() );
 
 		$this->expectException( InvalidArgumentException::class );
 		try {
@@ -62,7 +63,7 @@ final class RegenerateLlmsTxtTest extends TestCase {
 		$store    = $this->store( $config, null );
 		$selector = $this->selector( array() );
 		$audit    = $this->audit_spy();
-		$use      = new RegenerateLlmsTxt( $store, $selector, new LlmsDocumentBuilder(), $audit );
+		$use      = new RegenerateLlmsTxt( $store, $selector, new LlmsDocumentBuilder(), $audit, new FixedLlmsOwnershipInspector() );
 
 		$this->expectException( InvalidArgumentException::class );
 		try {
@@ -81,7 +82,7 @@ final class RegenerateLlmsTxtTest extends TestCase {
 		$store    = $this->store( $config, null );
 		$selector = $this->selector( array( new LlmsSourceEntry( 'Hello', 'https://example.test/hello', null, 'post' ) ) );
 		$audit    = $this->audit_spy();
-		$use      = new RegenerateLlmsTxt( $store, $selector, new LlmsDocumentBuilder(), $audit );
+		$use      = new RegenerateLlmsTxt( $store, $selector, new LlmsDocumentBuilder(), $audit, new FixedLlmsOwnershipInspector() );
 
 		$result = $use->execute( array(), 7 );
 
@@ -103,7 +104,7 @@ final class RegenerateLlmsTxtTest extends TestCase {
 		$store    = $this->store( $config, $artifact );
 		$selector = $this->selector( $entries );
 		$audit    = $this->audit_spy();
-		$use      = new RegenerateLlmsTxt( $store, $selector, new LlmsDocumentBuilder(), $audit );
+		$use      = new RegenerateLlmsTxt( $store, $selector, new LlmsDocumentBuilder(), $audit, new FixedLlmsOwnershipInspector() );
 
 		$result = $use->execute( array(), 7 );
 

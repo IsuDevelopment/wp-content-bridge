@@ -20,11 +20,17 @@ declare(strict_types=1);
 use IsuDev\WPContentBridge\Adapter\Admin\ContentAccessSettingsPage;
 use IsuDev\WPContentBridge\Application\Access\IntegrationAccessManager;
 use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessManager;
+use IsuDev\WPContentBridge\Application\Llms\AdoptLlmsTxtOwnership;
+use IsuDev\WPContentBridge\Application\Llms\GetLlmsTxt;
 use IsuDev\WPContentBridge\Application\Status\StatusTransitionManager;
 use IsuDev\WPContentBridge\Domain\Status\StatusTransition;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentAccessSettingsRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentTypeCatalog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressIntegrationAccessRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressAuditLog;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressLlmsArtifactStore;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressLlmsLegacyArtifactArchiver;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressLlmsOwnershipInspector;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressStatusTransitionRepository;
 
 $wpcb_failures = array();
@@ -63,13 +69,23 @@ $wpcb_previous_user = get_current_user_id();
 wp_set_current_user( (int) $wpcb_admin[0] );
 
 try {
-	$wpcb_page = new ContentAccessSettingsPage(
+	$wpcb_llms_store     = new WordPressLlmsArtifactStore();
+	$wpcb_llms_ownership = new WordPressLlmsOwnershipInspector();
+	$wpcb_llms_audit     = new WordPressAuditLog();
+	$wpcb_page           = new ContentAccessSettingsPage(
 		new ContentAccessManager(
 			new WordPressContentAccessSettingsRepository(),
 			new WordPressContentTypeCatalog()
 		),
 		new IntegrationAccessManager( new WordPressIntegrationAccessRepository() ),
-		new StatusTransitionManager( new WordPressStatusTransitionRepository() )
+		new StatusTransitionManager( new WordPressStatusTransitionRepository() ),
+		new GetLlmsTxt( $wpcb_llms_store, $wpcb_llms_ownership, home_url( '/' ) ),
+		new AdoptLlmsTxtOwnership(
+			$wpcb_llms_store,
+			$wpcb_llms_ownership,
+			new WordPressLlmsLegacyArtifactArchiver(),
+			$wpcb_llms_audit
+		)
 	);
 
 	ob_start();

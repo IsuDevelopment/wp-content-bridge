@@ -2669,7 +2669,7 @@ final class AbilitySchemas {
 			'type'                 => 'object',
 			'properties'           => array(
 				'verify_public_endpoint' => array(
-					'description' => 'When true, additionally performs a bounded same-site GET of the public /llms.txt path to confirm what actually serves it. Ignored when no configuration has been saved yet.',
+					'description' => 'When true, additionally performs a bounded same-site GET of the public /llms.txt path to confirm what actually serves it, including before a configuration has been saved.',
 					'type'        => 'boolean',
 					'default'     => false,
 				),
@@ -2902,13 +2902,14 @@ final class AbilitySchemas {
 	private static function llms_mutation_output(): array {
 		return array(
 			'type'                 => 'object',
-			'required'             => array( 'schema_version', 'version_token', 'config', 'artifact', 'changed_fields', 'provenance' ),
+			'required'             => array( 'schema_version', 'version_token', 'config', 'artifact', 'changed_fields', 'ownership', 'provenance' ),
 			'properties'           => array(
 				'schema_version' => array( 'type' => 'string' ),
 				'version_token'  => array( 'type' => 'string' ),
 				'config'         => self::llms_config_schema(),
 				'artifact'       => self::llms_artifact_summary_schema(),
 				'changed_fields' => self::string_array( 20 ),
+				'ownership'      => self::llms_ownership_schema(),
 				'provenance'     => self::provenance(),
 			),
 			'additionalProperties' => false,
@@ -2998,24 +2999,27 @@ final class AbilitySchemas {
 	private static function llms_ownership_schema(): array {
 		return array(
 			'type'                 => 'object',
-			'required'             => array( 'owner', 'physical_artifact_exists', 'yoast_llms_txt_enabled', 'bridge_publication_enabled', 'public_verification', 'conflict', 'administrator_action' ),
+			'required'             => array( 'owner', 'physical_artifact_exists', 'legacy_full_artifact_exists', 'legacy_docs_directory_exists', 'yoast_llms_txt_enabled', 'bridge_publication_enabled', 'bridge_route_routable', 'public_verification', 'conflict', 'administrator_action' ),
 			'properties'           => array(
-				'owner'                      => array(
+				'owner'                        => array(
 					'type' => 'string',
 					'enum' => array( 'bridge', 'yoast', 'third_party', 'none' ),
 				),
-				'physical_artifact_exists'   => array( 'type' => 'boolean' ),
-				'yoast_llms_txt_enabled'     => array( 'type' => 'boolean' ),
-				'bridge_publication_enabled' => array( 'type' => 'boolean' ),
-				'public_verification'        => array(
+				'physical_artifact_exists'     => array( 'type' => 'boolean' ),
+				'legacy_full_artifact_exists'  => array( 'type' => 'boolean' ),
+				'legacy_docs_directory_exists' => array( 'type' => 'boolean' ),
+				'yoast_llms_txt_enabled'       => array( 'type' => 'boolean' ),
+				'bridge_publication_enabled'   => array( 'type' => 'boolean' ),
+				'bridge_route_routable'        => array( 'type' => 'boolean' ),
+				'public_verification'          => array(
 					'type' => 'string',
 					'enum' => array( 'served_by_bridge', 'served_by_other', 'not_found', 'unknown' ),
 				),
-				'conflict'                   => array(
+				'conflict'                     => array(
 					'type' => array( 'string', 'null' ),
-					'enum' => array( 'yoast_llms_txt_enabled', 'physical_artifact_present', null ),
+					'enum' => array( 'yoast_llms_txt_enabled', 'physical_artifact_present', 'bridge_route_unroutable', null ),
 				),
-				'administrator_action'       => array( 'type' => 'string' ),
+				'administrator_action'         => array( 'type' => 'string' ),
 			),
 			'additionalProperties' => false,
 		);

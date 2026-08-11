@@ -246,13 +246,24 @@ allowed to make it unbounded.
 **Ownership conflict.** A physical `/llms.txt` at the web root is served by the
 web server before WordPress runs, so the bridge's artifact silently stops being
 what the public sees. The plugin detects this and refuses to claim its artifact
-is public; it never deletes or overwrites another tool's file. Detection reports
-existence as a boolean and **never returns a filesystem path** in any field.
+is public. Detection reports existence as booleans and **never returns a
+filesystem path** in an Ability field.
 
-**The conflict path has not fired against a real conflict.** On the reference
-site there is no physical artifact and Yoast's llms.txt feature is off, so the
-blocking gate ships exercised only against a synthetic conflict built by the
-verifier. That is a gap, not coverage.
+An explicit wp-admin-only adoption action can archive the exact known
+`llms.txt`, `llms-full.txt`, and `llms-docs` targets under one timestamped
+`.backup_YYYYmmdd_His` suffix. It is recovery from a retired generator, not
+normal publication: it accepts no path, rejects symlinks and unexpected object
+types, refuses collisions and multisite, attempts rollback after a partial
+failure, and requires a ready bridge snapshot and route plus
+`wpcb_manage_settings` and native `activate_plugins`. It is not registered as
+an Ability and therefore cannot be reached through MCP. No code path deletes a
+legacy artifact.
+
+**Legacy companion output.** `llms-full.txt` and `llms-docs` do not shadow the
+bridge route, but leaving them publicly reachable preserves stale content after
+LLMagnet is disabled. Diagnostics expose only their presence. Adoption archives
+them together with the root file so ownership recovery does not leave the old
+publication surface behind.
 
 **Generated content is untrusted.** Titles and excerpts come from site content
 and land in a document written to be read by language models. They are emitted

@@ -20,7 +20,7 @@ use Throwable;
 
 /**
  * Reads local WordPress signals, and optionally the public endpoint, to
- * report `/llms.txt` ownership without ever resolving a conflict.
+ * report `/llms.txt` ownership without resolving a conflict itself.
  *
  * Every probe defaults to a real WordPress/filesystem read but accepts an
  * injected closure instead, so tests can supply fakes without touching the
@@ -38,7 +38,9 @@ final readonly class WordPressLlmsOwnershipInspector implements LlmsOwnershipIns
 	 *
 	 * @var string
 	 */
-	private const ARTIFACT_FILENAME = 'llms.txt';
+	private const ARTIFACT_FILENAME      = 'llms.txt';
+	private const FULL_ARTIFACT_FILENAME = 'llms-full.txt';
+	private const DOCS_DIRECTORY_NAME    = 'llms-docs';
 
 	/**
 	 * Non-autoloaded bridge publication flag; see `WordPressLlmsArtifactStore`
@@ -68,16 +70,25 @@ final readonly class WordPressLlmsOwnershipInspector implements LlmsOwnershipIns
 	 * @param Closure|null $yoast_flag_reader        Optional override for the Yoast flag read.
 	 * @param Closure|null $bridge_enabled_reader    Optional override for the bridge publication-flag read.
 	 * @param Closure|null $fetcher                  Optional override for the public verification request.
+	 * @param Closure|null $legacy_full_probe        Optional override for the legacy full-artifact check.
+	 * @param Closure|null $legacy_docs_probe        Optional override for the legacy docs-directory check.
+	 * @param Closure|null $route_routable_reader    Optional override for the virtual-route readiness read.
 	 * @phpstan-param (Closure(): bool)|null $physical_artifact_probe
 	 * @phpstan-param (Closure(): bool)|null $yoast_flag_reader
 	 * @phpstan-param (Closure(): bool)|null $bridge_enabled_reader
 	 * @phpstan-param (Closure(string): (array{code: int, body: string}|null))|null $fetcher
+	 * @phpstan-param (Closure(): bool)|null $legacy_full_probe
+	 * @phpstan-param (Closure(): bool)|null $legacy_docs_probe
+	 * @phpstan-param (Closure(): bool)|null $route_routable_reader
 	 */
 	public function __construct(
 		private ?Closure $physical_artifact_probe = null,
 		private ?Closure $yoast_flag_reader = null,
 		private ?Closure $bridge_enabled_reader = null,
 		private ?Closure $fetcher = null,
+		private ?Closure $legacy_full_probe = null,
+		private ?Closure $legacy_docs_probe = null,
+		private ?Closure $route_routable_reader = null,
 	) {
 	}
 
@@ -111,8 +122,11 @@ final readonly class WordPressLlmsOwnershipInspector implements LlmsOwnershipIns
 	 */
 	private function build_state( LlmsPublicVerification $public_verification ): LlmsOwnershipState {
 		$physical_artifact_exists   = $this->probe_physical_artifact();
+		$legacy_full_exists         = $this->probe_legacy_full_artifact();
+		$legacy_docs_exists         = $this->probe_legacy_docs_directory();
 		$yoast_llms_txt_enabled     = $this->read_yoast_flag();
 		$bridge_publication_enabled = $this->read_bridge_enabled();
+		$bridge_route_routable      = $this->read_route_routable();
 
 		if ( $yoast_llms_txt_enabled ) {
 			$owner    = LlmsOwnershipOwner::YOAST;
@@ -124,8 +138,13 @@ final readonly class WordPressLlmsOwnershipInspector implements LlmsOwnershipIns
 			$owner    = LlmsOwnershipOwner::THIRD_PARTY;
 			$conflict = LlmsOwnershipConflict::PHYSICAL_ARTIFACT_PRESENT;
 			$action   = 'A file already answers this site\'s llms.txt request outside WordPress, and it will keep winning '
-				. 'over this plugin\'s endpoint. Remove or rename it as a deployment step, then verify removal before '
-				. 'enabling publication here.';
+				. 'over this plugin\'s endpoint. Generate a bridge snapshot, then use the explicit administrator archival '
+				. 'action to create timestamped backups of known legacy artifacts and adopt public ownership.';
+		} elseif ( $bridge_publication_enabled && ! $bridge_route_routable ) {
+			$owner    = LlmsOwnershipOwner::NONE;
+			$conflict = LlmsOwnershipConflict::BRIDGE_ROUTE_UNROUTABLE;
+			$action   = 'Bridge publication is enabled, but plain permalinks prevent the virtual /llms.txt route from matching. '
+				. 'Enable a pretty permalink structure, then re-check publication.';
 		} elseif ( $bridge_publication_enabled ) {
 			$owner    = LlmsOwnershipOwner::BRIDGE;
 			$conflict = null;
@@ -140,8 +159,11 @@ final readonly class WordPressLlmsOwnershipInspector implements LlmsOwnershipIns
 		return new LlmsOwnershipState(
 			$owner,
 			$physical_artifact_exists,
+			$legacy_full_exists,
+			$legacy_docs_exists,
 			$yoast_llms_txt_enabled,
 			$bridge_publication_enabled,
+			$bridge_route_routable,
 			$public_verification,
 			$conflict,
 			$action
@@ -177,39 +199,33 @@ final readonly class WordPressLlmsOwnershipInspector implements LlmsOwnershipIns
 			return false;
 		}
 
-		return is_file( $this->web_root() . self::ARTIFACT_FILENAME );
+		return is_file( WordPressLlmsWebRoot::resolve() . self::ARTIFACT_FILENAME );
 	}
 
 	/**
-	 * Resolves the trailing-slashed directory that serves the home URL.
+	 * Checks for the legacy single-file full-content export.
 	 *
-	 * @return string
+	 * @return bool
 	 */
-	private function web_root(): string {
-		$root = rtrim( ABSPATH, '/\\' );
-
-		if ( ! function_exists( 'home_url' ) || ! function_exists( 'site_url' ) ) {
-			return $root . '/';
+	private function probe_legacy_full_artifact(): bool {
+		if ( null !== $this->legacy_full_probe ) {
+			return ( $this->legacy_full_probe )();
 		}
 
-		$home = rtrim( (string) home_url(), '/' );
-		$site = rtrim( (string) site_url(), '/' );
+		return is_file( WordPressLlmsWebRoot::resolve() . self::FULL_ARTIFACT_FILENAME );
+	}
 
-		if ( $home === $site || ! str_starts_with( $site, $home . '/' ) ) {
-			return $root . '/';
+	/**
+	 * Checks for the legacy per-page Markdown export directory.
+	 *
+	 * @return bool
+	 */
+	private function probe_legacy_docs_directory(): bool {
+		if ( null !== $this->legacy_docs_probe ) {
+			return ( $this->legacy_docs_probe )();
 		}
 
-		$segments = array_filter( explode( '/', trim( substr( $site, strlen( $home ) ), '/' ) ) );
-
-		foreach ( $segments as $ignored ) {
-			$parent = dirname( $root );
-			if ( $parent === $root ) {
-				break;
-			}
-			$root = $parent;
-		}
-
-		return $root . '/';
+		return is_dir( WordPressLlmsWebRoot::resolve() . self::DOCS_DIRECTORY_NAME );
 	}
 
 	/**
@@ -247,6 +263,22 @@ final readonly class WordPressLlmsOwnershipInspector implements LlmsOwnershipIns
 		}
 
 		return (bool) get_option( self::BRIDGE_ENABLED_OPTION, false );
+	}
+
+	/**
+	 * Reports whether the virtual endpoint can be reached through rewrites.
+	 *
+	 * @return bool
+	 */
+	private function read_route_routable(): bool {
+		if ( null !== $this->route_routable_reader ) {
+			return ( $this->route_routable_reader )();
+		}
+		if ( ! function_exists( 'get_option' ) ) {
+			return false;
+		}
+
+		return LlmsTxtEndpoint::is_routable();
 	}
 
 	/**

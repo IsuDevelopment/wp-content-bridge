@@ -600,8 +600,19 @@ Un-publishing triggers regeneration, so content an author withdraws leaves the
 document instead of lingering.
 
 If Yoast's own llms.txt feature is active, or a physical `llms.txt` already
-answers the path, that is reported as a blocking ownership conflict. This
-plugin never overwrites or deletes another owner's file.
+answers the path, that is reported as a blocking ownership conflict. For
+artifacts left behind by a retired generator, an administrator can explicitly
+adopt ownership from **Settings -> WP Content Bridge** after the bridge has a
+complete snapshot and a routable endpoint. The action renames only the known
+`llms.txt`, `llms-full.txt`, and `llms-docs` targets to timestamped `.backup_*`
+names; it never deletes them, accepts no path input, and is not exposed as an
+Ability or MCP tool.
+
+The bridge does not generate LLMagnet's proprietary `/llms-docs/` tree. The
+current llms.txt v2 proposal instead recommends Markdown alternates beside
+their canonical URLs. Adding those alternates would create a much wider public
+surface and is intentionally deferred to its own architecture and security
+decision.
 
 ## MCP integration
 

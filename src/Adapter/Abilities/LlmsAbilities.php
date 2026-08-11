@@ -118,7 +118,7 @@ final readonly class LlmsAbilities {
 				'output_schema'       => AbilitySchemas::update_llms_txt_output(),
 				'permission_callback' => array( $this, 'can_write' ),
 				'execute_callback'    => array( $this, 'execute_update' ),
-				'meta'                => self::write_meta(),
+				'meta'                => self::write_meta( false ),
 			)
 		);
 
@@ -132,7 +132,7 @@ final readonly class LlmsAbilities {
 				'output_schema'       => AbilitySchemas::regenerate_llms_txt_output(),
 				'permission_callback' => array( $this, 'can_write' ),
 				'execute_callback'    => array( $this, 'execute_regenerate' ),
-				'meta'                => self::write_meta(),
+				'meta'                => self::write_meta( true ),
 			)
 		);
 	}
@@ -283,14 +283,15 @@ final readonly class LlmsAbilities {
 	/**
 	 * Returns standard write annotations.
 	 *
+	 * @param bool $idempotent Whether replaying the same input has no additional effect.
 	 * @return array<string, mixed>
 	 */
-	private static function write_meta(): array {
+	private static function write_meta( bool $idempotent ): array {
 		return array(
 			'annotations'  => array(
 				'readonly'    => false,
 				'destructive' => false,
-				'idempotent'  => true,
+				'idempotent'  => $idempotent,
 			),
 			'show_in_rest' => true,
 			'mcp'          => array( 'public' => true ),

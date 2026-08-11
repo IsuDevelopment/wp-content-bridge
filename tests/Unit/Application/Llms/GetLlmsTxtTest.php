@@ -33,7 +33,7 @@ final class GetLlmsTxtTest extends TestCase {
 	public function test_reports_unconfigured_state_without_verification(): void {
 		$store     = $this->store( null, null );
 		$ownership = $this->ownership();
-		$result    = ( new GetLlmsTxt( $store, $ownership ) )->execute( array() )->to_array();
+		$result    = ( new GetLlmsTxt( $store, $ownership, 'https://example.test' ) )->execute( array() )->to_array();
 
 		self::assertNull( $result['config'] );
 		self::assertNull( $result['artifact'] );
@@ -52,7 +52,7 @@ final class GetLlmsTxtTest extends TestCase {
 		$artifact  = $this->artifact();
 		$store     = $this->store( $config, $artifact );
 		$ownership = $this->ownership();
-		$result    = ( new GetLlmsTxt( $store, $ownership ) )->execute( array() )->to_array();
+		$result    = ( new GetLlmsTxt( $store, $ownership, 'https://example.test' ) )->execute( array() )->to_array();
 
 		self::assertSame( 'https://example.test', $result['config']['site_url'] );
 		self::assertSame( $artifact->content_hash, $result['artifact']['content_hash'] );
@@ -70,7 +70,7 @@ final class GetLlmsTxtTest extends TestCase {
 		$store     = $this->store( $config, $artifact );
 		$ownership = $this->ownership();
 
-		( new GetLlmsTxt( $store, $ownership ) )->execute( array( 'verify_public_endpoint' => true ) );
+		( new GetLlmsTxt( $store, $ownership, 'https://example.test' ) )->execute( array( 'verify_public_endpoint' => true ) );
 
 		self::assertSame( 1, $ownership->verified_calls );
 		self::assertSame( 0, $ownership->inspect_calls );
@@ -79,17 +79,19 @@ final class GetLlmsTxtTest extends TestCase {
 	}
 
 	/**
-	 * Verification is skipped, falling back to the local-only leg, when no
-	 * configuration exists yet: there is no site URL to probe.
+	 * Verification still runs before configuration exists, using the canonical
+	 * site URL supplied by the WordPress adapter and a null expected hash.
 	 */
-	public function test_verify_public_endpoint_is_skipped_when_unconfigured(): void {
+	public function test_verify_public_endpoint_runs_when_unconfigured(): void {
 		$store     = $this->store( null, null );
 		$ownership = $this->ownership();
 
-		( new GetLlmsTxt( $store, $ownership ) )->execute( array( 'verify_public_endpoint' => true ) );
+		( new GetLlmsTxt( $store, $ownership, 'https://example.test' ) )->execute( array( 'verify_public_endpoint' => true ) );
 
-		self::assertSame( 1, $ownership->inspect_calls );
-		self::assertSame( 0, $ownership->verified_calls );
+		self::assertSame( 0, $ownership->inspect_calls );
+		self::assertSame( 1, $ownership->verified_calls );
+		self::assertSame( 'https://example.test', $ownership->last_site_url );
+		self::assertNull( $ownership->last_expected_hash );
 	}
 
 	/**
@@ -101,7 +103,7 @@ final class GetLlmsTxtTest extends TestCase {
 
 		$this->expectException( InvalidArgumentException::class );
 		try {
-			( new GetLlmsTxt( $store, $ownership ) )->execute( array( 'unexpected' => true ) );
+			( new GetLlmsTxt( $store, $ownership, 'https://example.test' ) )->execute( array( 'unexpected' => true ) );
 		} finally {
 			self::assertSame( 0, $ownership->inspect_calls );
 			self::assertSame( 0, $ownership->verified_calls );
@@ -233,6 +235,9 @@ final class GetLlmsTxtTest extends TestCase {
 					false,
 					false,
 					false,
+					false,
+					false,
+					true,
 					LlmsPublicVerification::UNKNOWN,
 					null,
 					'No ownership conflict was detected, and publication is currently disabled. Enable it here when ready.'
@@ -254,6 +259,9 @@ final class GetLlmsTxtTest extends TestCase {
 					LlmsOwnershipOwner::BRIDGE,
 					false,
 					false,
+					false,
+					false,
+					true,
 					true,
 					LlmsPublicVerification::SERVED_BY_BRIDGE,
 					null,

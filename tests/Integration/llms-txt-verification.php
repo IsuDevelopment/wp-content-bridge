@@ -304,11 +304,12 @@ final class WPCB_Llms_Txt_Verification {
 		$audit    = new WordPressAuditLog();
 		$site_url = home_url( '/' );
 
-		$adapter = new LlmsAbilities(
-			new GetLlmsTxt( $this->store, new WordPressLlmsOwnershipInspector() ),
+		$ownership = new WordPressLlmsOwnershipInspector();
+		$adapter   = new LlmsAbilities(
+			new GetLlmsTxt( $this->store, $ownership, $site_url ),
 			new PreviewUpdateLlmsTxt( $this->store, $this->selector, $this->builder, $site_url ),
-			new UpdateLlmsTxt( $this->store, $this->selector, $this->builder, $audit, $site_url ),
-			new RegenerateLlmsTxt( $this->store, $this->selector, $this->builder, $audit )
+			new UpdateLlmsTxt( $this->store, $this->selector, $this->builder, $audit, $ownership, $site_url ),
+			new RegenerateLlmsTxt( $this->store, $this->selector, $this->builder, $audit, $ownership )
 		);
 
 		global $wp_current_filter;

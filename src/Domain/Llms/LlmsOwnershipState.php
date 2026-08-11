@@ -27,8 +27,11 @@ final readonly class LlmsOwnershipState {
 	 *
 	 * @param LlmsOwnershipOwner         $owner                      Best-effort detected claimant.
 	 * @param bool                       $physical_artifact_exists   Whether a physical `llms.txt` exists at the web root.
+	 * @param bool                       $legacy_full_artifact_exists Whether a physical `llms-full.txt` exists at the web root.
+	 * @param bool                       $legacy_docs_directory_exists Whether a physical `llms-docs/` directory exists at the web root.
 	 * @param bool                       $yoast_llms_txt_enabled     Whether Yoast SEO's `llms.txt` feature is enabled.
 	 * @param bool                       $bridge_publication_enabled Whether the bridge's own publication flag is enabled.
+	 * @param bool                       $bridge_route_routable      Whether pretty permalinks allow the virtual route to match.
 	 * @param LlmsPublicVerification     $public_verification        What a same-site `GET` of the public path actually observed.
 	 * @param LlmsOwnershipConflict|null $conflict               Blocking conflict code, or null when publication may proceed.
 	 * @param string                     $administrator_action       Safe, human-readable next step; never a filesystem path.
@@ -36,12 +39,26 @@ final readonly class LlmsOwnershipState {
 	public function __construct(
 		public LlmsOwnershipOwner $owner,
 		public bool $physical_artifact_exists,
+		public bool $legacy_full_artifact_exists,
+		public bool $legacy_docs_directory_exists,
 		public bool $yoast_llms_txt_enabled,
 		public bool $bridge_publication_enabled,
+		public bool $bridge_route_routable,
 		public LlmsPublicVerification $public_verification,
 		public ?LlmsOwnershipConflict $conflict,
 		public string $administrator_action,
 	) {
+	}
+
+	/**
+	 * Whether any exact legacy-generator target remains at the web root.
+	 *
+	 * @return bool
+	 */
+	public function has_legacy_artifacts(): bool {
+		return $this->physical_artifact_exists
+			|| $this->legacy_full_artifact_exists
+			|| $this->legacy_docs_directory_exists;
 	}
 
 	/**
@@ -60,13 +77,16 @@ final readonly class LlmsOwnershipState {
 	 */
 	public function to_array(): array {
 		return array(
-			'owner'                      => $this->owner->value,
-			'physical_artifact_exists'   => $this->physical_artifact_exists,
-			'yoast_llms_txt_enabled'     => $this->yoast_llms_txt_enabled,
-			'bridge_publication_enabled' => $this->bridge_publication_enabled,
-			'public_verification'        => $this->public_verification->value,
-			'conflict'                   => $this->conflict?->value,
-			'administrator_action'       => $this->administrator_action,
+			'owner'                        => $this->owner->value,
+			'physical_artifact_exists'     => $this->physical_artifact_exists,
+			'legacy_full_artifact_exists'  => $this->legacy_full_artifact_exists,
+			'legacy_docs_directory_exists' => $this->legacy_docs_directory_exists,
+			'yoast_llms_txt_enabled'       => $this->yoast_llms_txt_enabled,
+			'bridge_publication_enabled'   => $this->bridge_publication_enabled,
+			'bridge_route_routable'        => $this->bridge_route_routable,
+			'public_verification'          => $this->public_verification->value,
+			'conflict'                     => $this->conflict?->value,
+			'administrator_action'         => $this->administrator_action,
 		);
 	}
 }

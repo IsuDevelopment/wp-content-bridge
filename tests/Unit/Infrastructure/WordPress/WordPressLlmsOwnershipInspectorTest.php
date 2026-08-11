@@ -33,6 +33,9 @@ final class WordPressLlmsOwnershipInspectorTest extends TestCase {
 	 * @param bool         $yoast_llms_txt_enabled   Fake Yoast flag answer.
 	 * @param bool         $bridge_publication_enabled Fake bridge flag answer.
 	 * @param Closure|null $fetcher Fake public-verification fetcher.
+	 * @param bool         $route_routable Fake virtual-route readiness answer.
+	 * @param bool         $legacy_full_exists Fake llms-full.txt answer.
+	 * @param bool         $legacy_docs_exists Fake llms-docs/ answer.
 	 * @return WordPressLlmsOwnershipInspector
 	 * @phpstan-param (Closure(string): (array{code: int, body: string}|null))|null $fetcher
 	 */
@@ -40,13 +43,19 @@ final class WordPressLlmsOwnershipInspectorTest extends TestCase {
 		bool $physical_artifact_exists,
 		bool $yoast_llms_txt_enabled,
 		bool $bridge_publication_enabled,
-		?Closure $fetcher = null
+		?Closure $fetcher = null,
+		bool $route_routable = true,
+		bool $legacy_full_exists = false,
+		bool $legacy_docs_exists = false
 	): WordPressLlmsOwnershipInspector {
 		return new WordPressLlmsOwnershipInspector(
 			static fn (): bool => $physical_artifact_exists,
 			static fn (): bool => $yoast_llms_txt_enabled,
 			static fn (): bool => $bridge_publication_enabled,
-			$fetcher
+			$fetcher,
+			static fn (): bool => $legacy_full_exists,
+			static fn (): bool => $legacy_docs_exists,
+			static fn (): bool => $route_routable
 		);
 	}
 
@@ -141,6 +150,32 @@ final class WordPressLlmsOwnershipInspectorTest extends TestCase {
 		self::assertFalse( $state->is_blocking() );
 		self::assertFalse( $state->bridge_publication_enabled );
 		$this->assert_no_path_like_string( $state );
+	}
+
+	/**
+	 * An enabled bridge cannot claim ownership when plain permalinks prevent
+	 * the virtual route from ever matching.
+	 */
+	public function test_plain_permalinks_report_unroutable_bridge_conflict(): void {
+		$state = $this->inspector_with( false, false, true, null, false )->inspect();
+
+		self::assertSame( LlmsOwnershipOwner::NONE, $state->owner );
+		self::assertSame( LlmsOwnershipConflict::BRIDGE_ROUTE_UNROUTABLE, $state->conflict );
+		self::assertFalse( $state->bridge_route_routable );
+		self::assertTrue( $state->is_blocking() );
+	}
+
+	/**
+	 * Legacy companion exports are reported independently without claiming
+	 * that either one owns the canonical root path.
+	 */
+	public function test_reports_legacy_companion_artifacts(): void {
+		$state = $this->inspector_with( false, false, true, null, true, true, true )->inspect();
+
+		self::assertSame( LlmsOwnershipOwner::BRIDGE, $state->owner );
+		self::assertTrue( $state->legacy_full_artifact_exists );
+		self::assertTrue( $state->legacy_docs_directory_exists );
+		self::assertTrue( $state->has_legacy_artifacts() );
 	}
 
 	/**

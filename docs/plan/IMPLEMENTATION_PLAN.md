@@ -11,6 +11,13 @@ content inventory is maintained in
 release line. LLMagnet is reference material only and can be removed completely;
 status-transition work must not be mixed into that release.
 
+Patch 0.8.1 closes the operator migration gap exposed when the retired
+LLMagnet plugin was disabled but left `llms.txt`, `llms-full.txt`, and
+`llms-docs` in the public web root. WPCB archives only those exact targets from
+an explicit wp-admin action after its own snapshot and route are ready. It does
+not reproduce `/llms-docs/`: llms.txt v2 Markdown alternates would be a separate
+public-surface feature and require their own ADR and leak verification.
+
 **No roadmap slice starts while the runtime verification backlog below is
 open.** Releases 0.1.3 through 0.3.0 shipped on static checks alone because the
 verification environment was unavailable from 2026-07-21.

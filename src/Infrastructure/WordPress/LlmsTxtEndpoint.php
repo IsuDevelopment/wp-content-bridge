@@ -200,7 +200,7 @@ final class LlmsTxtEndpoint {
 	 *
 	 * @return bool
 	 */
-	public function is_routable(): bool {
+	public static function is_routable(): bool {
 		$permalink_structure = get_option( 'permalink_structure', '' );
 
 		return is_string( $permalink_structure ) && '' !== $permalink_structure;

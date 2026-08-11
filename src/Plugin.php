@@ -33,6 +33,7 @@ use IsuDev\WPContentBridge\Application\Content\GetContent;
 use IsuDev\WPContentBridge\Application\Content\SearchContent;
 use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessManager;
 use IsuDev\WPContentBridge\Application\Editorial\GetEditorialContext;
+use IsuDev\WPContentBridge\Application\Llms\AdoptLlmsTxtOwnership;
 use IsuDev\WPContentBridge\Application\Llms\GetLlmsTxt;
 use IsuDev\WPContentBridge\Application\Llms\PreviewUpdateLlmsTxt;
 use IsuDev\WPContentBridge\Application\Llms\RegenerateLlmsTxt;
@@ -81,6 +82,7 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentTypeCatalog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressEditorialContextRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressIntegrationAccessRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressLlmsArtifactStore;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressLlmsLegacyArtifactArchiver;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressLlmsOwnershipInspector;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressLlmsSourceSelector;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressMediaRepository;
@@ -135,13 +137,24 @@ final class Plugin {
 		// get-status-transitions read further down: the effective transition
 		// graph is needed regardless of `wpcb_writes_enabled`.
 		$status_transitions = new StatusTransitionManager( new WordPressStatusTransitionRepository() );
+		$llms_store         = new WordPressLlmsArtifactStore();
+		$llms_ownership     = new WordPressLlmsOwnershipInspector();
+		$llms_audit_log     = new WordPressAuditLog();
+		$get_llms           = new GetLlmsTxt( $llms_store, $llms_ownership, home_url( '/' ) );
 
 		if ( is_admin() ) {
 
 			( new ContentAccessSettingsPage(
 				$manager,
 				new IntegrationAccessManager( new WordPressIntegrationAccessRepository() ),
-				$status_transitions
+				$status_transitions,
+				$get_llms,
+				new AdoptLlmsTxtOwnership(
+					$llms_store,
+					$llms_ownership,
+					new WordPressLlmsLegacyArtifactArchiver(),
+					$llms_audit_log
+				)
 			) )->register_hooks();
 		}
 
@@ -202,16 +215,14 @@ final class Plugin {
 		 * LlmsAbilities itself withholds the three writes while the flag is
 		 * off (ADR 0023).
 		 */
-		$llms_store     = new WordPressLlmsArtifactStore();
-		$llms_selector  = new WordPressLlmsSourceSelector( $seo_providers );
-		$llms_builder   = new LlmsDocumentBuilder();
-		$llms_audit_log = new WordPressAuditLog();
+		$llms_selector = new WordPressLlmsSourceSelector( $seo_providers );
+		$llms_builder  = new LlmsDocumentBuilder();
 
 		( new LlmsAbilities(
-			new GetLlmsTxt( $llms_store, new WordPressLlmsOwnershipInspector() ),
+			$get_llms,
 			new PreviewUpdateLlmsTxt( $llms_store, $llms_selector, $llms_builder, home_url( '/' ) ),
-			new UpdateLlmsTxt( $llms_store, $llms_selector, $llms_builder, $llms_audit_log, home_url( '/' ) ),
-			new RegenerateLlmsTxt( $llms_store, $llms_selector, $llms_builder, $llms_audit_log )
+			new UpdateLlmsTxt( $llms_store, $llms_selector, $llms_builder, $llms_audit_log, $llms_ownership, home_url( '/' ) ),
+			new RegenerateLlmsTxt( $llms_store, $llms_selector, $llms_builder, $llms_audit_log, $llms_ownership )
 		) )->register_hooks();
 
 		/*

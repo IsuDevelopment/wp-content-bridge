@@ -35,10 +35,12 @@ final readonly class GetLlmsTxt {
 	 *
 	 * @param LlmsArtifactStore      $store     Configuration and snapshot read port.
 	 * @param LlmsOwnershipInspector $ownership Ownership-conflict detection port.
+	 * @param string                 $site_url  Canonical site origin supplied by the WordPress adapter.
 	 */
 	public function __construct(
 		private LlmsArtifactStore $store,
 		private LlmsOwnershipInspector $ownership,
+		private string $site_url,
 	) {
 	}
 
@@ -55,8 +57,8 @@ final readonly class GetLlmsTxt {
 		$config   = $this->store->config();
 		$artifact = $this->store->artifact();
 
-		$state = ( $verify && null !== $config )
-			? $this->ownership->inspect_with_verification( $config->site_url, $artifact?->content_hash )
+		$state = $verify
+			? $this->ownership->inspect_with_verification( $config->site_url ?? $this->site_url, $artifact?->content_hash )
 			: $this->ownership->inspect();
 
 		$version = VersionToken::for_llms( $config?->to_array(), $artifact?->content_hash );
