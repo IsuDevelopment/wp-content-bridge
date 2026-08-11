@@ -52,7 +52,7 @@ final readonly class GetStatusTransitionsAbilities {
 			array(
 				'label'               => __( 'Get status transitions', 'wp-content-bridge' ),
 				'description'         => __( "Returns the configured status transitions available from one content object's current status, which additional publication gates the acting principal satisfies for each, and whether this site can actually run scheduled publication.", 'wp-content-bridge' ),
-				'category'            => 'wp-content-bridge',
+				'category'            => AbilityCategory::SLUG,
 				'input_schema'        => AbilitySchemas::get_status_transitions_input(),
 				'output_schema'       => AbilitySchemas::get_status_transitions_output(),
 				'permission_callback' => array( $this, 'can_read' ),

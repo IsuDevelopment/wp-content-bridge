@@ -87,7 +87,9 @@ surfaces to specific types and `Integration_API` exposes no such accessor.
 against the official Adapter: session handshake, `tools/list`, required-field
 contracts, and `tools/call` for the safe baseline reads.
 
-It also exposed a real drift. The Adapter projection is site infrastructure — a
+It also exposed a real drift — the first instance of the failure mode ADR 0025
+eventually removed, recorded here as it stood in 0.3.0. The projection was site
+infrastructure then: a
 version-controlled Composer MU-plugin owned by the consuming site, pinned there
 at `isudev/wp-content-bridge-mcp-server` **0.2.1**, which declares **15**
 abilities. The three Custom Schema abilities released in bridge 0.3.0
@@ -104,8 +106,11 @@ Exit gate for this backlog:
 - the two missing schema verifiers exist and pass — **met 2026-08-07**;
 - the closed MCP profile is confirmed against the running site, not against
   source — **met 2026-08-07**, and it found the 0.2.1 projection gap above.
-  Bumping the site's MU-plugin package and re-verifying the miniOrange
-  per-principal grants remain **open**;
+  Bumping the site's MU-plugin package is **closed by ADR 0025 (0.8.0)**: there
+  is no profile package to bump, and
+  `tests/Integration/abilities-runtime-verification.php` now asserts projection
+  parity every run. Re-verifying the miniOrange per-principal grants remains
+  **open** — that path has its own gate;
 - verification no longer depends on one developer machine's Local instance — a
   reproducible fallback (the repository already carries `.wp-env.json`) can
   execute the same verifiers — **open**. The 2026-07-21 outage was caused by
@@ -357,6 +362,11 @@ existing App-Password/local-STDIO paths are lower-risk and already covered by
 the client-agnostic smoke suite. Writes (create/update/publish) remain out of
 scope for Milestone 4 entirely; they are Milestones 5–7, each behind its own
 threat model.
+
+> **Narrowed by ADR 0025 (0.8.0).** Transport and OAuth remain external, and the
+> Adapter remains unbundled and never installed by this plugin — but the plugin
+> now creates the Adapter server for its own abilities, discovered by category.
+> The site-owned MU-plugin and its hand-written `ABILITY_PROFILE` are retired.
 
 Approach: **Approach A** (ADR 0010) — MCP transport and OAuth are external,
 configured layers this plugin never bundles or initializes. The official

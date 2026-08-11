@@ -55,7 +55,7 @@ final readonly class PatternAbilities {
 			array(
 				'label'               => __( 'List block patterns', 'wp-content-bridge' ),
 				'description'         => __( 'Lists bounded metadata and optional complete markup for block patterns registered on this WordPress site.', 'wp-content-bridge' ),
-				'category'            => 'wp-content-bridge',
+				'category'            => AbilityCategory::SLUG,
 				'input_schema'        => AbilitySchemas::pattern_list_input(),
 				'output_schema'       => AbilitySchemas::pattern_list_output(),
 				'permission_callback' => array( $this, 'can_read' ),

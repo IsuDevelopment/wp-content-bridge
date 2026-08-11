@@ -1,10 +1,21 @@
 # ChatGPT connector setup — OAuth-fronted MCP access
 
 This guide records the Milestone 4 five-read-ability walkthrough and the
-current configuration rule. The current source defines a closed profile of 13
-potential WP Content Bridge abilities, but miniOrange maintains its own
-principal-to-ability grants. Update those grants explicitly for the intended
-integration user; never infer them from the official Adapter server.
+current configuration rule.
+
+**On this endpoint the grant is the gate.** miniOrange discovers abilities from
+the WordPress registry itself (`wp_get_abilities()` plus its
+`mosmcp_exposed_abilities` filter) and then narrows to its own per-principal NHI
+grant. It has never read the official Adapter's projection, so nothing about
+this plugin's projection (ADR 0025) changes what this endpoint exposes: a newly
+registered ability reaches the registry automatically and then stops at the
+grant. Update those grants explicitly for the intended integration user; never
+infer them from the official Adapter server.
+
+A stale grant is indistinguishable from a missing ability from the client side.
+`get-diagnostics` reports `mcp_projection.projected_abilities` — the abilities
+this plugin registered and projects. Anything present there but absent from the
+ChatGPT tool list is a grant or a client cache, not a plugin defect.
 
 > **This is a different endpoint than `docs/setup/MCP_ADAPTER.md`.** That
 > document covers the official `WordPress/mcp-adapter` App-Password endpoint
@@ -16,11 +27,13 @@ integration user; never infer them from the official Adapter server.
 
 ## Site infrastructure — not part of the plugin package
 
-Per ADR 0010 (Approach A), this plugin never bundles or initializes an MCP
-transport or an OAuth authorization server. Everything below — the miniOrange
-plugin, the tunnel, and the proxy-base shim — is **site-level infrastructure**
-configured next to the plugin, not shipped inside it. Only this document
-lives in the repo.
+Per ADR 0010, this plugin ships no MCP transport and no OAuth authorization
+server, and never installs one. ADR 0025 narrowed that decision in exactly one
+respect — the plugin may hand its own abilities to an *official Adapter* the site
+installed — and that is a different endpoint from this one. Everything below —
+the miniOrange plugin, the tunnel, and the proxy-base shim — remains
+**site-level infrastructure** configured next to the plugin, not shipped inside
+it. Only this document lives in the repo.
 
 ## miniOrange dependency — recommendation, not a requirement
 
@@ -114,7 +127,10 @@ ability policy — this is a defense-in-depth check, not the only control.
    miniorange-secure-mcp-server --activate` or via the plugin directory).
 2. In its settings, lock the ability/tool policy to the explicit
    `wp-content-bridge/*` subset needed by the integration principal. Do not use
-   a wildcard and do not enable its bundled `mosmcp/*` write abilities.
+   a wildcard and do not enable its bundled `mosmcp/*` write abilities. Note
+   that miniOrange **fails open**: a principal with no grants configured sees
+   every registered ability, bounded only by its WordPress capabilities. Empty
+   is not restrictive here.
 3. Confirm the MCP endpoint resolves: `https://<your-site>/wp-json/mosmcp/v1/mcp`.
 4. For local development only, continue with the tunnel and proxy-base shim
    below so ChatGPT (a remote client) can reach a `Local by Flywheel` site.

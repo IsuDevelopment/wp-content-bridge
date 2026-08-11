@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace IsuDev\WPContentBridge\Adapter\Abilities;
 
 use InvalidArgumentException;
+use IsuDev\WPContentBridge\Adapter\Mcp\McpServerProvider;
 use IsuDev\WPContentBridge\Application\Content\ContentUnavailable;
 use IsuDev\WPContentBridge\Application\Content\ContentPayloadTooLarge;
 use IsuDev\WPContentBridge\Application\Content\GetBlockTree;
@@ -29,7 +30,7 @@ use WP_Error;
  */
 final readonly class ContentAbilities {
 
-	private const CATEGORY = 'wp-content-bridge';
+	private const CATEGORY = AbilityCategory::SLUG;
 
 	/**
 	 * Creates the Abilities projection.
@@ -297,6 +298,7 @@ final readonly class ContentAbilities {
 			'wordpress_version'                => get_bloginfo( 'version' ),
 			'abilities_api'                    => function_exists( 'wp_register_ability' ),
 			'mcp_adapter'                      => self::mcp_adapter_active(),
+			'mcp_projection'                   => McpServerProvider::projection_status(),
 			'max_content_representation_bytes' => GetContent::MAX_REPRESENTATION_BYTES,
 			'seo_provider'                     => $this->seo_providers->active()->status()->to_array(),
 			'readable_post_types'              => $readable,
@@ -306,17 +308,13 @@ final readonly class ContentAbilities {
 	/**
 	 * Detects the official WordPress/mcp-adapter plugin across supported versions.
 	 *
-	 * The pre-stable adapter defined `WP_MCP_ADAPTER_VERSION`/`wp_register_mcp_server()`.
-	 * The stable v0.5.0 release defines neither; it registers `WP\MCP\Core\McpAdapter` and
-	 * fires the `mcp_adapter_init` action instead, so both are checked as well.
+	 * Delegates to the projection adapter so detection has one implementation:
+	 * the settings screen reports the same answer this diagnostic does.
 	 *
 	 * @return bool
 	 */
 	private static function mcp_adapter_active(): bool {
-		return defined( 'WP_MCP_ADAPTER_VERSION' )
-			|| function_exists( 'wp_register_mcp_server' )
-			|| class_exists( '\WP\MCP\Core\McpAdapter' )
-			|| has_action( 'mcp_adapter_init' );
+		return McpServerProvider::adapter_active();
 	}
 
 	/**

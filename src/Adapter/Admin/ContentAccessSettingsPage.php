@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace IsuDev\WPContentBridge\Adapter\Admin;
 
+use IsuDev\WPContentBridge\Adapter\Mcp\McpServerProvider;
 use IsuDev\WPContentBridge\Application\Access\IntegrationAccessManager;
 use IsuDev\WPContentBridge\Application\Access\IntegrationAccessProblem;
 use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessManager;
@@ -188,6 +189,21 @@ final readonly class ContentAccessSettingsPage {
 			array(
 				'type'              => 'boolean',
 				'default'           => false,
+				'sanitize_callback' => array( self::class, 'sanitize_checkbox' ),
+				'show_in_rest'      => false,
+			)
+		);
+
+		/*
+		 * Defaults to true, unlike every other switch here: see
+		 * `Installer::MCP_SERVER_ENABLED_OPTION` and ADR 0025.
+		 */
+		register_setting(
+			self::OPTION_GROUP,
+			Installer::MCP_SERVER_ENABLED_OPTION,
+			array(
+				'type'              => 'boolean',
+				'default'           => true,
 				'sanitize_callback' => array( self::class, 'sanitize_checkbox' ),
 				'show_in_rest'      => false,
 			)
@@ -452,6 +468,45 @@ final readonly class ContentAccessSettingsPage {
 					</tbody>
 				</table>
 				<p id="wpcb-llms-enabled-help" class="description"><?php echo esc_html__( 'get-llms-txt remains available without this switch, so review its reported configuration and ownership-conflict state before enabling publication.', 'wp-content-bridge' ); ?></p>
+
+				<h2><?php echo esc_html__( 'MCP projection', 'wp-content-bridge' ); ?></h2>
+				<table class="widefat striped" aria-describedby="wpcb-mcp-server-help">
+					<tbody>
+						<tr>
+							<th scope="row"><?php echo esc_html__( 'Project abilities as MCP tools', 'wp-content-bridge' ); ?></th>
+							<td>
+								<input type="hidden" name="<?php echo esc_attr( Installer::MCP_SERVER_ENABLED_OPTION ); ?>" value="0">
+								<label>
+									<input type="checkbox" name="<?php echo esc_attr( Installer::MCP_SERVER_ENABLED_OPTION ); ?>" value="1" <?php checked( (bool) get_option( Installer::MCP_SERVER_ENABLED_OPTION, true ) ); ?>>
+									<?php echo esc_html__( 'Serve every enabled ability through the official MCP Adapter, if that plugin is installed (on by default).', 'wp-content-bridge' ); ?>
+								</label>
+							</td>
+						</tr>
+						<tr>
+							<th scope="row"><?php echo esc_html__( 'Current projection', 'wp-content-bridge' ); ?></th>
+							<td>
+								<?php if ( ! McpServerProvider::adapter_active() ) : ?>
+									<p><?php echo esc_html__( 'The official MCP Adapter plugin is not active, so no MCP endpoint exists. The abilities themselves are unaffected.', 'wp-content-bridge' ); ?></p>
+								<?php else : ?>
+									<?php $wpcb_projected = count( McpServerProvider::abilities() ); ?>
+									<p>
+										<code><?php echo esc_html( rest_url( McpServerProvider::REST_NAMESPACE . '/' . McpServerProvider::REST_ROUTE ) ); ?></code>
+									</p>
+									<p>
+										<?php
+										printf(
+											/* translators: %d: number of abilities currently projected as MCP tools. */
+											esc_html( _n( '%d ability is currently discovered and projected.', '%d abilities are currently discovered and projected.', $wpcb_projected, 'wp-content-bridge' ) ),
+											(int) $wpcb_projected
+										);
+										?>
+									</p>
+								<?php endif; ?>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+				<p id="wpcb-mcp-server-help" class="description"><?php echo esc_html__( 'The tool set is discovered from the ability registry on every request, so enabling a feature area above adds its abilities without any further configuration. Projection is not authorization: an integration user still needs the matching capabilities to execute anything.', 'wp-content-bridge' ); ?></p>
 
 				<?php submit_button(); ?>
 			</form>

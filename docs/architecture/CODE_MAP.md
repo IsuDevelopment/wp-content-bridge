@@ -451,12 +451,17 @@ Files:
   audit), that a preview followed by the matching write produces exactly the
   previewed state, and that stale tokens are rejected before any mutation.
 
-**MCP projection:** the current source documents a closed profile containing all
-25 implemented abilities. The reference Kormas site owns this boundary as a
-Composer-installed MU-plugin and passes only profile entries that are currently
-registered. Service and Custom Schema entries therefore disappear automatically
-when their standalone provider contract or global writes are inactive. OAuth grants remain a
-separate site configuration; see
+**MCP projection:** ADR 0025. `src/Adapter/Mcp/McpServerProvider.php` answers
+`mcp_adapter_init` and projects every ability registered under
+`AbilityCategory::SLUG` in the current request — there is no profile list in the
+plugin, the docs, or the site. Feature-gated abilities disappear from discovery
+because they are never registered, not because a list omits them. The retired
+site MU-plugin (`isudev/wp-content-bridge-mcp-server`) and its `ABILITY_PROFILE`
+constant are superseded. `wp_content_bridge_mcp_abilities` may narrow the set and
+can never widen it; `wpcb_mcp_server_enabled` turns the endpoint off entirely.
+`get-diagnostics` reports `mcp_projection`, and
+`tests/Integration/abilities-runtime-verification.php` asserts projection parity.
+OAuth grants remain a separate site configuration; see
 `docs/setup/MCP_ADAPTER.md`.
 
 ## Block-level edit feature
@@ -680,6 +685,8 @@ The only feature in this plugin with an unauthenticated public surface.
   `docs/adr/0023-llms-txt-is-published-through-a-virtual-endpoint.md`.
 - Status transition graph decision:
   `docs/adr/0024-status-transitions-are-an-explicit-per-type-pair-allowlist.md`.
+- Plugin-owned MCP projection decision:
+  `docs/adr/0025-the-plugin-projects-its-own-abilities-by-category.md`.
 - Agent procedures: `.agents/instructions/`.
 - Milestone 1B evidence: `docs/verification/ABILITIES_VERIFICATION.md`.
 

@@ -14,7 +14,7 @@ namespace IsuDev\WPContentBridge\Infrastructure\WordPress;
  */
 final class Installer {
 
-	private const SCHEMA_VERSION = 10;
+	private const SCHEMA_VERSION = 11;
 	private const VERSION_OPTION = 'wpcb_schema_version';
 
 	public const WRITES_ENABLED_OPTION        = 'wpcb_writes_enabled';
@@ -23,6 +23,22 @@ final class Installer {
 	public const PATTERN_READS_ENABLED_OPTION = 'wpcb_pattern_reads_enabled';
 	public const TRASH_ENABLED_OPTION         = 'wpcb_trash_enabled';
 	public const INTEGRATION_USER_OPTION      = 'wpcb_integration_user_id';
+
+	/**
+	 * Non-autoloaded MCP projection flag (ADR 0025). Gates whether the plugin
+	 * hands its registered abilities to an installed MCP Adapter.
+	 *
+	 * Unlike every other flag here, an **absent** row means enabled: a site
+	 * that installed the Adapter did so in order to reach these abilities, and
+	 * the plugin being unusable until someone finds a checkbox is the defect
+	 * this ADR removes. `activate()` seeds the row so the settings screen has a
+	 * value to render, and every read passes `true` as the default so an
+	 * install that never re-activated still projects.
+	 *
+	 * Projection is not authorization: the flag only controls MCP discovery,
+	 * never what a principal may execute.
+	 */
+	public const MCP_SERVER_ENABLED_OPTION = 'wpcb_mcp_server_enabled';
 
 	/**
 	 * Non-autoloaded llms.txt publication flag. Gates the three llms.txt
@@ -96,6 +112,7 @@ final class Installer {
 		add_option( self::PATTERN_READS_ENABLED_OPTION, false, '', false );
 		add_option( self::TRASH_ENABLED_OPTION, false, '', false );
 		add_option( self::LLMS_ENABLED_OPTION, false, '', false );
+		add_option( self::MCP_SERVER_ENABLED_OPTION, true, '', false );
 		add_option( self::INTEGRATION_USER_OPTION, 0, '', false );
 
 		/*

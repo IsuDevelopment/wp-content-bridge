@@ -56,7 +56,7 @@ final readonly class TransitionContentStatusAbilities {
 			array(
 				'label'               => __( 'Transition content status', 'wp-content-bridge' ),
 				'description'         => __( 'Moves one content object to a status permitted by the configured per-type transition graph, optionally scheduling it, after concurrency and authorization checks. The response reports the status actually stored, never merely the one requested.', 'wp-content-bridge' ),
-				'category'            => 'wp-content-bridge',
+				'category'            => AbilityCategory::SLUG,
 				'input_schema'        => AbilitySchemas::transition_content_status_input(),
 				'output_schema'       => AbilitySchemas::transition_content_status_output(),
 				'permission_callback' => array( $this, 'can_transition' ),

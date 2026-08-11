@@ -52,7 +52,7 @@ final readonly class TrashAbilities {
 			array(
 				'label'               => __( 'Move content to trash', 'wp-content-bridge' ),
 				'description'         => __( 'Moves one content object to reversible WordPress trash after concurrency and authorization checks.', 'wp-content-bridge' ),
-				'category'            => 'wp-content-bridge',
+				'category'            => AbilityCategory::SLUG,
 				'input_schema'        => AbilitySchemas::trash_content_input(),
 				'output_schema'       => AbilitySchemas::trash_content_output(),
 				'permission_callback' => array( $this, 'can_trash' ),

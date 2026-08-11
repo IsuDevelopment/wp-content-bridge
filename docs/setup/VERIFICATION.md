@@ -104,7 +104,7 @@ given machine can run the check at all:
 
 | Verifier | Needs | What it proves |
 |---|---|---|
-| `abilities-runtime-verification.php` ¹ | core | Discovery, schemas, permission callbacks, direct execution, REST projection, closed-profile guard |
+| `abilities-runtime-verification.php` ¹ | core | Discovery, schemas, permission callbacks, direct execution, REST projection, closed-profile guard, MCP projection parity (ADR 0025) |
 | `authorization-matrix.php` ¹ | core | Per-post-type read policy against native object permissions |
 | `integration-access-verification.php` | core | Managed integration-user capability grant and revoke |
 | `block-patterns-verification.php` | core | Pattern-read gating, that filesystem paths never appear in a response (ADR 0013), the 2 MiB bound, deterministic pagination |

@@ -1,9 +1,9 @@
 # Official MCP Adapter setup
 
-WP Content Bridge registers transport-neutral WordPress abilities. The official
-`WordPress/mcp-adapter` plugin can project an explicit subset of those abilities
-as MCP tools, but neither the Adapter nor its server configuration is bundled
-with WP Content Bridge.
+WP Content Bridge registers transport-neutral WordPress abilities and, since
+0.8.0, projects them itself: install the official `WordPress/mcp-adapter` plugin
+and the endpoint exists. No site-owned server code, and no list of ability names
+anywhere (ADR 0025).
 
 This guide describes the reference App-Password endpoint:
 
@@ -13,219 +13,136 @@ This guide describes the reference App-Password endpoint:
 | Server ID | `wpcb-bridge` |
 | Transport | Streamable HTTP / JSON-RPC 2.0 |
 | Authentication | WordPress Application Password over HTTP Basic auth |
-| Adapter | Official `WordPress/mcp-adapter` |
+| Adapter | Official `WordPress/mcp-adapter`, v0.5.0 or later |
 
 ChatGPT uses the separate OAuth-fronted miniOrange endpoint documented in
-[CHATGPT_CONNECTOR.md](CHATGPT_CONNECTOR.md). The two projections have separate
-allowlists and credentials.
+[CHATGPT_CONNECTOR.md](CHATGPT_CONNECTOR.md). That path discovers abilities from
+the WordPress registry on its own and is unaffected by this projection; what
+governs its reach is the per-principal miniOrange grant.
 
-## Projection profile for current source
+## How the tool set is determined
 
-The complete WP Content Bridge profile contains 31 potential abilities:
+`Adapter\Mcp\McpServerProvider` answers `mcp_adapter_init` and projects **every
+ability registered under this plugin's category in the current request**.
 
-```text
-wp-content-bridge/search-content
-wp-content-bridge/get-content
-wp-content-bridge/get-block-tree
-wp-content-bridge/get-url-seo
-wp-content-bridge/get-editorial-context
-wp-content-bridge/get-diagnostics
-wp-content-bridge/get-media
-wp-content-bridge/get-media-by-id
-wp-content-bridge/list-block-patterns
-wp-content-bridge/create-draft
-wp-content-bridge/update-content
-wp-content-bridge/preview-update-content
-wp-content-bridge/update-block
-wp-content-bridge/preview-update-block
-wp-content-bridge/update-block-attributes
-wp-content-bridge/update-seo
-wp-content-bridge/preview-update-seo
-wp-content-bridge/get-service-schema
-wp-content-bridge/preview-update-service-schema
-wp-content-bridge/update-service-schema
-wp-content-bridge/get-custom-schema
-wp-content-bridge/preview-update-custom-schema
-wp-content-bridge/update-custom-schema
-wp-content-bridge/trash-content
-wp-content-bridge/restore-trashed-content
-wp-content-bridge/get-llms-txt
-wp-content-bridge/preview-update-llms-txt
-wp-content-bridge/update-llms-txt
-wp-content-bridge/regenerate-llms-txt
-wp-content-bridge/get-status-transitions
-wp-content-bridge/transition-content-status
-```
+Registration is the only gate that matters, and it already reflects
+configuration: an ability whose feature area is switched off is never
+registered, so it cannot be projected. Enabling a feature area in **Settings →
+WP Content Bridge** therefore adds its abilities to `tools/list` with no further
+configuration, and a release that adds an ability needs no site-side change.
 
-The first six are always registered. The remaining abilities enter the
-WordPress registry only when their WP Content Bridge feature flags are enabled:
+Roughly, from least to most gated:
 
-- media reads: `wpcb_media_reads_enabled`;
-- block patterns: `wpcb_pattern_reads_enabled`;
-- draft/content/SEO/block writes and their previews: `wpcb_writes_enabled`
-  (block reads, `get-block-tree`, are always registered — same gates as
-  `get-content` — while block writes need this flag exactly like the other
-  content writes);
-- Service schema: `wpcb_writes_enabled` plus a loaded, compatible standalone
-  IsuDev Schema Extended plugin;
-- Custom Schema: `wpcb_writes_enabled` plus Schema Extended's compatible public
-  `Integration_API` contract;
-- trash and its restore: both `wpcb_writes_enabled` and `wpcb_trash_enabled`;
-- llms.txt writes — `preview-update-llms-txt`, `update-llms-txt`,
-  `regenerate-llms-txt`: `wpcb_llms_enabled`. The read, `get-llms-txt`, is
-  always registered so an operator can inspect ownership and configuration
-  before enabling publication;
-- status transitions — `transition-content-status`: `wpcb_writes_enabled`.
-  The read, `get-status-transitions`, is always registered for the same reason
-  as `get-llms-txt`. Note that registration is not the only gate here: a
-  transition also needs its `(from, to)` pair in the per-type allowlist, which
-  is empty until an administrator configures it, and `publish`/`future`
-  additionally need `wpcb_publish_enabled`.
+- the core content, SEO, block-tree, diagnostics, llms.txt and status-graph
+  **reads** are always registered;
+- media reads and block-pattern reads each need their own read flag;
+- every **write** needs `wpcb_writes_enabled`, and trash/restore, llms.txt
+  publication, and `publish`/`future` status targets need their own flag on top;
+- Service and Custom Schema abilities additionally need a compatible standalone
+  IsuDev Schema Extended plugin.
 
-The MCP server should therefore intersect its explicit profile with abilities
-registered in the current request. This keeps disabled operations absent from
-MCP discovery.
+`docs/architecture/CONTENT_ACCESS.md` and the settings screen are authoritative
+on the flags; this page deliberately does not restate the inventory.
 
-Projection is not authorization. Execution still requires the ability's WPCB
-capability, native WordPress capability, per-type policy, schema validation,
-and write safeguards. Adding an ID to the MCP profile grants none of those.
+Projection is not authorization. A projected tool still requires the ability's
+WPCB capability, the native WordPress capability, per-type policy, schema
+validation, and the write safeguards before it executes anything.
 
 ## Install the Adapter
-
-Install and activate the official Adapter at site level:
 
 ```bash
 wp plugin install https://github.com/WordPress/mcp-adapter/releases/latest/download/mcp-adapter.zip --activate
 wp plugin list --status=active
 ```
 
-Do not add the Adapter as a dependency of WP Content Bridge and do not create an
-MCP server from the plugin's composition root.
+That is the whole setup. Do not add the Adapter as a Composer dependency of WP
+Content Bridge; the plugin must keep working with it absent.
 
-## Site-owned server configuration
+## Retiring the site-owned MU-plugin
 
-Place the following logic in version-controlled site infrastructure. A
-Composer-installed MU-plugin is recommended; do not maintain an ignored,
-hand-edited runtime file as the deployment source.
+Installs predating 0.8.0 carry an MU-plugin (`isudev/wp-content-bridge-mcp-server`)
+whose `ABILITY_PROFILE` constant was a hand-written projection list. That list
+is what silently withheld 20 of 31 abilities on a 0.7.1 install, and it is now
+redundant.
 
-```php
-<?php
-/**
- * Plugin Name: WP Content Bridge MCP Server
- * Description: Projects registered WP Content Bridge abilities through the official MCP Adapter.
- * Version:     0.4.0
- */
+While it is still present it wins: it registers at the default priority and the
+plugin's provider, hooked at priority 20, declines rather than registering
+`wpcb-bridge` twice. So:
 
-declare(strict_types=1);
+1. Delete the MU-plugin (or remove it from the site's Composer requirements).
+2. Confirm the endpoint still answers and now lists everything (below).
+3. Reconnect the client — MCP clients cache `tools/list`.
 
-use WP\MCP\Core\McpAdapter;
-use WP\MCP\Infrastructure\ErrorHandling\ErrorLogMcpErrorHandler;
-use WP\MCP\Infrastructure\Observability\NullMcpObservabilityHandler;
-use WP\MCP\Transport\HttpTransport;
+The server ID, REST namespace, and route are unchanged, so the endpoint URL and
+existing Application Passwords keep working.
 
-$wpcb_profile = array(
-	'wp-content-bridge/search-content',
-	'wp-content-bridge/get-content',
-	'wp-content-bridge/get-block-tree',
-	'wp-content-bridge/get-url-seo',
-	'wp-content-bridge/get-editorial-context',
-	'wp-content-bridge/get-diagnostics',
-	'wp-content-bridge/get-media',
-	'wp-content-bridge/get-media-by-id',
-	'wp-content-bridge/list-block-patterns',
-	'wp-content-bridge/create-draft',
-	'wp-content-bridge/update-content',
-	'wp-content-bridge/preview-update-content',
-	'wp-content-bridge/update-block',
-	'wp-content-bridge/preview-update-block',
-	'wp-content-bridge/update-block-attributes',
-	'wp-content-bridge/update-seo',
-	'wp-content-bridge/preview-update-seo',
-	'wp-content-bridge/get-service-schema',
-	'wp-content-bridge/preview-update-service-schema',
-	'wp-content-bridge/update-service-schema',
-	'wp-content-bridge/get-custom-schema',
-	'wp-content-bridge/preview-update-custom-schema',
-	'wp-content-bridge/update-custom-schema',
-	'wp-content-bridge/trash-content',
-	'wp-content-bridge/restore-trashed-content',
-	'wp-content-bridge/get-llms-txt',
-	'wp-content-bridge/preview-update-llms-txt',
-	'wp-content-bridge/update-llms-txt',
-	'wp-content-bridge/regenerate-llms-txt',
-	'wp-content-bridge/get-status-transitions',
-	'wp-content-bridge/transition-content-status',
-);
+## Narrowing the projection
 
-add_action(
-	'mcp_adapter_init',
-	static function ( McpAdapter $adapter ) use ( $wpcb_profile ): void {
-		$registered = function_exists( 'wp_has_ability' )
-			? array_values( array_filter( $wpcb_profile, 'wp_has_ability' ) )
-			: array();
+Two controls, both optional:
 
-		if ( array() === $registered ) {
-			return;
-		}
+- **`wpcb_mcp_server_enabled`** — the settings-screen switch. Off means the
+  plugin registers no MCP server at all. An absent option row means on: a site
+  that installed the Adapter did so to reach these abilities.
+- **`wp_content_bridge_mcp_abilities`** — a filter for sites that want a smaller
+  tool set:
 
-		$adapter->create_server(
-			'wpcb-bridge',
-			'wpcb-mcp',
-			'mcp',
-			'WP Content Bridge',
-			'Capability-gated access to registered WP Content Bridge abilities.',
-			'0.4.0',
-			array( HttpTransport::class ),
-			ErrorLogMcpErrorHandler::class,
-			NullMcpObservabilityHandler::class,
-			$registered,
-			array(),
-			array()
-		);
-	}
-);
-```
+  ```php
+  add_filter(
+      'wp_content_bridge_mcp_abilities',
+      static fn ( array $abilities ): array => array_values(
+          array_filter( $abilities, static fn ( string $name ): bool => str_contains( $name, '/get-' ) )
+      )
+  );
+  ```
 
-The example uses an explicit closed profile rather than discovering every
-public ability from every plugin. This prevents unrelated or newly installed
-tools from entering the server accidentally.
+  The filter can only subtract. Names outside the discovered set are dropped, so
+  no other plugin's abilities can enter this server through it.
+
+Neither control is an authorization mechanism. To give an integration less
+authority, give its user fewer capabilities — see below.
 
 ## Principal and capability configuration
 
 Use a dedicated WordPress user. In **Settings → WP Content Bridge**, assign only
 the capabilities required by that integration:
 
-- `wpcb_read_content` for the six core reads, including `get-block-tree`;
+- `wpcb_read_content` for the content reads, including `get-block-tree`;
 - `wpcb_read_media` for media reads;
 - `wpcb_read_patterns` plus native editor access for block patterns;
-- `wpcb_edit_content` plus native create/edit capabilities for draft/content
-  writes, including `update-block` and `update-block-attributes`;
-- `wpcb_manage_seo` plus native `edit_post` for SEO, structured Service, and
-  Custom Schema writes; Schema operations also require provider support;
-- `wpcb_delete_content` plus native `delete_post` for trash.
+- `wpcb_edit_content` plus native create/edit capabilities for draft, content,
+  and block writes;
+- `wpcb_manage_seo` plus native `edit_post` for SEO, Service, and Custom Schema
+  writes; Schema operations also require provider support;
+- `wpcb_delete_content` plus native `delete_post` for trash;
+- `wpcb_manage_llms` for llms.txt writes;
+- `wpcb_publish_content` plus native `publish_post` for publishing transitions —
+  grant this only deliberately.
 
-Do not grant `wpcb_publish_content` until
-`wp-content-bridge/transition-content-status` is implemented and separately
-approved. Do not expose another plugin's generic content-write abilities for
-the same operation.
+This is the layer that decides what an integration may do. It is enforced per
+call regardless of what discovery listed.
 
 ## Verification
 
-First verify registration inside WordPress:
+Ask the plugin what it is projecting — `get-diagnostics` reports it, and so does
+this one-liner:
 
 ```bash
-wp eval 'foreach (array("search-content","get-content","get-block-tree","get-url-seo","get-editorial-context","get-diagnostics","get-media","get-media-by-id","list-block-patterns","create-draft","update-content","preview-update-content","update-block","preview-update-block","update-block-attributes","update-seo","preview-update-seo","get-service-schema","preview-update-service-schema","update-service-schema","get-custom-schema","preview-update-custom-schema","update-custom-schema","trash-content","restore-trashed-content") as $name) { $id = "wp-content-bridge/" . $name; echo $id, "=", (int) (function_exists("wp_has_ability") && wp_has_ability($id)), PHP_EOL; }'
+wp eval 'echo wp_json_encode( IsuDev\WPContentBridge\Adapter\Mcp\McpServerProvider::projection_status(), JSON_PRETTY_PRINT ), PHP_EOL;'
 ```
 
-Then run the client-agnostic smoke test. `WPCB_EXPECTED_TOOLS` controls the
-discovery profile; the script executes only the safe baseline reads and never
-executes write or destructive tools.
+`projected_abilities` is the exact set the Adapter receives. If a tool is
+missing from a client but present here, the client is caching or its principal
+lacks the capability; if it is missing here too, its feature area is off.
+
+Then run the client-agnostic smoke test. It executes only the safe baseline
+reads and never executes write or destructive tools. Derive the expected tool
+list from the runtime rather than typing one:
 
 ```bash
 WPCB_SITE_URL=https://example.test \
 WPCB_WP_ROOT=/absolute/path/to/site/public \
 WPCB_MCP_PATH=/wp-json/wpcb-mcp/mcp \
-WPCB_EXPECTED_TOOLS=search-content,get-content,get-block-tree,get-url-seo,get-editorial-context,get-diagnostics,get-media,get-media-by-id,list-block-patterns,create-draft,update-content,preview-update-content,update-block,preview-update-block,update-block-attributes,update-seo,preview-update-seo,get-service-schema,preview-update-service-schema,update-service-schema,get-custom-schema,preview-update-custom-schema,update-custom-schema,trash-content,restore-trashed-content \
+WPCB_EXPECTED_TOOLS="$(wp eval 'echo implode( ",", array_map( static fn ( string $name ): string => substr( $name, strlen( "wp-content-bridge/" ) ), IsuDev\WPContentBridge\Adapter\Mcp\McpServerProvider::abilities() ) );')" \
 tests/Integration/mcp-smoke-verification.sh
 ```
 
@@ -234,25 +151,31 @@ exit. It also verifies the raw MCP `inputSchema.required` declaration for known
 targeted tools, including `post_id` and `version_token` on Service and Custom
 Schema preview/update. Never print, log, or commit that secret.
 
-MCP tool names replace the ability ID slash with a hyphen, for example:
+`tests/Integration/abilities-runtime-verification.php` asserts projection
+parity — every registered ability of this plugin's category is projected — so a
+new ability cannot silently miss the endpoint.
+
+MCP tool names are derived from the ability ID by the Adapter, which replaces
+the slash, for example:
 
 ```text
 wp-content-bridge/get-media -> wp-content-bridge-get-media
 ```
 
+Client-side naming may differ again (some clients render `__` between namespace
+and name). Match on the trailing intent, not the separator.
+
 ## Release checks
 
-- Disabled feature flags remove their abilities from `tools/list`.
-- A user without the matching WPCB capability cannot execute the tool.
+- Disabled feature flags remove their abilities from `tools/list`, because they
+  remove them from the registry.
+- Enabling a feature flag adds its abilities to `tools/list` on the next
+  request, with no site-side configuration change.
+- With the Adapter deactivated, the plugin loads and the abilities register as
+  before; nothing tries to create a server.
+- `wpcb_mcp_server_enabled` off removes the endpoint entirely.
+- A user without the matching WPCB capability cannot execute a listed tool.
 - Native object authorization still denies inaccessible content or media.
 - Write tools are not invoked by discovery smoke tests.
-- `preview-update-content` and `preview-update-seo` remain absent unless
-  writes are enabled, exactly like the writes they mirror; both are truthfully
-  annotated `readonly: true` and never write.
-- `trash-content` remains absent unless both writes and trash are enabled.
-- all three Service-schema abilities remain absent unless writes and the
-  compatible standalone Schema Extended provider are both active.
-- all three Custom Schema abilities remain absent unless writes and Schema
-  Extended's compatible `Integration_API` contract are both active.
 - No Application Password, OAuth token, client registration, or site URL is
   committed to either repository.

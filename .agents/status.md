@@ -1,6 +1,6 @@
 # Project status
 
-**Released version: 0.7.1.** Static quality is green at 408 tests / 1,071
+**Released version: 0.8.0.** Static quality is green at 416 tests / 1,087
 assertions. Runtime verification is defined in `docs/setup/VERIFICATION.md`.
 `0.7.0` completes the status workflow: transitions run against an
 administrator-configured allowlist of ordered status pairs per post type (ADR
@@ -16,7 +16,60 @@ so what the matrix submits is unchanged. It also fixes a packaging leak: the
 maintainer notes file shipped inside every release artifact from 0.5.0 through
 0.7.0.
 
-Next is `0.8.0`, Slice 3 (revision inspection and recovery).
+`0.8.0` makes the plugin project its own abilities (see the section below). Slice
+3 (revision inspection and recovery) moves to `0.9.0`.
+
+## MCP projection is owned by the plugin — 0.8.0, 2026-08-11
+
+ADR 0025. Registering abilities was never enough to use them: the official
+Adapter endpoint existed only because a site MU-plugin
+(`isudev/wp-content-bridge-mcp-server`) called `create_server()` with a
+hand-written `ABILITY_PROFILE` constant. Two costs, both realized.
+
+**The list drifted silently.** A live install running 0.7.1 with writes enabled
+projected 11 of 31 abilities. Nothing reported a problem, because a missing
+profile entry is indistinguishable from a disabled feature area. The decisive
+evidence was `update-service-schema` present while `get-service-schema` and
+`preview-update-service-schema` — registered in the *same* call — were absent,
+and `get-block-tree` absent while `get-content`, which shares its
+`permission_callback` and its unconditional registration, was present. No gate
+inside the plugin can produce that; only a name-keyed filter downstream can. The
+same list existed in four places, and the `wp eval` copy in
+`docs/setup/MCP_ADAPTER.md` was already missing the llms.txt and status
+abilities.
+
+**A fresh install had no usable path.** Anyone installing this plugin got 31
+registered abilities and an instruction to write PHP.
+
+Now `Adapter\Mcp\McpServerProvider` answers `mcp_adapter_init` and projects every
+ability registered under `AbilityCategory::SLUG` in the current request.
+Registration is the gate, and it already encodes configuration. There is no name
+list left anywhere. `AbilityCategory::SLUG` replaced the per-class category
+literals for the same reason: discovery keyed on a slug turns a drifted literal
+into a silent dropout.
+
+Boundaries kept: the Adapter is not bundled, not a dependency, and never
+installed here; `mcp_adapter_init` only fires where the site added it; transport
+and OAuth stay external (ADR 0010, ADR 0005). Projection widened, authorization
+did not — capability, native capability, per-type policy, schema validation and
+write safeguards are unchanged.
+
+Observability was the other half of the fix. `get-diagnostics` gained
+`mcp_projection` (`enabled`, `endpoint`, `projected_abilities`) from the same
+discovery the projection uses, and
+`tests/Integration/abilities-runtime-verification.php` asserts projection
+parity, so the next added ability cannot silently miss the endpoint.
+
+**Not verified at runtime yet:** the `create_server()` call itself. The
+positional argument list mirrors Adapter v0.5.0 as documented and as the retired
+MU-plugin used it, but nothing in this repo executes it — no adapter in
+`vendor/`. Run the smoke suite against a site with the Adapter active before
+trusting the endpoint, and delete the MU-plugin first (while present it wins at
+the default priority and the provider declines at 20).
+
+The miniOrange OAuth path never read `ABILITY_PROFILE` and is unaffected; its
+per-principal NHI grant is still the gate there, and its unset-allowlist
+fail-open is still a hazard worth stating in each threat model.
 
 ## Block-level edits — 0.5.0, 2026-08-07
 
@@ -758,7 +811,7 @@ read-back check detects a transition WordPress rewrote but does not roll it
 back, so the post stays as stored while the caller is told the write failed. The
 seventh gate keeps that path unreachable through the ability.
 
-**Next release is `0.8.0` — Slice 3, revision inspection and recovery.**
+**Next release is `0.9.0` — Slice 3, revision inspection and recovery.**
 
 **0.4.5 is complete.** All eight tasks of `docs/plan/RELEASE_0_4_5_PLAN.md` are
 done: `restore-trashed-content`, unifying the preview response flag,
@@ -864,7 +917,12 @@ was 0.5.0 under the current numbering.
 
 ## MCP exposure and grants
 
-Verified against the running site on 2026-08-07.
+Verified against the running site on 2026-08-07. **The official-Adapter half of
+this section is superseded by 0.8.0** (ADR 0025): `ABILITY_PROFILE` and the
+MU-plugin that held it are retired, and the plugin projects its own abilities by
+category. The miniOrange half below still stands, and its distinction between the
+two paths is exactly why the 0.7.1 investigation had to start by asking which
+endpoint the client was on.
 
 ### Two MCP servers, one projection
 

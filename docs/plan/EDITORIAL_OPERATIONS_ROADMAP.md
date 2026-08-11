@@ -634,12 +634,13 @@ Decided 2026-08-07, superseding the version in each slice heading:
 | `0.5.0` | Block-level edits — path-addressed `get-block-tree`/`update-block`/`preview-update-block`/`update-block-attributes` (ADR 0022) | shipped |
 | `0.6.0` | Slice 1B — llms.txt (ADR 0023) | shipped |
 | `0.7.0` | Slice 2 — controlled status workflow (ADR 0024) | shipped |
-| `0.8.0` | Slice 3 — revision inspection and recovery | planned |
-| `0.9.0` | Slice 4 — media metadata and featured image | planned |
-| `0.10.0+` | Slice 5 — permalinks and redirects | planned |
-| `0.11.0+` | Slice 6 — targeted block editing | planned |
-| `0.12.0+` | Slice 7 — connector mutation history | planned |
-| `0.13.0+` | Slice 8 — bounded multi-object inventory | planned |
+| `0.8.0` | Plugin-owned MCP projection, discovered by category (ADR 0025) | shipped |
+| `0.9.0` | Slice 3 — revision inspection and recovery | planned |
+| `0.10.0` | Slice 4 — media metadata and featured image | planned |
+| `0.11.0+` | Slice 5 — permalinks and redirects | planned |
+| `0.12.0+` | Slice 6 — targeted block editing | planned |
+| `0.13.0+` | Slice 7 — connector mutation history | planned |
+| `0.14.0+` | Slice 8 — bounded multi-object inventory | planned |
 
 `0.5.0` was inserted ahead of the sequence above and is not one of its
 numbered slices; it shipped the block-level editing work specified in

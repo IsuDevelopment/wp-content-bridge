@@ -54,7 +54,7 @@ final readonly class RestoreTrashedContentAbilities {
 			array(
 				'label'               => __( 'Restore trashed content', 'wp-content-bridge' ),
 				'description'         => __( 'Restores one trashed content object to its safe pre-trash status after concurrency and authorization checks.', 'wp-content-bridge' ),
-				'category'            => 'wp-content-bridge',
+				'category'            => AbilityCategory::SLUG,
 				'input_schema'        => AbilitySchemas::restore_trashed_content_input(),
 				'output_schema'       => AbilitySchemas::restore_trashed_content_output(),
 				'permission_callback' => array( $this, 'can_restore' ),

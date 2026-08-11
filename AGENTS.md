@@ -22,7 +22,8 @@ The plugin must remain reusable across site projects. Never add Kormas-specific 
 - Domain and application services must not depend on MCP, REST requests, admin screens, or a concrete SEO plugin.
 - Abilities, REST, CLI, and UI are thin adapters over shared application services.
 - SEO integrations implement a provider contract. Yoast is optional, not a hard dependency.
-- MCP Adapter is optional and must not be bundled or initialized by this plugin.
+- MCP Adapter is optional and must never be bundled, required as a dependency, or installed by this plugin. Since ADR 0025 the plugin does hand its own abilities to an Adapter the site installed itself, through `Adapter\Mcp\McpServerProvider` on `mcp_adapter_init` — nothing else in the plugin may know about MCP. Transport, authentication, and OAuth stay external (ADR 0005, ADR 0010).
+- The MCP tool set is discovered from the ability registry by category. Never introduce a hand-maintained list of ability names — in code, in documentation, or in site configuration.
 - Agents API is optional and out of the MVP runtime. Add it only behind an integration boundary after an ADR.
 - Stable ability IDs and schemas are public API. Changing them requires an ADR, migration notes, and contract tests.
 - Do not expose arbitrary post meta, options, SQL, PHP execution, filesystem access, or generic action dispatch.
@@ -54,6 +55,7 @@ The plugin must remain reusable across site projects. Never add Kormas-specific 
 ## Abilities rules
 
 - Register categories on `wp_abilities_api_categories_init` and abilities on `wp_abilities_api_init`.
+- Every ability registers under `AbilityCategory::SLUG`. Never write the category as a literal: the MCP projection discovers by category, so a drifted slug silently drops the ability from every client.
 - Use semantic-intent IDs, not one ability per REST verb and not an `action` switchboard.
 - Every ability declares input/output JSON Schema and all safety annotations: `readonly`, `destructive`, and `idempotent`.
 - Reads may be exposed before writes. A new write ability requires explicit threat-model and audit updates.

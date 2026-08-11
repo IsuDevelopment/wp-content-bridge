@@ -27,7 +27,7 @@ use WP_Error;
  */
 final readonly class CustomSchemaAbilities {
 
-	private const CATEGORY = 'wp-content-bridge';
+	private const CATEGORY = AbilityCategory::SLUG;
 
 	/**
 	 * Creates the adapter.

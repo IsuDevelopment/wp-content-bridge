@@ -605,31 +605,38 @@ plugin never overwrites or deletes another owner's file.
 
 ## MCP integration
 
-The plugin registers domain abilities; it does not provide MCP transport or
-authentication. Install the official WordPress MCP Adapter separately and
-explicitly allow only the abilities required by a client.
+Install the official WordPress MCP Adapter and the endpoint exists — the plugin
+projects its own abilities at `/wp-json/wpcb-mcp/mcp`, with no server code to
+write and no list of ability names to maintain (ADR 0025). The Adapter is not
+bundled, not a dependency, and never installed by this plugin; transport,
+authentication, and OAuth remain external.
 
-The current source defines a closed 25-ability projection profile covering
-every implemented ability. The reference site-level MCP server intersects
-that profile with the abilities registered in the current request, so disabled
-media, pattern, write, Schema Extended, and trash features remain absent from
-discovery. Service and Custom Schema abilities additionally disappear when
-their required Schema Extended public contract is inactive or incompatible.
+The tool set is discovered from the WordPress ability registry by category on
+every request, so it is exactly what the plugin registered: enabling a feature
+area in settings adds its abilities to discovery, and a disabled media, pattern,
+write, Schema Extended, trash, llms.txt, or publication feature is absent
+because it was never registered. `get-diagnostics` reports the projected set,
+so a tool missing from a client can be told from an ability that does not exist.
 
-An ability can be registered in WordPress but still hidden from a particular
-MCP client by the Adapter or OAuth allowlist. Those projection allowlists never
-grant authority beyond the bound WordPress user's WPCB and native capabilities.
+Two optional controls narrow this: the `wpcb_mcp_server_enabled` switch turns the
+endpoint off, and the `wp_content_bridge_mcp_abilities` filter removes
+individual abilities. The filter can only subtract — it can never expose an
+ability this plugin did not register.
+
+An ability can still be registered and hidden from a particular client by that
+client's own OAuth grant. Neither projection nor any allowlist grants authority
+beyond the bound WordPress user's WPCB and native capabilities.
 
 See [MCP Adapter setup](docs/setup/MCP_ADAPTER.md) and
 [ChatGPT connector setup](docs/setup/CHATGPT_CONNECTOR.md).
 
 ## Planned and unsupported operations
 
-`wp-content-bridge/transition-content-status` is planned but not implemented.
-It will own editorial status transitions, publication, and scheduling. Public
-and scheduled transitions will additionally require the publication feature
-flag, `wpcb_publish_content`, native `publish_post`, and an allowed transition
-from the configured graph. `create-draft` will remain draft-only.
+`wp-content-bridge/transition-content-status` shipped in 0.7.0 and owns
+editorial status transitions, publication, and scheduling. Public and scheduled
+transitions additionally require the publication feature flag,
+`wpcb_publish_content`, native `publish_post`, and an allowed pair from the
+configured transition matrix. `create-draft` remains draft-only.
 
 The current plugin does not provide abilities for:
 

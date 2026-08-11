@@ -23,6 +23,7 @@ use IsuDev\WPContentBridge\Adapter\Abilities\SeoAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\ServiceSchemaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\TrashAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\TransitionContentStatusAbilities;
+use IsuDev\WPContentBridge\Adapter\Mcp\McpServerProvider;
 use IsuDev\WPContentBridge\Application\Access\IntegrationAccessManager;
 use IsuDev\WPContentBridge\Application\Status\GetStatusTransitions;
 use IsuDev\WPContentBridge\Application\Status\StatusTransitionManager;
@@ -329,6 +330,18 @@ final class Plugin {
 					$audit_log
 				)
 			) )->register_hooks();
+		}
+
+		/*
+		 * MCP projection (ADR 0025). Registered last, after every ability
+		 * registration above, because it discovers its tool set from the
+		 * ability registry rather than from a list: whatever registered in this
+		 * request is what gets projected. `mcp_adapter_init` only fires on
+		 * installs that added the official Adapter themselves, so this stays a
+		 * no-op — and the Adapter stays optional and unbundled — otherwise.
+		 */
+		if ( McpServerProvider::is_enabled() ) {
+			( new McpServerProvider() )->register_hooks();
 		}
 
 		/**

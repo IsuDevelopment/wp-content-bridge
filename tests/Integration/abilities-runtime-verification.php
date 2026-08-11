@@ -197,13 +197,15 @@ final class WPCB_Abilities_Runtime_Verification {
 		}
 
 		wp_set_current_user( $admin_id );
-		$rest = $this->verify_rest( $post_id );
+		$rest       = $this->verify_rest( $post_id );
+		$projection = $this->verify_projection();
 
 		echo wp_json_encode(
 			array(
 				'status'                 => 'PASS',
 				'wordpress_version'      => get_bloginfo( 'version' ),
 				'ability_names'          => array_keys( $abilities ),
+				'mcp_projection'         => $projection,
 				'definitions'            => $definitions,
 				'annotations'            => $annotations,
 				'schemas'                => $schemas,
@@ -218,6 +220,49 @@ final class WPCB_Abilities_Runtime_Verification {
 			),
 			JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
 		), PHP_EOL;
+	}
+
+	/**
+	 * Verifies the MCP projection covers every registered ability.
+	 *
+	 * This is the assertion that replaced the hand-maintained projection list
+	 * (ADR 0025). Registration is the only gate: whatever this plugin
+	 * registered in this request must be projected, so an ability added in a
+	 * later release cannot silently miss the endpoint the way the retired
+	 * MU-plugin profile allowed. A site filter may narrow the projection, so
+	 * this runs against an unfiltered site.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function verify_projection(): array {
+		$registered = array();
+		foreach ( wp_get_abilities() as $ability ) {
+			if ( \IsuDev\WPContentBridge\Adapter\Abilities\AbilityCategory::SLUG === $ability->get_category() ) {
+				$registered[] = $ability->get_name();
+			}
+		}
+		sort( $registered );
+
+		$projected = \IsuDev\WPContentBridge\Adapter\Mcp\McpServerProvider::abilities();
+		$missing   = array_values( array_diff( $registered, $projected ) );
+		$extra     = array_values( array_diff( $projected, $registered ) );
+
+		$this->assert_true(
+			array() === $missing,
+			'Registered abilities are missing from the MCP projection: ' . implode( ', ', $missing )
+		);
+		$this->assert_true(
+			array() === $extra,
+			'The MCP projection contains abilities this plugin did not register: ' . implode( ', ', $extra )
+		);
+
+		return array(
+			'enabled'             => \IsuDev\WPContentBridge\Adapter\Mcp\McpServerProvider::is_enabled(),
+			'adapter_active'      => \IsuDev\WPContentBridge\Adapter\Mcp\McpServerProvider::adapter_active(),
+			'registered_count'    => count( $registered ),
+			'projected_count'     => count( $projected ),
+			'projected_abilities' => $projected,
+		);
 	}
 
 	/**

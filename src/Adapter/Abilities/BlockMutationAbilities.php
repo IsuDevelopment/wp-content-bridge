@@ -33,7 +33,7 @@ use WP_Error;
  */
 final readonly class BlockMutationAbilities {
 
-	private const CATEGORY = 'wp-content-bridge';
+	private const CATEGORY = AbilityCategory::SLUG;
 
 	/**
 	 * Creates the Abilities projection.

@@ -59,6 +59,12 @@ final class AbilitySchemasTest extends TestCase {
 		self::assertContains( 'seo_provider', $diagnostics['required'] );
 		self::assertFalse( $diagnostics['properties']['seo_provider']['additionalProperties'] );
 		self::assertContains( 'module_versions', $diagnostics['properties']['seo_provider']['required'] );
+		self::assertContains( 'mcp_projection', $diagnostics['required'] );
+		self::assertFalse( $diagnostics['properties']['mcp_projection']['additionalProperties'] );
+		self::assertSame(
+			array( 'enabled', 'endpoint', 'projected_abilities' ),
+			$diagnostics['properties']['mcp_projection']['required']
+		);
 	}
 
 	/**

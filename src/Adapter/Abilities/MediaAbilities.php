@@ -54,7 +54,7 @@ final readonly class MediaAbilities {
 			array(
 				'label'               => __( 'Search media', 'wp-content-bridge' ),
 				'description'         => __( 'Searches the authorized WordPress media library by exact ID, exact same-site URL, exact filename, or bounded text query.', 'wp-content-bridge' ),
-				'category'            => 'wp-content-bridge',
+				'category'            => AbilityCategory::SLUG,
 				'input_schema'        => AbilitySchemas::media_search_input(),
 				'output_schema'       => AbilitySchemas::media_search_output(),
 				'permission_callback' => array( $this, 'can_read' ),
@@ -68,7 +68,7 @@ final readonly class MediaAbilities {
 			array(
 				'label'               => __( 'Get media by ID', 'wp-content-bridge' ),
 				'description'         => __( 'Returns one authorized WordPress attachment with stable identity and normalized metadata.', 'wp-content-bridge' ),
-				'category'            => 'wp-content-bridge',
+				'category'            => AbilityCategory::SLUG,
 				'input_schema'        => AbilitySchemas::media_by_id_input(),
 				'output_schema'       => AbilitySchemas::media_by_id_output(),
 				'permission_callback' => array( $this, 'can_read' ),

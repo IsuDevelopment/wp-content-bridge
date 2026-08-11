@@ -21,7 +21,7 @@ use WP_Error;
  */
 final readonly class SeoAbilities {
 
-	private const CATEGORY = 'wp-content-bridge';
+	private const CATEGORY = AbilityCategory::SLUG;
 
 	/**
 	 * Creates the SEO ability adapter.

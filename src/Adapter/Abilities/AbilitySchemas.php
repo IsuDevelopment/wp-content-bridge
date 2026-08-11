@@ -748,13 +748,33 @@ final class AbilitySchemas {
 	public static function diagnostics_output(): array {
 		return array(
 			'type'                 => 'object',
-			'required'             => array( 'schema_version', 'plugin_version', 'wordpress_version', 'abilities_api', 'mcp_adapter', 'max_content_representation_bytes', 'seo_provider', 'readable_post_types' ),
+			'required'             => array( 'schema_version', 'plugin_version', 'wordpress_version', 'abilities_api', 'mcp_adapter', 'mcp_projection', 'max_content_representation_bytes', 'seo_provider', 'readable_post_types' ),
 			'properties'           => array(
 				'schema_version'                   => array( 'type' => 'string' ),
 				'plugin_version'                   => array( 'type' => 'string' ),
 				'wordpress_version'                => array( 'type' => 'string' ),
 				'abilities_api'                    => array( 'type' => 'boolean' ),
 				'mcp_adapter'                      => array( 'type' => 'boolean' ),
+				'mcp_projection'                   => array(
+					'description'          => 'What this plugin currently projects as MCP tools, so a missing tool can be told from a missing ability.',
+					'type'                 => 'object',
+					'required'             => array( 'enabled', 'endpoint', 'projected_abilities' ),
+					'properties'           => array(
+						'enabled'             => array(
+							'description' => 'Whether the projection switch is on. False means the plugin registers no MCP server, whatever the adapter does.',
+							'type'        => 'boolean',
+						),
+						'endpoint'            => array(
+							'description' => 'REST route of the projected server, or null when the adapter is absent or projection is off.',
+							'type'        => array( 'string', 'null' ),
+						),
+						'projected_abilities' => array_merge(
+							array( 'description' => 'Ability names discovered for projection in this request. Compare against the abilities you expected to see.' ),
+							self::string_array( 200, array() )
+						),
+					),
+					'additionalProperties' => false,
+				),
 				'max_content_representation_bytes' => array(
 					'type'    => 'integer',
 					'minimum' => 1,

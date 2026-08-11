@@ -43,6 +43,7 @@ foreach ( array(
 	'wpcb_llms_regen_cursor',
 	'wpcb_llms_regen_staging',
 	'wpcb_llms_regen_dirty',
+	'wpcb_mcp_server_enabled',
 	'wpcb_integration_user_id',
 	'wpcb_public_base_url',
 	'wpcb_status_transitions',
