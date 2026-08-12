@@ -35,6 +35,7 @@ use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessManager;
 use IsuDev\WPContentBridge\Application\Editorial\GetEditorialContext;
 use IsuDev\WPContentBridge\Application\Llms\AdoptLlmsTxtOwnership;
 use IsuDev\WPContentBridge\Application\Llms\GetLlmsTxt;
+use IsuDev\WPContentBridge\Application\Llms\LlmsInitialConfigFactory;
 use IsuDev\WPContentBridge\Application\Llms\PreviewUpdateLlmsTxt;
 use IsuDev\WPContentBridge\Application\Llms\RegenerateLlmsTxt;
 use IsuDev\WPContentBridge\Application\Llms\UpdateLlmsTxt;
@@ -142,22 +143,6 @@ final class Plugin {
 		$llms_audit_log     = new WordPressAuditLog();
 		$get_llms           = new GetLlmsTxt( $llms_store, $llms_ownership, home_url( '/' ) );
 
-		if ( is_admin() ) {
-
-			( new ContentAccessSettingsPage(
-				$manager,
-				new IntegrationAccessManager( new WordPressIntegrationAccessRepository() ),
-				$status_transitions,
-				$get_llms,
-				new AdoptLlmsTxtOwnership(
-					$llms_store,
-					$llms_ownership,
-					new WordPressLlmsLegacyArtifactArchiver(),
-					$llms_audit_log
-				)
-			) )->register_hooks();
-		}
-
 		$content_repository = new WordPressContentRepository();
 		$taxonomy_catalog   = new WordPressTaxonomyCatalog();
 		$search             = new SearchContent( $manager, $content_repository, $taxonomy_catalog );
@@ -215,14 +200,34 @@ final class Plugin {
 		 * LlmsAbilities itself withholds the three writes while the flag is
 		 * off (ADR 0023).
 		 */
-		$llms_selector = new WordPressLlmsSourceSelector( $seo_providers );
-		$llms_builder  = new LlmsDocumentBuilder();
+		$llms_selector   = new WordPressLlmsSourceSelector( $seo_providers );
+		$llms_builder    = new LlmsDocumentBuilder();
+		$update_llms     = new UpdateLlmsTxt( $llms_store, $llms_selector, $llms_builder, $llms_audit_log, $llms_ownership, home_url( '/' ) );
+		$regenerate_llms = new RegenerateLlmsTxt( $llms_store, $llms_selector, $llms_builder, $llms_audit_log, $llms_ownership );
+
+		if ( is_admin() ) {
+			( new ContentAccessSettingsPage(
+				$manager,
+				new IntegrationAccessManager( new WordPressIntegrationAccessRepository() ),
+				$status_transitions,
+				$get_llms,
+				new LlmsInitialConfigFactory(),
+				$update_llms,
+				$regenerate_llms,
+				new AdoptLlmsTxtOwnership(
+					$llms_store,
+					$llms_ownership,
+					new WordPressLlmsLegacyArtifactArchiver(),
+					$llms_audit_log
+				)
+			) )->register_hooks();
+		}
 
 		( new LlmsAbilities(
 			$get_llms,
 			new PreviewUpdateLlmsTxt( $llms_store, $llms_selector, $llms_builder, home_url( '/' ) ),
-			new UpdateLlmsTxt( $llms_store, $llms_selector, $llms_builder, $llms_audit_log, $llms_ownership, home_url( '/' ) ),
-			new RegenerateLlmsTxt( $llms_store, $llms_selector, $llms_builder, $llms_audit_log, $llms_ownership )
+			$update_llms,
+			$regenerate_llms
 		) )->register_hooks();
 
 		/*

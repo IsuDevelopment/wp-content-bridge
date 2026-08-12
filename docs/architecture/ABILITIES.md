@@ -783,6 +783,13 @@ Filesystem ownership adoption is intentionally not an Ability. It is a local
 wp-admin operation requiring native plugin-management authority; MCP principals
 cannot rename or select files.
 
+The wp-admin screen may also create the first conservative configuration and
+snapshot from site-owned settings and the existing Read policy. That shortcut
+calls the same `UpdateLlmsTxt` / `RegenerateLlmsTxt` application services but is
+not registered as another Ability: it accepts no configuration input, does not
+enable publication, and exists only to remove a circular operator prerequisite
+from the local ownership workflow.
+
 ## Status transition abilities
 
 Two abilities implement ADR 0015's semantic status workflow, shaped by ADR 0024.

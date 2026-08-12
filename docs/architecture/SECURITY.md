@@ -259,6 +259,15 @@ failure, and requires a ready bridge snapshot and route plus
 an Ability and therefore cannot be reached through MCP. No code path deletes a
 legacy artifact.
 
+The preceding wp-admin snapshot-preparation step accepts no caller-controlled
+configuration. It derives site identity from core WordPress options and derives
+its bounded section list only from public content types whose shared Content
+Access policy already allows Read. It requires a nonce, `wpcb_manage_settings`,
+and `wpcb_manage_llms`, and runs the existing validated update/regeneration use
+cases. It does not enable the public route and exposes no filesystem operation.
+Keeping preparation separate from adoption means plugin-management authority is
+required only for the step that can rename exact legacy targets.
+
 **Legacy companion output.** `llms-full.txt` and `llms-docs` do not shadow the
 bridge route, but leaving them publicly reachable preserves stale content after
 LLMagnet is disabled. Diagnostics expose only their presence. Adoption archives

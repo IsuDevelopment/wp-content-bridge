@@ -22,7 +22,13 @@ use IsuDev\WPContentBridge\Application\Access\IntegrationAccessManager;
 use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessManager;
 use IsuDev\WPContentBridge\Application\Llms\AdoptLlmsTxtOwnership;
 use IsuDev\WPContentBridge\Application\Llms\GetLlmsTxt;
+use IsuDev\WPContentBridge\Application\Llms\LlmsInitialConfigFactory;
+use IsuDev\WPContentBridge\Application\Llms\RegenerateLlmsTxt;
+use IsuDev\WPContentBridge\Application\Llms\UpdateLlmsTxt;
+use IsuDev\WPContentBridge\Application\Seo\NullSeoProvider;
+use IsuDev\WPContentBridge\Application\Seo\SeoProviderRegistry;
 use IsuDev\WPContentBridge\Application\Status\StatusTransitionManager;
+use IsuDev\WPContentBridge\Domain\Llms\LlmsDocumentBuilder;
 use IsuDev\WPContentBridge\Domain\Status\StatusTransition;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentAccessSettingsRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentTypeCatalog;
@@ -31,6 +37,7 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressAuditLog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressLlmsArtifactStore;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressLlmsLegacyArtifactArchiver;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressLlmsOwnershipInspector;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressLlmsSourceSelector;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressStatusTransitionRepository;
 
 $wpcb_failures = array();
@@ -69,10 +76,14 @@ $wpcb_previous_user = get_current_user_id();
 wp_set_current_user( (int) $wpcb_admin[0] );
 
 try {
-	$wpcb_llms_store     = new WordPressLlmsArtifactStore();
-	$wpcb_llms_ownership = new WordPressLlmsOwnershipInspector();
-	$wpcb_llms_audit     = new WordPressAuditLog();
-	$wpcb_page           = new ContentAccessSettingsPage(
+	$wpcb_llms_store      = new WordPressLlmsArtifactStore();
+	$wpcb_llms_ownership  = new WordPressLlmsOwnershipInspector();
+	$wpcb_llms_audit      = new WordPressAuditLog();
+	$wpcb_llms_selector   = new WordPressLlmsSourceSelector( new SeoProviderRegistry( array(), new NullSeoProvider() ) );
+	$wpcb_llms_builder    = new LlmsDocumentBuilder();
+	$wpcb_llms_update     = new UpdateLlmsTxt( $wpcb_llms_store, $wpcb_llms_selector, $wpcb_llms_builder, $wpcb_llms_audit, $wpcb_llms_ownership, home_url( '/' ) );
+	$wpcb_llms_regenerate = new RegenerateLlmsTxt( $wpcb_llms_store, $wpcb_llms_selector, $wpcb_llms_builder, $wpcb_llms_audit, $wpcb_llms_ownership );
+	$wpcb_page            = new ContentAccessSettingsPage(
 		new ContentAccessManager(
 			new WordPressContentAccessSettingsRepository(),
 			new WordPressContentTypeCatalog()
@@ -80,6 +91,9 @@ try {
 		new IntegrationAccessManager( new WordPressIntegrationAccessRepository() ),
 		new StatusTransitionManager( new WordPressStatusTransitionRepository() ),
 		new GetLlmsTxt( $wpcb_llms_store, $wpcb_llms_ownership, home_url( '/' ) ),
+		new LlmsInitialConfigFactory(),
+		$wpcb_llms_update,
+		$wpcb_llms_regenerate,
 		new AdoptLlmsTxtOwnership(
 			$wpcb_llms_store,
 			$wpcb_llms_ownership,
@@ -161,8 +175,13 @@ try {
 
 	// The destructive preset button warns before discarding a configured matrix.
 	$wpcb_assert(
-		'the editorial preset button carries a confirmation prompt',
-		1 === substr_count( $wpcb_html, 'data-wpcb-confirm=' )
+		'the editorial preset and legacy adoption buttons carry confirmation prompts',
+		2 === substr_count( $wpcb_html, 'data-wpcb-confirm=' )
+	);
+	$wpcb_assert(
+		'the guided llms workflow always renders both snapshot and adoption actions',
+		1 === substr_count( $wpcb_html, 'name="action" value="wpcb_prepare_llms_snapshot"' )
+		&& 1 === substr_count( $wpcb_html, 'name="action" value="wpcb_adopt_llms_ownership"' )
 	);
 
 	// The assets exist where the enqueue points.

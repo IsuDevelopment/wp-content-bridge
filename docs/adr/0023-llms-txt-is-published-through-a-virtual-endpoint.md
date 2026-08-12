@@ -83,6 +83,16 @@ This is a narrow operator migration exception to the no-web-root-write rule,
 not a publication mechanism. It exists only in wp-admin, records a redacted
 audit event, and is deliberately absent from the Abilities registry and MCP.
 
+The wp-admin screen presents this as a visible two-step workflow. If no bridge
+configuration exists, Step 1 creates a conservative initial configuration and
+snapshot from the WordPress site name, tagline, and public content types already
+allowed by the shared Content Access Read policy. The action accepts no
+configuration or path fields, requires `wpcb_manage_settings` plus
+`wpcb_manage_llms`, reuses the same update/regeneration application services as
+the Abilities, and does not enable publication. Step 2 is always rendered but
+disabled with its unmet prerequisites until adoption is safe. This preparation
+shortcut remains a local admin adapter concern; it adds no Ability or MCP tool.
+
 ### The response is a stored snapshot, always
 
 The handler performs exactly one read of one non-autoloaded option and writes

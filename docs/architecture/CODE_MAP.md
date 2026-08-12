@@ -612,10 +612,12 @@ The only feature in this plugin with an unauthenticated public surface.
   enforces every bound (document bytes, sections, items per section, excerpt
   length, links) by truncating and recording a warning, never by failing.
 - `Application/Llms/` — `GetLlmsTxt`, `PreviewUpdateLlmsTxt`, `UpdateLlmsTxt`,
-  `RegenerateLlmsTxt`, `AdoptLlmsTxtOwnership`, plus the `LlmsArtifactStore`,
+  `RegenerateLlmsTxt`, `AdoptLlmsTxtOwnership`, and the pure
+  `LlmsInitialConfigFactory`, plus the `LlmsArtifactStore`,
   `LlmsSourceSelector`, `LlmsOwnershipInspector`, and closed-target
-  `LlmsLegacyArtifactArchiver` ports. Ownership adoption is used only by the
-  admin adapter and never registered as an Ability.
+  `LlmsLegacyArtifactArchiver` ports. The initial factory supplies bounded
+  defaults to the admin workflow; ownership adoption is used only by the admin
+  adapter. Neither is registered as an Ability.
 - `Infrastructure/WordPress/WordPressLlmsArtifactStore` — one option holds the
   configuration, one holds the snapshot. `LlmsTxtEndpoint` reads only the
   latter.
@@ -644,6 +646,9 @@ The only feature in this plugin with an unauthenticated public surface.
   cron run that replaces the snapshot atomically at the end.
 - `Adapter/Abilities/LlmsAbilities` — the four abilities, all behind
   `wpcb_manage_llms`.
+- `Adapter/Admin/ContentAccessSettingsPage` — always-visible two-step local
+  workflow: prepare an initial snapshot from site-owned settings and Read policy,
+  then archive exact legacy targets after every adoption prerequisite is ready.
 - Runtime evidence: `tests/Integration/llms-txt-verification.php`.
 
 ## Status workflow feature

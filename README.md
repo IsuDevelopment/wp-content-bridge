@@ -602,11 +602,15 @@ document instead of lingering.
 If Yoast's own llms.txt feature is active, or a physical `llms.txt` already
 answers the path, that is reported as a blocking ownership conflict. For
 artifacts left behind by a retired generator, an administrator can explicitly
-adopt ownership from **Settings -> WP Content Bridge** after the bridge has a
-complete snapshot and a routable endpoint. The action renames only the known
-`llms.txt`, `llms-full.txt`, and `llms-docs` targets to timestamped `.backup_*`
-names; it never deletes them, accepts no path input, and is not exposed as an
-Ability or MCP tool.
+complete the visible two-step workflow in **Settings -> WP Content Bridge**.
+Step 1 creates a conservative initial configuration and snapshot from the core
+site name, tagline, and public content types already allowed by Content Access
+Read policy; it accepts no configuration fields and does not enable the public
+route. Step 2 becomes available after the snapshot and route prerequisites are
+ready, then renames only the known `llms.txt`, `llms-full.txt`, and `llms-docs`
+targets to timestamped `.backup_*` names. It never deletes them, accepts no path
+input, and is not exposed as an Ability or MCP tool. Both buttons remain visible
+when unavailable and state why the next step is locked.
 
 The bridge does not generate LLMagnet's proprietary `/llms-docs/` tree. The
 current llms.txt v2 proposal instead recommends Markdown alternates beside

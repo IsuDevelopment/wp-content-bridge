@@ -18,6 +18,14 @@ an explicit wp-admin action after its own snapshot and route are ready. It does
 not reproduce `/llms-docs/`: llms.txt v2 Markdown alternates would be a separate
 public-surface feature and require their own ADR and leak verification.
 
+Patch 0.8.2 closes the circular wp-admin prerequisite left by 0.8.1: adoption
+required a bridge configuration and snapshot, but the screen provided no way to
+create either. The screen now exposes a visible two-step workflow. Its first
+step derives a bounded initial configuration from core site identity and the
+existing Content Access Read policy, then reuses the normal update service; its
+second step remains the exact-target, fail-closed adoption operation. Neither
+step adds an Ability, and unavailable actions remain visible with explanations.
+
 **No roadmap slice starts while the runtime verification backlog below is
 open.** Releases 0.1.3 through 0.3.0 shipped on static checks alone because the
 verification environment was unavailable from 2026-07-21.

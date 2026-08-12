@@ -15,11 +15,15 @@ use IsuDev\WPContentBridge\Application\Access\IntegrationAccessProblem;
 use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessManager;
 use IsuDev\WPContentBridge\Application\Llms\AdoptLlmsTxtOwnership;
 use IsuDev\WPContentBridge\Application\Llms\GetLlmsTxt;
+use IsuDev\WPContentBridge\Application\Llms\LlmsInitialConfigFactory;
 use IsuDev\WPContentBridge\Application\Llms\LlmsOwnershipAdoptionProblem;
+use IsuDev\WPContentBridge\Application\Llms\RegenerateLlmsTxt;
+use IsuDev\WPContentBridge\Application\Llms\UpdateLlmsTxt;
 use IsuDev\WPContentBridge\Application\Status\StatusTransitionManager;
 use IsuDev\WPContentBridge\Domain\Access\IntegrationCapability;
 use IsuDev\WPContentBridge\Domain\ContentAccess\ContentOperation;
 use IsuDev\WPContentBridge\Domain\ContentAccess\ContentTypeDefinition;
+use IsuDev\WPContentBridge\Domain\Llms\LlmsConfig;
 use IsuDev\WPContentBridge\Domain\Llms\LlmsReadResult;
 use IsuDev\WPContentBridge\Domain\Status\StatusTransition;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\Installer;
@@ -41,6 +45,8 @@ final readonly class ContentAccessSettingsPage {
 	private const PRESET_STATUS_QUERY_ARG = 'wpcb_status_preset_status';
 	private const LLMS_ADOPT_ACTION       = 'wpcb_adopt_llms_ownership';
 	private const LLMS_ADOPT_NONCE        = 'wpcb_adopt_llms_ownership';
+	private const LLMS_PREPARE_ACTION     = 'wpcb_prepare_llms_snapshot';
+	private const LLMS_PREPARE_NONCE      = 'wpcb_prepare_llms_snapshot';
 	private const LLMS_STATUS_QUERY_ARG   = 'wpcb_llms_status';
 
 	/**
@@ -50,6 +56,9 @@ final readonly class ContentAccessSettingsPage {
 	 * @param IntegrationAccessManager $integration_access   Integration-principal access service.
 	 * @param StatusTransitionManager  $status_transitions   Status transition graph configuration service.
 	 * @param GetLlmsTxt               $llms_status          Shared llms.txt status use case.
+	 * @param LlmsInitialConfigFactory $llms_initial_config  Safe site-fact default configuration factory.
+	 * @param UpdateLlmsTxt            $llms_update          Shared complete configuration write use case.
+	 * @param RegenerateLlmsTxt        $llms_regenerate      Shared snapshot rebuild use case.
 	 * @param AdoptLlmsTxtOwnership    $llms_adoption        Administrator-only legacy artifact migration.
 	 */
 	public function __construct(
@@ -57,6 +66,9 @@ final readonly class ContentAccessSettingsPage {
 		private IntegrationAccessManager $integration_access,
 		private StatusTransitionManager $status_transitions,
 		private GetLlmsTxt $llms_status,
+		private LlmsInitialConfigFactory $llms_initial_config,
+		private UpdateLlmsTxt $llms_update,
+		private RegenerateLlmsTxt $llms_regenerate,
 		private AdoptLlmsTxtOwnership $llms_adoption,
 	) {
 	}
@@ -71,6 +83,7 @@ final readonly class ContentAccessSettingsPage {
 		add_action( 'admin_init', array( $this, 'register_setting' ) );
 		add_action( 'admin_post_' . self::ACCESS_ACTION, array( $this, 'update_integration_access' ) );
 		add_action( 'admin_post_' . self::PRESET_ACTION, array( $this, 'apply_status_transition_preset' ) );
+		add_action( 'admin_post_' . self::LLMS_PREPARE_ACTION, array( $this, 'prepare_llms_snapshot' ) );
 		add_action( 'admin_post_' . self::LLMS_ADOPT_ACTION, array( $this, 'adopt_llms_ownership' ) );
 		add_filter( 'option_page_capability_' . self::OPTION_GROUP, array( $this, 'settings_capability' ) );
 	}
@@ -567,11 +580,54 @@ final readonly class ContentAccessSettingsPage {
 				<?php submit_button(); ?>
 			</form>
 
+			<?php $this->render_llms_workflow(); ?>
 			<?php $this->render_status_transition_preset(); ?>
-			<?php $this->render_llms_ownership_adoption(); ?>
 			<?php $this->render_integration_access(); ?>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Creates the first safe configuration, or rebuilds an existing snapshot.
+	 *
+	 * The form accepts no configuration fields. Site identity comes from core
+	 * options and content types come from the existing read policy, so this
+	 * convenience path cannot widen publication through crafted POST data.
+	 *
+	 * @return void
+	 */
+	public function prepare_llms_snapshot(): void {
+		check_admin_referer( self::LLMS_PREPARE_NONCE );
+
+		if ( ! current_user_can( 'wpcb_manage_settings' ) || ! current_user_can( 'wpcb_manage_llms' ) ) {
+			wp_die( esc_html__( 'You are not allowed to prepare the llms.txt snapshot.', 'wp-content-bridge' ) );
+		}
+
+		$current = $this->read_llms_status();
+		if ( null === $current ) {
+			$this->redirect_llms_status( 'snapshot_status_unavailable' );
+		}
+
+		try {
+			if ( null === $current->config ) {
+				$config                 = $this->llms_initial_config->create(
+					home_url( '/' ),
+					(string) get_bloginfo( 'name' ),
+					(string) get_bloginfo( 'description' ),
+					$this->initial_llms_content_types()
+				);
+				$input                  = $config->to_array();
+				$input['version_token'] = $current->version->to_string();
+
+				$this->llms_update->execute( $input, get_current_user_id() );
+				$this->redirect_llms_status( 'snapshot_created' );
+			}
+
+			$this->llms_regenerate->execute( array(), get_current_user_id() );
+			$this->redirect_llms_status( 'snapshot_regenerated' );
+		} catch ( Throwable ) {
+			$this->redirect_llms_status( 'snapshot_generation_failed' );
+		}
 	}
 
 	/**
@@ -605,42 +661,96 @@ final readonly class ContentAccessSettingsPage {
 	 *
 	 * @return void
 	 */
-	private function render_llms_ownership_adoption(): void {
-		$llms = $this->read_llms_status();
+	private function render_llms_workflow(): void {
+		$llms                 = $this->read_llms_status();
+		$content_types        = $this->initial_llms_content_types();
+		$adoption_blockers    = $this->llms_adoption_blockers( $llms );
+		$can_prepare          = null !== $llms
+			&& current_user_can( 'wpcb_manage_llms' )
+			&& ( null !== $llms->config || array() !== $content_types );
+		$has_legacy_artifacts = null !== $llms && $llms->ownership->has_legacy_artifacts();
+		$can_adopt            = $has_legacy_artifacts && array() === $adoption_blockers;
 		?>
 		<hr>
-		<h2><?php echo esc_html__( 'Adopt llms.txt ownership', 'wp-content-bridge' ); ?></h2>
-		<p><?php echo esc_html__( 'After a bridge snapshot is ready, this action renames only the exact legacy targets llms.txt, llms-full.txt, and llms-docs/ to timestamped backups. It never deletes them, accepts no path, and is not available through Abilities or MCP.', 'wp-content-bridge' ); ?></p>
+		<h2><?php echo esc_html__( 'llms.txt ownership workflow', 'wp-content-bridge' ); ?></h2>
+		<p><?php echo esc_html__( 'Complete the two visible steps below. The first prepares a bridge snapshot without changing the public URL. The second archives known legacy files and lets the bridge endpoint take over.', 'wp-content-bridge' ); ?></p>
 		<?php $this->render_llms_notice(); ?>
+
+		<h3><?php echo esc_html__( 'Step 1: Prepare the bridge snapshot', 'wp-content-bridge' ); ?></h3>
 		<?php if ( null === $llms ) : ?>
-			<div class="notice notice-error inline"><p><?php echo esc_html__( 'The llms.txt status could not be read.', 'wp-content-bridge' ); ?></p></div>
-			<?php return; ?>
+			<div class="notice notice-error inline"><p><?php echo esc_html__( 'The llms.txt status could not be read. Snapshot preparation is unavailable.', 'wp-content-bridge' ); ?></p></div>
+		<?php elseif ( null !== $llms->config && null !== $llms->artifact ) : ?>
+			<div class="notice notice-success inline"><p><?php echo esc_html__( 'The bridge configuration and snapshot are ready. You may regenerate the snapshot after content changes.', 'wp-content-bridge' ); ?></p></div>
+		<?php elseif ( null !== $llms->config ) : ?>
+			<div class="notice notice-warning inline"><p><?php echo esc_html__( 'A configuration exists, but its snapshot is missing. Regenerate it before adopting ownership.', 'wp-content-bridge' ); ?></p></div>
+		<?php else : ?>
+			<p><?php echo esc_html__( 'Create a conservative initial configuration from the WordPress site name, tagline, and the public content types already allowed by Content Access Read policy.', 'wp-content-bridge' ); ?></p>
 		<?php endif; ?>
-		<?php if ( ! $llms->ownership->has_legacy_artifacts() ) : ?>
-			<div class="notice notice-info inline"><p><?php echo esc_html__( 'No known legacy llms.txt artifacts require migration.', 'wp-content-bridge' ); ?></p></div>
-			<?php return; ?>
+		<?php if ( null !== $llms && null === $llms->config && array() !== $content_types ) : ?>
+			<p class="description">
+				<?php
+				echo esc_html(
+					sprintf(
+						/* translators: %s: comma-separated content type labels. */
+						__( 'Initial content types: %s.', 'wp-content-bridge' ),
+						implode( ', ', array_map( static fn ( ContentTypeDefinition $definition ): string => $definition->label, $content_types ) )
+					)
+				);
+				?>
+			</p>
+		<?php elseif ( null !== $llms && null === $llms->config ) : ?>
+			<div class="notice notice-warning inline"><p><?php echo esc_html__( 'No public content type currently has Read enabled in Content Access. Enable at least one before preparing the snapshot.', 'wp-content-bridge' ); ?></p></div>
 		<?php endif; ?>
-		<?php if ( ! current_user_can( 'activate_plugins' ) ) : ?>
-			<div class="notice notice-warning inline"><p><?php echo esc_html__( 'An administrator with plugin-management permission must perform this migration.', 'wp-content-bridge' ); ?></p></div>
-			<?php return; ?>
+		<?php if ( ! current_user_can( 'wpcb_manage_llms' ) ) : ?>
+			<div class="notice notice-warning inline"><p><?php echo esc_html__( 'Your account can view this workflow but cannot manage llms.txt snapshots.', 'wp-content-bridge' ); ?></p></div>
 		<?php endif; ?>
-		<?php $ready = null !== $llms->config && null !== $llms->artifact && ! $llms->ownership->yoast_llms_txt_enabled && $llms->ownership->bridge_publication_enabled && $llms->ownership->bridge_route_routable; ?>
-		<?php if ( ! $ready ) : ?>
-			<div class="notice notice-warning inline"><p><?php echo esc_html__( 'Migration is locked until a bridge configuration and snapshot exist, publication is enabled, pretty permalinks are active, and Yoast llms.txt generation is disabled.', 'wp-content-bridge' ); ?></p></div>
-			<?php return; ?>
+		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+			<input type="hidden" name="action" value="<?php echo esc_attr( self::LLMS_PREPARE_ACTION ); ?>">
+			<?php wp_nonce_field( self::LLMS_PREPARE_NONCE ); ?>
+			<?php
+			$prepare_attributes = $can_prepare ? array() : array( 'disabled' => 'disabled' );
+			submit_button(
+				null !== $llms && null !== $llms->config
+					? esc_html__( 'Regenerate bridge snapshot', 'wp-content-bridge' )
+					: esc_html__( 'Create initial bridge snapshot', 'wp-content-bridge' ),
+				'primary',
+				'submit',
+				true,
+				$prepare_attributes
+			);
+			?>
+		</form>
+
+		<h3><?php echo esc_html__( 'Step 2: Archive legacy artifacts and adopt ownership', 'wp-content-bridge' ); ?></h3>
+		<p><?php echo esc_html__( 'This action renames only the exact legacy targets llms.txt, llms-full.txt, and llms-docs/ to timestamped backups. It never deletes them, accepts no path, and is not available through Abilities or MCP.', 'wp-content-bridge' ); ?></p>
+		<?php if ( null !== $llms && ! $has_legacy_artifacts ) : ?>
+			<div class="notice notice-info inline"><p><?php echo esc_html__( 'No known legacy artifacts remain. The bridge does not need to adopt filesystem ownership.', 'wp-content-bridge' ); ?></p></div>
+		<?php elseif ( array() !== $adoption_blockers ) : ?>
+			<div class="notice notice-warning inline">
+				<p><?php echo esc_html__( 'Complete these requirements to unlock Step 2:', 'wp-content-bridge' ); ?></p>
+				<ul>
+					<?php foreach ( $adoption_blockers as $blocker ) : ?>
+						<li><?php echo esc_html( $blocker ); ?></li>
+					<?php endforeach; ?>
+				</ul>
+			</div>
 		<?php endif; ?>
 		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 			<input type="hidden" name="action" value="<?php echo esc_attr( self::LLMS_ADOPT_ACTION ); ?>">
 			<?php wp_nonce_field( self::LLMS_ADOPT_NONCE ); ?>
 			<?php
+			$adopt_attributes = array(
+				'data-wpcb-confirm' => esc_attr__( 'The known legacy llms.txt artifacts will be renamed to timestamped backups and their old URLs will stop working. Continue?', 'wp-content-bridge' ),
+			);
+			if ( ! $can_adopt ) {
+				$adopt_attributes['disabled'] = 'disabled';
+			}
 			submit_button(
 				esc_html__( 'Archive legacy artifacts and adopt ownership', 'wp-content-bridge' ),
 				'secondary',
 				'submit',
 				true,
-				array(
-					'data-wpcb-confirm' => esc_attr__( 'The known legacy llms.txt artifacts will be renamed to timestamped backups and their old URLs will stop working. Continue?', 'wp-content-bridge' ),
-				)
+				$adopt_attributes
 			);
 			?>
 		</form>
@@ -661,6 +771,61 @@ final readonly class ContentAccessSettingsPage {
 	}
 
 	/**
+	 * Lists public content types already allowed by the shared Read policy.
+	 *
+	 * @return array
+	 * @phpstan-return list<ContentTypeDefinition>
+	 */
+	private function initial_llms_content_types(): array {
+		return array_slice(
+			array_values(
+				array_filter(
+					$this->manager->content_types(),
+					fn ( ContentTypeDefinition $definition ): bool => $definition->is_public
+						&& $this->manager->policy_for( $definition->name )->allows( ContentOperation::READ )
+				)
+			),
+			0,
+			LlmsConfig::MAX_SECTIONS
+		);
+	}
+
+	/**
+	 * Explains only the prerequisites that currently block legacy adoption.
+	 *
+	 * @param LlmsReadResult|null $llms Current status, or null when unavailable.
+	 * @return array
+	 * @phpstan-return list<string>
+	 */
+	private function llms_adoption_blockers( ?LlmsReadResult $llms ): array {
+		if ( null === $llms ) {
+			return array( __( 'The llms.txt status must be readable.', 'wp-content-bridge' ) );
+		}
+
+		$blockers = array();
+		if ( null === $llms->config || null === $llms->artifact ) {
+			$blockers[] = __( 'Create the bridge configuration and snapshot in Step 1.', 'wp-content-bridge' );
+		}
+		if ( ! $llms->ownership->bridge_publication_enabled ) {
+			$blockers[] = __( 'Enable WP Content Bridge llms.txt publication and save the settings.', 'wp-content-bridge' );
+		}
+		if ( ! $llms->ownership->bridge_route_routable ) {
+			$blockers[] = __( 'Enable pretty permalinks so WordPress can route /llms.txt.', 'wp-content-bridge' );
+		}
+		if ( $llms->ownership->yoast_llms_txt_enabled ) {
+			$blockers[] = __( 'Disable Yoast llms.txt generation.', 'wp-content-bridge' );
+		}
+		if ( ! current_user_can( 'activate_plugins' ) ) {
+			$blockers[] = __( 'Use an administrator account that can manage plugins.', 'wp-content-bridge' );
+		}
+		if ( is_multisite() ) {
+			$blockers[] = __( 'Legacy ownership adoption is unavailable on multisite.', 'wp-content-bridge' );
+		}
+
+		return $blockers;
+	}
+
+	/**
 	 * Renders a bounded status message after a migration attempt.
 	 *
 	 * @return void
@@ -672,6 +837,10 @@ final readonly class ContentAccessSettingsPage {
 			: '';
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
 		$messages = array(
+			'snapshot_created'            => array( 'success', __( 'The initial bridge configuration and snapshot were created from site settings and Read-enabled public content types.', 'wp-content-bridge' ) ),
+			'snapshot_regenerated'        => array( 'success', __( 'The existing bridge snapshot was regenerated from current public content.', 'wp-content-bridge' ) ),
+			'snapshot_status_unavailable' => array( 'error', __( 'The llms.txt status could not be read, so no snapshot was changed.', 'wp-content-bridge' ) ),
+			'snapshot_generation_failed'  => array( 'error', __( 'The bridge snapshot could not be prepared. No legacy artifact was changed.', 'wp-content-bridge' ) ),
 			'adopted'                     => array( 'success', __( 'Legacy llms.txt artifacts were archived and WP Content Bridge adopted public ownership.', 'wp-content-bridge' ) ),
 			'snapshot_missing'            => array( 'error', __( 'Generate a bridge configuration and snapshot before migrating legacy artifacts.', 'wp-content-bridge' ) ),
 			'yoast_enabled'               => array( 'error', __( 'Disable Yoast llms.txt generation before migration.', 'wp-content-bridge' ) ),

@@ -1,7 +1,8 @@
 # Project status
 
-**Released version: 0.8.1.** Static quality is green at 425 tests / 1,126
-assertions. Runtime verification is defined in `docs/setup/VERIFICATION.md`.
+**Released version: 0.8.1. Release candidate: 0.8.2 (not published).** Static
+quality is green at 429 tests / 1,137 assertions. Runtime verification is
+defined in `docs/setup/VERIFICATION.md`.
 `0.7.0` completes the status workflow: transitions run against an
 administrator-configured allowlist of ordered status pairs per post type (ADR
 0024), empty until someone configures it, with `publish` and `future` behind
@@ -35,6 +36,18 @@ diagnostics, verifies the public endpoint before configuration exists, returns
 post-write ownership with llms mutations, and corrects the update/regenerate
 idempotency annotations. The full 22/22 runtime inventory and the static gate
 (PHPCS, PHPStan, 425 tests / 1,126 assertions) passed on 2026-08-11.
+
+`0.8.2` is prepared locally to close the circular UX prerequisite left in that
+workflow. Both steps are now always visible. Step 1 creates a conservative
+initial bridge configuration and snapshot from core site identity plus public
+content types already allowed by Content Access Read policy; it accepts no
+configuration fields and does not enable publication. Step 2 remains disabled
+until its actual missing prerequisites are satisfied, which are listed
+individually instead of hiding the action. The snapshot preparation requires a
+nonce, `wpcb_manage_settings`, and `wpcb_manage_llms`; legacy adoption retains
+its stronger plugin-management gate and exact-target filesystem constraints.
+No Ability or MCP tool was added. PHPCS, maximum-level PHPStan, 429 tests / 1,137
+assertions, and the real settings-screen runtime verifier pass on 2026-08-12.
 
 Production evidence taken through Kormas Live MCP before the release: WPCB
 0.8.0 was active with publication enabled but no stored config or artifact;

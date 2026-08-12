@@ -4,7 +4,7 @@ Tags: abilities, mcp, ai, content, seo, yoast
 Requires at least: 7.0
 Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.8.1
+Stable tag: 0.8.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -33,6 +33,11 @@ Deleting the plugin removes its options, its dedicated `wpcb_*` capabilities fro
 The `{prefix}wpcb_audit` table is deliberately left in place. It records who changed what through the bridge — field names only, never values — as a rolling window of the most recent 5,000 mutation attempts. Destroying that record silently on delete is not the plugin's call to make. Remove the table deliberately if you want it gone.
 
 == Changelog ==
+
+= 0.8.2 =
+* Replaced the hidden llms.txt migration prerequisite with a visible two-step workflow in **Settings -> WP Content Bridge**. Administrators can now create the first bridge configuration and snapshot without MCP, then archive legacy artifacts and adopt ownership.
+* The initial snapshot uses only the WordPress site name, tagline, and public content types already allowed by Content Access Read policy. The form accepts no paths or content-type input and cannot widen publication through crafted POST data.
+* Both actions remain visible at all times. An unavailable step is disabled with the exact missing prerequisites instead of disappearing, so operators can see how to complete the workflow before touching legacy files.
 
 = 0.8.1 =
 * Added an explicit administrator-only ownership-adoption action for sites left with physical `llms.txt`, `llms-full.txt`, or `llms-docs` artifacts by a retired generator. It renames only those exact known targets to timestamped `.backup_YYYYmmdd_His` names; it never deletes them and accepts no caller-supplied path.
