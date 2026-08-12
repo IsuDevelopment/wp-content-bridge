@@ -155,13 +155,14 @@ driven by the shell verifiers, not verifiers themselves.
 
 ## Last full run
 
-**2026-08-11 — 22 of 22 green**, against the environment above at 0.8.1.
+**2026-08-12 — 22 of 22 green**, against the environment above at 0.8.2.
 
 Record a dated line here on every release. A release whose line is missing
 shipped unverified, and that should be visible rather than reconstructable.
 
 | Date | Result | Notes |
 |---|---|---|
+| 2026-08-12 | 22/22 | 0.8.2. Full inventory after replacing the circular hidden llms.txt migration prerequisite with an always-visible, two-step wp-admin workflow. Step 1 creates a bounded initial snapshot from site-owned settings and existing Read policy; Step 2 lists its actual blockers and retains the exact-target adoption gate. No Ability or MCP surface changed. Static release gate: PHPCS + maximum-level PHPStan + 429 tests / 1,137 assertions. |
 | 2026-08-11 | 22/22 | 0.8.1. Full inventory after adding the wp-admin-only legacy llms.txt ownership-adoption path, additive ownership diagnostics, post-mutation ownership reads, and the endpoint verification fix. The llms.txt and settings-screen verifiers were also run visibly before the full inventory. Static release gate: PHPCS + maximum-level PHPStan + 425 tests / 1,126 assertions. |
 | 2026-08-09 | 22/22 | 0.7.1. Adds `status-matrix-bulk-verification`. No ability, schema, or stored value changed; the run is what proves it, since the release edits the screen that writes the transition allowlist. Also fixes a packaging leak: the maintainer notes file shipped inside every artifact from 0.5.0 through 0.7.0. |
 | 2026-08-09 | 21/21 | 0.7.0. Adds `status-workflow-verification`, which pins the publication gates, the pair-allowlist asymmetry, DST handling driven from the real tz database, and the read-back defence against a WordPress-rewritten transition. |
