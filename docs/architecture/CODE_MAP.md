@@ -673,6 +673,50 @@ The only feature in this plugin with an unauthenticated public surface.
   `TransitionContentStatusAbilities`.
 - Runtime evidence: `tests/Integration/status-workflow-verification.php`.
 
+## Redirect feature (foundation only — no Ability wired yet)
+
+Roadmap Slice 5 (ADR 0026). Domain/port/registry/guard and the Redirection
+adapter's pure logic are unit-tested; nothing here is reachable from an
+Ability, a capability, or MCP discovery yet.
+
+- `Domain/Redirect/` — `RedirectSourcePath` (bounded, exact, site-relative,
+  non-regex source), `RedirectTargetUrl` (same-site target, normalized to a
+  path), `RedirectStatusCode` (301/302/410, the P0 allowlist),
+  `RedirectProviderStatus`, and `RedirectRule` (the aggregate; a Gone rule
+  must have no target, every other status must have one). All pure, no
+  WordPress dependency.
+- `Application/Redirect/RedirectProvider` — the provider-neutral port
+  (`is_available`, `status`, `search`, `create`). `RedirectProviderRegistry`
+  selects the first available configured provider (order: Yoast Premium,
+  then Redirection) with `NullRedirectProvider` as the required fallback,
+  mirroring `SeoProviderRegistry`.
+- `Application/Redirect/RedirectCandidateGuard` — the provider-neutral
+  invariants every candidate must pass before any adapter's `create()` runs:
+  reserved-prefix denylist (`wp-json/`, `wp-admin/`, `wp-content/`, `feed/`),
+  the live-content shadow guard (via the `PublishedPermalinkLookup` port),
+  collision against the active provider's own `search()`, and a 3-hop
+  chain/loop bound. Shared by both future adapters so neither one's looser
+  native validation becomes the effective contract.
+- `Infrastructure/Redirection/RedirectionProvider` — calls Redirection's
+  `redirection/v1` REST routes through an internal `rest_do_request()`
+  dispatch, scoped to `wpcb_manage_redirects` via the `redirection_role`/
+  `redirection_capability_check` filters (registered and removed around one
+  call only) instead of the plugin's `manage_options` default. Its REST
+  payload mapping was initially assembled from Redirection's public
+  documentation and **reconciled against a live 5.9.0 install on 2026-08-14**
+  by reading the plugin's actual source, which disagreed with its own docs
+  twice (see the class docblock and `.agents/status.md`). No permanent
+  `tests/Integration` fixture exists yet for it — the reconciliation pass was
+  manual and is not repeatable on its own.
+- `Infrastructure/WordPress/WordPressPublishedPermalinkLookup` — the
+  `PublishedPermalinkLookup` adapter (`url_to_postid()` + `get_post_status()`
+  ), WordPress-dependent and covered by runtime verification, not
+  `tests/Unit`.
+- Not yet built: the Yoast SEO Premium adapter (gated behind a version-pinned
+  compatibility fixture per ADR 0026 s3, since it has no documented API),
+  `update`/`disable` on the port, the candidate Abilities themselves, their
+  capability/feature flag, audit events, and the MCP profile entries.
+
 ## Specification routes
 
 - Product behavior: `docs/spec/REQUIREMENTS.md`.
@@ -700,6 +744,8 @@ The only feature in this plugin with an unauthenticated public surface.
   `docs/adr/0024-status-transitions-are-an-explicit-per-type-pair-allowlist.md`.
 - Plugin-owned MCP projection decision:
   `docs/adr/0025-the-plugin-projects-its-own-abilities-by-category.md`.
+- Redirect provider-neutral port and scoped third-party capability decision:
+  `docs/adr/0026-redirects-use-a-provider-neutral-port-with-scoped-third-party-capabilities.md`.
 - Agent procedures: `.agents/instructions/`.
 - Milestone 1B evidence: `docs/verification/ABILITIES_VERIFICATION.md`.
 

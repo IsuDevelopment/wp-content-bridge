@@ -1,7 +1,13 @@
 # Project status
 
-**Released version: 0.8.2.** Static quality is green at 429 tests / 1,137
+**Released version: 0.8.3.** Static quality is green at 498 tests / 1,208
 assertions. Runtime verification is defined in `docs/setup/VERIFICATION.md`.
+
+`0.8.3` is an internal-only patch: the redirect-provider foundation below
+(port, registry, guard, Redirection adapter) lands under version control with
+no Ability, capability, or MCP entry wired to it, so no behavior, permission,
+or public contract changed. `0.9.0` remains reserved for the complete Slice 5
+feature once its Abilities ship.
 `0.7.0` completes the status workflow: transitions run against an
 administrator-configured allowlist of ordered status pairs per post type (ADR
 0024), empty until someone configures it, with `publish` and `future` behind
@@ -16,8 +22,66 @@ so what the matrix submits is unchanged. It also fixes a packaging leak: the
 maintainer notes file shipped inside every release artifact from 0.5.0 through
 0.7.0.
 
-`0.8.0` makes the plugin project its own abilities (see the section below). Slice
-3 (revision inspection and recovery) moves to `0.9.0`.
+`0.8.0` makes the plugin project its own abilities (see the section below).
+
+**Decided 2026-08-14: next release is Slice 5 (permalinks and dual redirect
+providers), not Slice 3.** See `docs/plan/EDITORIAL_OPERATIONS_ROADMAP.md`
+"Release numbering" for the reordering rationale. Slice 3 (revision inspection
+and recovery) and Slice 4 (media/featured image) are deferred one release each,
+to `0.10.0` and `0.11.0`; neither is a dependency of Slice 5.
+
+**Phase 5A (research/ADR) done the same day: ADR 0026 proposed.** Redirection
+(John Godley) has a documented REST/PHP API and a permission-filter pair that
+lets WPCB call it without `manage_options`; Yoast SEO Premium has no documented
+API, only reverse-engineered internal classes, so its adapter is gated behind a
+version-pinned compatibility fixture and does not ship first even though it
+stays the preferred runtime provider once available. No Ability code exists yet
+for Slice 5 — ADR 0026 must be accepted before `search-redirects`/
+`create-redirect`/`update-permalink` and the rest of Phase 5A's candidate
+Abilities are implemented.
+
+**Redirect foundation landed 2026-08-14, still unreachable from any Ability.**
+Domain values (`RedirectSourcePath`, `RedirectTargetUrl`, `RedirectStatusCode`,
+`RedirectProviderStatus`, `RedirectRule`), the `RedirectProvider` port,
+`RedirectProviderRegistry`/`NullRedirectProvider`, and the cross-cutting
+`RedirectCandidateGuard` (reserved prefixes, live-content shadow, collision,
+3-hop chain/loop bound) are built and unit-tested — see `docs/architecture/
+CODE_MAP.md` "Redirect feature". `composer check` is green (PHPCS, max-level
+PHPStan, 498 tests / 1,208 assertions). Not built: the Yoast Premium adapter,
+`update`/`disable` on the port, any Ability/capability/feature flag/audit
+event/MCP profile entry, and a permanent `tests/Integration` runtime verifier
+for Redirection (today's pass was manual and left no repeatable fixture).
+
+**Redirection adapter reconciled against a live install, same day.** Activated
+Redirection 5.9.0 on Kormas Local (`docs/setup/VERIFICATION.md`'s designated
+environment; restored to its original inactive state — no tables, no options —
+afterward) and drove `RedirectionProvider` through a throwaway `rest_api_init`
+route as an authenticated `wpcb_manage_redirects`-only principal. Reading its
+actual source (not just `redirection.me`'s docs, which turned out wrong on two
+of these) found and fixed four defects, all now covered by unit tests against
+the corrected shapes:
+1. `is_available()` used `array_key_exists()` against `get_namespaces()`,
+   which returns a plain list, not a namespace-keyed array — always false.
+2. `status()` read a `REDIRECTION_VERSION` constant that does not exist;
+   fixed to read the `Version:` header via the real `REDIRECTION_FILE`
+   constant.
+3. `map_item_to_rule()` read a `status` string field that Redirection's own
+   `to_json()` never returns — the real field is `enabled` (bool). Also:
+   `POST /redirect` returns the same `{items, total}` list shape as `GET`,
+   never the created item alone, and its `filterBy[url]` filter is a
+   substring `LIKE`, not exact — both `search()` and `create()` now extract
+   the exact match themselves.
+4. `create()` sent no `group_id`, which the sanitizer defaults to `0` — an ID
+   no fresh install has, so every create failed closed with "Invalid group".
+   Fixed to target group `1` ("Redirections"), the default every install's
+   database installer creates.
+
+A fifth defect surfaced only after the others were fixed: `create()` never
+trailing-slash-normalized its source the way `search()` does, so a redirect
+created for `/x` on a trailing-slash site (`/%postname%/`) was unfindable by a
+later `search('/x')` normalizing to `/x/`. Fixed by normalizing in `create()`
+too. End-to-end proof: `search(missing) → null`, `create() → rule`,
+`search(created) → same rule`, cleanup verified empty.
 
 `0.8.1` closes the production ownership-migration gap. An inactive LLMagnet can
 leave physical `llms.txt`, `llms-full.txt`, and `llms-docs` outputs in the web

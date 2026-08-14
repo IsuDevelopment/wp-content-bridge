@@ -438,7 +438,23 @@ Provider decision:
 - a provider error during a write never triggers an automatic fallback write to
   the other provider.
 
-Phase 5A is research and ADR work:
+**Phase 5A status: research complete, ADR proposed 2026-08-14.** See ADR 0026
+(`docs/adr/0026-redirects-use-a-provider-neutral-port-with-scoped-third-party-capabilities.md`)
+for the full findings and decisions. Summary: Redirection (John Godley) has a
+documented, versioned REST and PHP API plus a granular permission-filter pair
+(`redirection_role`, `redirection_capability_check`) that lets WPCB call it
+without ever granting `manage_options`; Yoast SEO Premium has no documented API
+at all — only three undocumented internal classes reverse-engineered by the
+community — though it does expose an already-granular native
+`wpseo_manage_redirects` capability. Runtime provider preference stays Yoast
+Premium first per the product reasoning below, but **implementation starts with
+the Redirection adapter**, and the Yoast Premium adapter does not ship until a
+version-pinned compatibility fixture exists and passes. ADR 0026 also fixes the
+provider-neutral collision/hierarchy/trailing-slash/chain/loop/cache/canonical
+invariants and decides that permalink and redirect mutations remain two
+separate, explicit writes — no atomic or implicit coordination.
+
+Phase 5A was research and ADR work:
 
 - compare WordPress old-slug behavior, Yoast Premium redirects, and at least one
   supported version of Redirection using documented public APIs;
@@ -635,12 +651,22 @@ Decided 2026-08-07, superseding the version in each slice heading:
 | `0.6.0` | Slice 1B — llms.txt (ADR 0023) | shipped |
 | `0.7.0` | Slice 2 — controlled status workflow (ADR 0024) | shipped |
 | `0.8.0` | Plugin-owned MCP projection, discovered by category (ADR 0025) | shipped |
-| `0.9.0` | Slice 3 — revision inspection and recovery | planned |
-| `0.10.0` | Slice 4 — media metadata and featured image | planned |
-| `0.11.0+` | Slice 5 — permalinks and redirects | planned |
+| `0.9.0+` | Slice 5 — permalinks and dual redirect providers | planned, next up |
+| `0.10.0` | Slice 3 — revision inspection and recovery | planned |
+| `0.11.0` | Slice 4 — media metadata and featured image | planned |
 | `0.12.0+` | Slice 6 — targeted block editing | planned |
 | `0.13.0+` | Slice 7 — connector mutation history | planned |
 | `0.14.0+` | Slice 8 — bounded multi-object inventory | planned |
+
+**Decided 2026-08-14: Slice 5 (permalinks and dual redirect providers) is
+reprioritized ahead of Slice 3 and Slice 4** and becomes the next release after
+`0.8.2`. Slice 3 and Slice 4 are not cancelled, only deferred one release each;
+their contract requirements above are unchanged. This is a priority reordering,
+not a dependency change — Slice 5 does not require Slice 3 or Slice 4, and
+nothing in either of those slices is a prerequisite for Slice 5's Phase 5A
+research/ADR work or the permalink and redirect Abilities that follow it. Work
+on Slice 5 starts with Phase 5A as specified below; no permalink or redirect
+Ability is implemented before its ADR is accepted.
 
 `0.5.0` was inserted ahead of the sequence above and is not one of its
 numbered slices; it shipped the block-level editing work specified in

@@ -4,7 +4,7 @@ Tags: abilities, mcp, ai, content, seo, yoast
 Requires at least: 7.0
 Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.8.2
+Stable tag: 0.8.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -33,6 +33,11 @@ Deleting the plugin removes its options, its dedicated `wpcb_*` capabilities fro
 The `{prefix}wpcb_audit` table is deliberately left in place. It records who changed what through the bridge — field names only, never values — as a rolling window of the most recent 5,000 mutation attempts. Destroying that record silently on delete is not the plugin's call to make. Remove the table deliberately if you want it gone.
 
 == Changelog ==
+
+= 0.8.3 =
+* Internal-only groundwork for the upcoming redirect-provider slice (Slice 5, ADR 0026): a provider-neutral `RedirectProvider` port, an ordered provider registry with a required null fallback, and the shared collision, reserved-prefix, live-content-shadow, and bounded chain/loop invariants every future redirect write must pass before any provider adapter runs.
+* Includes a Redirection (John Godley) REST adapter, reconciled against a live 5.9.0 install rather than only its public documentation, and scoped to a dedicated `wpcb_manage_redirects` capability instead of that plugin's `manage_options` default.
+* None of this is registered as an Ability, capability, or MCP tool yet. This release changes no behavior, permission, or public contract; it exists to keep the working tree's foundation code under version control before the redirect Abilities themselves ship.
 
 = 0.8.2 =
 * Replaced the hidden llms.txt migration prerequisite with a visible two-step workflow in **Settings -> WP Content Bridge**. Administrators can now create the first bridge configuration and snapshot without MCP, then archive legacy artifacts and adopt ownership.

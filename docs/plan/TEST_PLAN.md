@@ -316,6 +316,34 @@ The full static/unit baseline after adding this matrix is 234 tests / 596
 assertions with PHPCS and maximum-level PHPStan clean. The final provider-active
 WordPress runtime checks remain pending.
 
+## Redirect provider fixtures (planned, ADR 0026)
+
+Nothing below is active yet — no Ability, capability, or MCP entry exists for
+Slice 5. Recorded here so the obligation is not lost before implementation
+reaches it.
+
+- **Done manually, needs a permanent fixture:** Redirection's REST payload
+  shapes were reconciled against a live 5.9.0 install on 2026-08-14 by
+  activating it on Kormas Local and driving `RedirectionProvider` through a
+  throwaway REST route as a `wpcb_manage_redirects`-only principal; four
+  defects were found and fixed (see `.agents/status.md`). The site was
+  restored to its original inactive, table-free state afterward. This was a
+  one-off manual pass, not a repeatable check — a `tests/Integration` script
+  covering `is_available()`/`search()`/`create()` end-to-end still needs to be
+  added before this adapter is trusted on a second install or a future
+  Redirection version;
+- Yoast SEO Premium's adapter needs a version-pinned compatibility fixture
+  before it registers at all, since `WPSEO_Redirect`/`WPSEO_Redirect_Option`/
+  `WPSEO_Redirect_Manager` are undocumented and carry no deprecation policy;
+- `RedirectCandidateGuard`'s five invariants (reserved prefix, live-content
+  shadow, collision, chain/loop bound, post-write canonical verification) need
+  a runtime fixture per provider, not just the unit tests against fakes that
+  exist today;
+- the scoped `redirection_role`/`redirection_capability_check` filter pair
+  needs a runtime assertion that WPCB's capability is granted only for the
+  duration of one call and never leaks into an unrelated Redirection request
+  in the same process.
+
 ## Security tests
 
 - Cross-site URL attempts and encoded host confusion.
