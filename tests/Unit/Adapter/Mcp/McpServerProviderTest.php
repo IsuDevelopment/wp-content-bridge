@@ -46,6 +46,14 @@ final class McpServerProviderTest extends TestCase {
 
 	/**
 	 * Every ability in this plugin's category is projected, and only those.
+	 *
+	 * This is also the fail-open assertion for declarative discovery. Since
+	 * WordPress 7.1 `discover()` asks `wp_get_abilities()` to filter by
+	 * category, but PHP silently ignores arguments a userland function does not
+	 * declare — and this suite's stub declares none, so it hands back the whole
+	 * registry exactly as a non-conforming WordPress would. The foreign ability
+	 * below must still not be projected, which is only true while `discover()`
+	 * keeps its own category comparison. Do not delete either half.
 	 */
 	public function test_projects_every_ability_in_this_plugins_category(): void {
 		$this->arrange_registry(

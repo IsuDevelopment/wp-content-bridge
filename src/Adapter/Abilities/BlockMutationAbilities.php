@@ -75,7 +75,7 @@ final readonly class BlockMutationAbilities {
 				'output_schema'       => AbilitySchemas::update_block_output(),
 				'permission_callback' => array( $this, 'can_update' ),
 				'execute_callback'    => array( $this, 'execute_update' ),
-				'meta'                => self::write_meta(),
+				'meta'                => AbilityMeta::write( true, false ),
 			)
 		);
 
@@ -89,7 +89,7 @@ final readonly class BlockMutationAbilities {
 				'output_schema'       => AbilitySchemas::preview_update_block_output(),
 				'permission_callback' => array( $this, 'can_update' ),
 				'execute_callback'    => array( $this, 'execute_preview' ),
-				'meta'                => self::preview_meta(),
+				'meta'                => AbilityMeta::preview(),
 			)
 		);
 
@@ -103,7 +103,7 @@ final readonly class BlockMutationAbilities {
 				'output_schema'       => AbilitySchemas::update_block_attributes_output(),
 				'permission_callback' => array( $this, 'can_update' ),
 				'execute_callback'    => array( $this, 'execute_update_attributes' ),
-				'meta'                => self::write_meta(),
+				'meta'                => AbilityMeta::write( true, false ),
 			)
 		);
 	}
@@ -188,10 +188,10 @@ final readonly class BlockMutationAbilities {
 	 */
 	private function to_error( Throwable $error ): WP_Error {
 		if ( $error instanceof InvalidArgumentException ) {
-			return new WP_Error( 'wpcb_invalid_input', $error->getMessage() );
+			return AbilityError::create( 'wpcb_invalid_input', $error->getMessage() );
 		}
 		if ( $error instanceof ContentUnavailable ) {
-			return new WP_Error( 'wpcb_content_unavailable', __( 'Content is unavailable.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_content_unavailable', __( 'Content is unavailable.', 'wp-content-bridge' ) );
 		}
 		if ( $error instanceof MutationConflict
 			|| $error instanceof BlockPathNotFound
@@ -200,7 +200,7 @@ final readonly class BlockMutationAbilities {
 			|| $error instanceof MutationForbidden
 			|| $error instanceof MutationWriteFailed
 		) {
-			return new WP_Error( $error->error_code(), $error->getMessage() );
+			return AbilityError::create( $error->error_code(), $error->getMessage() );
 		}
 
 		return self::internal_error();
@@ -229,42 +229,7 @@ final readonly class BlockMutationAbilities {
 		return $input;
 	}
 
-	/**
-	 * Returns standard write annotations, shared by update-block (empty
-	 * block_markup deletes the addressed subtree) and
-	 * update-block-attributes (a null attribute value removes a key); both
-	 * are destructive for the same reason: either can delete data.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private static function write_meta(): array {
-		return array(
-			'annotations'  => array(
-				'readonly'    => false,
-				'destructive' => true,
-				'idempotent'  => false,
-			),
-			'show_in_rest' => true,
-			'mcp'          => array( 'public' => true ),
-		);
-	}
 
-	/**
-	 * Returns the shared annotations for the side-effect-free preview ability.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private static function preview_meta(): array {
-		return array(
-			'annotations'  => array(
-				'readonly'    => true,
-				'destructive' => false,
-				'idempotent'  => true,
-			),
-			'show_in_rest' => true,
-			'mcp'          => array( 'public' => true ),
-		);
-	}
 
 	/**
 	 * Creates a stable forbidden result.
@@ -272,7 +237,7 @@ final readonly class BlockMutationAbilities {
 	 * @return WP_Error
 	 */
 	private static function forbidden(): WP_Error {
-		return new WP_Error( 'wpcb_forbidden', __( 'You are not permitted to perform this write.', 'wp-content-bridge' ) );
+		return AbilityError::create( 'wpcb_forbidden', __( 'You are not permitted to perform this write.', 'wp-content-bridge' ) );
 	}
 
 	/**
@@ -281,6 +246,6 @@ final readonly class BlockMutationAbilities {
 	 * @return WP_Error
 	 */
 	private static function internal_error(): WP_Error {
-		return new WP_Error( 'wpcb_internal_error', __( 'An unexpected error occurred.', 'wp-content-bridge' ) );
+		return AbilityError::create( 'wpcb_internal_error', __( 'An unexpected error occurred.', 'wp-content-bridge' ) );
 	}
 }

@@ -60,15 +60,7 @@ final readonly class PatternAbilities {
 				'output_schema'       => AbilitySchemas::pattern_list_output(),
 				'permission_callback' => array( $this, 'can_read' ),
 				'execute_callback'    => array( $this, 'execute' ),
-				'meta'                => array(
-					'annotations'  => array(
-						'readonly'    => true,
-						'destructive' => false,
-						'idempotent'  => true,
-					),
-					'show_in_rest' => true,
-					'mcp'          => array( 'public' => true ),
-				),
+				'meta'                => AbilityMeta::read(),
 			)
 		);
 	}
@@ -93,19 +85,19 @@ final readonly class PatternAbilities {
 	 */
 	public function execute( mixed $input = array() ): array|WP_Error {
 		if ( ! $this->can_read() ) {
-			return new WP_Error( 'wpcb_forbidden', __( 'You are not allowed to read block patterns through WP Content Bridge.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_forbidden', __( 'You are not allowed to read block patterns through WP Content Bridge.', 'wp-content-bridge' ) );
 		}
 
 		try {
 			return $this->service->execute( PatternQuery::from_input( self::normalize_input( $input ) ) )->to_array();
 		} catch ( PatternUnavailable ) {
-			return new WP_Error( 'wpcb_pattern_unavailable', __( 'Block patterns are unavailable.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_pattern_unavailable', __( 'Block patterns are unavailable.', 'wp-content-bridge' ) );
 		} catch ( PatternPayloadTooLarge ) {
-			return new WP_Error( 'wpcb_pattern_content_too_large', __( 'Requested block-pattern content exceeds the response limit.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_pattern_content_too_large', __( 'Requested block-pattern content exceeds the response limit.', 'wp-content-bridge' ) );
 		} catch ( InvalidArgumentException $exception ) {
-			return new WP_Error( 'wpcb_invalid_input', $exception->getMessage() );
+			return AbilityError::create( 'wpcb_invalid_input', $exception->getMessage() );
 		} catch ( Throwable ) {
-			return new WP_Error( 'wpcb_internal_error', __( 'WP Content Bridge could not list block patterns.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_internal_error', __( 'WP Content Bridge could not list block patterns.', 'wp-content-bridge' ) );
 		}
 	}
 

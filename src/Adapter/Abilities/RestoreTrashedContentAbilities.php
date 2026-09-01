@@ -59,15 +59,7 @@ final readonly class RestoreTrashedContentAbilities {
 				'output_schema'       => AbilitySchemas::restore_trashed_content_output(),
 				'permission_callback' => array( $this, 'can_restore' ),
 				'execute_callback'    => array( $this, 'execute' ),
-				'meta'                => array(
-					'annotations'  => array(
-						'readonly'    => false,
-						'destructive' => false,
-						'idempotent'  => false,
-					),
-					'show_in_rest' => true,
-					'mcp'          => array( 'public' => true ),
-				),
+				'meta'                => AbilityMeta::write( false, false ),
 			)
 		);
 	}
@@ -97,27 +89,27 @@ final readonly class RestoreTrashedContentAbilities {
 	 */
 	public function execute( array $input ): array|WP_Error {
 		if ( ! $this->can_restore( $input ) ) {
-			return new WP_Error( 'wpcb_forbidden', __( 'You are not permitted to restore this content.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_forbidden', __( 'You are not permitted to restore this content.', 'wp-content-bridge' ) );
 		}
 
 		try {
 			return $this->restore->execute( self::normalize_input( $input ), get_current_user_id() )->to_array();
 		} catch ( InvalidArgumentException $error ) {
-			return new WP_Error( 'wpcb_invalid_input', $error->getMessage() );
+			return AbilityError::create( 'wpcb_invalid_input', $error->getMessage() );
 		} catch ( ContentUnavailable ) {
-			return new WP_Error( 'wpcb_content_unavailable', __( 'Content is unavailable.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_content_unavailable', __( 'Content is unavailable.', 'wp-content-bridge' ) );
 		} catch ( MutationForbidden ) {
-			return new WP_Error( 'wpcb_forbidden', __( 'Restoring trashed content is not permitted for this type.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_forbidden', __( 'Restoring trashed content is not permitted for this type.', 'wp-content-bridge' ) );
 		} catch ( MutationConflict $error ) {
-			return new WP_Error( $error->error_code(), $error->getMessage() );
+			return AbilityError::create( $error->error_code(), $error->getMessage() );
 		} catch ( MutationInvalidState $error ) {
-			return new WP_Error( $error->error_code(), $error->getMessage() );
+			return AbilityError::create( $error->error_code(), $error->getMessage() );
 		} catch ( TrashUnavailable $error ) {
-			return new WP_Error( $error->error_code(), $error->getMessage() );
+			return AbilityError::create( $error->error_code(), $error->getMessage() );
 		} catch ( MutationWriteFailed $error ) {
-			return new WP_Error( 'wpcb_write_failed', $error->getMessage() );
+			return AbilityError::create( 'wpcb_write_failed', $error->getMessage() );
 		} catch ( Throwable ) {
-			return new WP_Error( 'wpcb_internal_error', __( 'The content could not be restored.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_internal_error', __( 'The content could not be restored.', 'wp-content-bridge' ) );
 		}
 	}
 

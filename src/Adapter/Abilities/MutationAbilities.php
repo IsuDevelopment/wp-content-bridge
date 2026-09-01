@@ -77,7 +77,7 @@ final readonly class MutationAbilities {
 				'output_schema'       => AbilitySchemas::create_draft_output(),
 				'permission_callback' => array( $this, 'can_create' ),
 				'execute_callback'    => array( $this, 'execute_create' ),
-				'meta'                => self::write_meta( false ),
+				'meta'                => AbilityMeta::write( false, false ),
 			)
 		);
 
@@ -91,7 +91,7 @@ final readonly class MutationAbilities {
 				'output_schema'       => AbilitySchemas::update_content_output(),
 				'permission_callback' => array( $this, 'can_update' ),
 				'execute_callback'    => array( $this, 'execute_update' ),
-				'meta'                => self::write_meta( true ),
+				'meta'                => AbilityMeta::write( true, false ),
 			)
 		);
 
@@ -105,7 +105,7 @@ final readonly class MutationAbilities {
 				'output_schema'       => AbilitySchemas::update_seo_output(),
 				'permission_callback' => array( $this, 'can_update_seo' ),
 				'execute_callback'    => array( $this, 'execute_update_seo' ),
-				'meta'                => self::write_meta( true ),
+				'meta'                => AbilityMeta::write( true, false ),
 			)
 		);
 
@@ -119,7 +119,7 @@ final readonly class MutationAbilities {
 				'output_schema'       => AbilitySchemas::preview_content_output(),
 				'permission_callback' => array( $this, 'can_update' ),
 				'execute_callback'    => array( $this, 'execute_preview_content' ),
-				'meta'                => self::preview_meta(),
+				'meta'                => AbilityMeta::preview(),
 			)
 		);
 
@@ -133,7 +133,7 @@ final readonly class MutationAbilities {
 				'output_schema'       => AbilitySchemas::preview_seo_output(),
 				'permission_callback' => array( $this, 'can_update_seo' ),
 				'execute_callback'    => array( $this, 'execute_preview_seo' ),
-				'meta'                => self::preview_meta(),
+				'meta'                => AbilityMeta::preview(),
 			)
 		);
 	}
@@ -298,10 +298,10 @@ final readonly class MutationAbilities {
 	 */
 	private function to_error( Throwable $error ): WP_Error {
 		if ( $error instanceof InvalidArgumentException ) {
-			return new WP_Error( 'wpcb_invalid_input', $error->getMessage() );
+			return AbilityError::create( 'wpcb_invalid_input', $error->getMessage() );
 		}
 		if ( $error instanceof ContentUnavailable ) {
-			return new WP_Error( 'wpcb_content_unavailable', __( 'Content is unavailable.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_content_unavailable', __( 'Content is unavailable.', 'wp-content-bridge' ) );
 		}
 		if ( $error instanceof MutationConflict
 			|| $error instanceof InvalidBlockMarkup
@@ -310,46 +310,13 @@ final readonly class MutationAbilities {
 			|| $error instanceof SeoFieldUnsupported
 			|| $error instanceof SeoImageUnavailable
 		) {
-			return new WP_Error( $error->error_code(), $error->getMessage() );
+			return AbilityError::create( $error->error_code(), $error->getMessage() );
 		}
 
 		return self::internal_error();
 	}
 
-	/**
-	 * Returns standard write annotations.
-	 *
-	 * @param bool $destructive Whether the write can destroy existing content.
-	 * @return array<string, mixed>
-	 */
-	private static function write_meta( bool $destructive ): array {
-		return array(
-			'annotations'  => array(
-				'readonly'    => false,
-				'destructive' => $destructive,
-				'idempotent'  => false,
-			),
-			'show_in_rest' => true,
-			'mcp'          => array( 'public' => true ),
-		);
-	}
 
-	/**
-	 * Returns the shared annotations for side-effect-free preview Abilities.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private static function preview_meta(): array {
-		return array(
-			'annotations'  => array(
-				'readonly'    => true,
-				'destructive' => false,
-				'idempotent'  => true,
-			),
-			'show_in_rest' => true,
-			'mcp'          => array( 'public' => true ),
-		);
-	}
 
 	/**
 	 * Creates a stable forbidden result.
@@ -357,7 +324,7 @@ final readonly class MutationAbilities {
 	 * @return WP_Error
 	 */
 	private static function forbidden(): WP_Error {
-		return new WP_Error( 'wpcb_forbidden', __( 'You are not permitted to perform this write.', 'wp-content-bridge' ) );
+		return AbilityError::create( 'wpcb_forbidden', __( 'You are not permitted to perform this write.', 'wp-content-bridge' ) );
 	}
 
 	/**
@@ -366,6 +333,6 @@ final readonly class MutationAbilities {
 	 * @return WP_Error
 	 */
 	private static function internal_error(): WP_Error {
-		return new WP_Error( 'wpcb_internal_error', __( 'An unexpected error occurred.', 'wp-content-bridge' ) );
+		return AbilityError::create( 'wpcb_internal_error', __( 'An unexpected error occurred.', 'wp-content-bridge' ) );
 	}
 }

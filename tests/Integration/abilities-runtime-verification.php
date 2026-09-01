@@ -141,6 +141,21 @@ final class WPCB_Abilities_Runtime_Verification {
 			}
 			$this->assert_true( true === ( $meta['show_in_rest'] ?? false ), $name . ' is not exposed in REST.' );
 
+			/*
+			 * Three separate exposure flags, all asserted because each has a
+			 * different consumer and losing one is silent: `show_in_rest` is
+			 * core's REST listing, `public` is 7.1's unified flag that channels
+			 * such as AI Client function declarations read, and `mcp.public` is
+			 * read by the MCP Adapter. `public` is stated rather than left to
+			 * core's `show_in_rest ?? public` fallback, so an intentional
+			 * divergence would be a visible one-line change.
+			 */
+			$this->assert_true( true === ( $meta['public'] ?? false ), $name . ' does not declare the 7.1 public exposure flag.' );
+			$this->assert_true(
+				is_array( $meta['mcp'] ?? null ) && true === ( $meta['mcp']['public'] ?? false ),
+				$name . ' does not declare mcp.public, which the MCP Adapter reads.'
+			);
+
 			$missing          = $this->missing_required_descriptions( $ability->get_input_schema() );
 			$schemas[ $name ] = array(
 				'input_additional_properties'   => $ability->get_input_schema()['additionalProperties'] ?? null,

@@ -60,15 +60,7 @@ final readonly class SeoAbilities {
 				'output_schema'       => AbilitySchemas::seo_output(),
 				'permission_callback' => array( $this, 'can_read' ),
 				'execute_callback'    => array( $this, 'execute_get' ),
-				'meta'                => array(
-					'annotations'  => array(
-						'readonly'    => true,
-						'destructive' => false,
-						'idempotent'  => true,
-					),
-					'show_in_rest' => true,
-					'mcp'          => array( 'public' => true ),
-				),
+				'meta'                => AbilityMeta::read(),
 			)
 		);
 	}
@@ -93,7 +85,7 @@ final readonly class SeoAbilities {
 	 */
 	public function execute_get( mixed $input = array() ): array|WP_Error {
 		if ( ! $this->can_read() ) {
-			return new WP_Error( 'wpcb_forbidden', __( 'You are not allowed to read SEO data through WP Content Bridge.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_forbidden', __( 'You are not allowed to read SEO data through WP Content Bridge.', 'wp-content-bridge' ) );
 		}
 
 		try {
@@ -101,11 +93,11 @@ final readonly class SeoAbilities {
 
 			return $this->get->execute( $this->target_factory->from_input( $normalized ) )->to_array();
 		} catch ( InvalidArgumentException $exception ) {
-			return new WP_Error( 'wpcb_invalid_selector', $exception->getMessage() );
+			return AbilityError::create( 'wpcb_invalid_selector', $exception->getMessage() );
 		} catch ( ContentUnavailable ) {
-			return new WP_Error( 'wpcb_content_unavailable', __( 'Content is unavailable.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_content_unavailable', __( 'Content is unavailable.', 'wp-content-bridge' ) );
 		} catch ( Throwable ) {
-			return new WP_Error( 'wpcb_seo_data_unavailable', __( 'SEO data could not be retrieved from the active provider.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_seo_data_unavailable', __( 'SEO data could not be retrieved from the active provider.', 'wp-content-bridge' ) );
 		}
 	}
 

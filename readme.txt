@@ -1,10 +1,10 @@
 === WP Content Bridge ===
 Contributors: isudev
 Tags: abilities, mcp, ai, content, seo, yoast
-Requires at least: 7.0
-Tested up to: 7.0
+Requires at least: 7.1
+Tested up to: 7.1
 Requires PHP: 8.2
-Stable tag: 0.8.3
+Stable tag: 0.8.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -33,6 +33,15 @@ Deleting the plugin removes its options, its dedicated `wpcb_*` capabilities fro
 The `{prefix}wpcb_audit` table is deliberately left in place. It records who changed what through the bridge — field names only, never values — as a rolling window of the most recent 5,000 mutation attempts. Destroying that record silently on delete is not the plugin's call to make. Remove the table deliberately if you want it gone.
 
 == Changelog ==
+
+= 0.8.4 =
+* **WordPress 7.1 is now the minimum supported version** (ADR 0027). The plugin declares it and contains no 6.x compatibility branches. Nothing here is optional on an older release — the exposure flag, the lifecycle hooks, and the filtering used below all arrived in 7.1.
+* **Fixed: every rejection answered HTTP 500.** No ability error carried a status, so a missing post, a refused capability, and an oversized payload were all indistinguishable from a server fault over REST — agent clients retried them and monitoring read them as outages. Domain rejections now answer the status they always meant: 400 for invalid input, 403 for a refused capability, 404 for content that is missing or not visible to the caller, 409 for a concurrency or state conflict, 413 for an over-limit payload, 501 for an unavailable provider, and 500 only for an actual internal fault. **Public error codes are unchanged**, so any client matching on `code` keeps working; only the status differs.
+* Missing and not-visible deliberately share 404. Which of the two it was is not disclosed, so status codes cannot be used to enumerate content a caller may not read.
+* `wp-content-bridge/update-llms-txt` is now annotated `destructive` (ADR 0028), because its input is a complete configuration that replaces the stored one — a caller omitting a field loses it. Its HTTP method is unchanged: it remains non-idempotent, so it is still POST, not DELETE. No other annotation changed; the other thirty were already correct under the definition this release finally writes down.
+* Abilities now declare 7.1's unified `public` exposure flag alongside the explicit `show_in_rest` they already carried. Registration metadata is built in one place, which removed thirteen near-identical per-class helpers — two of which took different single booleans under the same name.
+* Added an off-by-default **invocation telemetry** diagnostic mode (ADR 0029). Enabled, it records the last 200 invocation attempts — ability name, principal, channel, outcome, timestamp, and nothing else — including the permission denials that previously left no trace anywhere. It never touches the audit table, never stores ability input, and writes once per request. It is a diagnostic, not an audit record: the hook fires before validation and authorization, so an entry proves an attempt was made, never that anything happened.
+* `get-diagnostics` reports the site's minimum WordPress version and which Abilities API features it actually detected at runtime, rather than assuming them from a version number.
 
 = 0.8.3 =
 * Internal-only groundwork for the upcoming redirect-provider slice (Slice 5, ADR 0026): a provider-neutral `RedirectProvider` port, an ordered provider registry with a required null fallback, and the shared collision, reserved-prefix, live-content-shadow, and bounded chain/loop invariants every future redirect write must pass before any provider adapter runs.

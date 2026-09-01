@@ -86,7 +86,7 @@ final readonly class LlmsAbilities {
 				'output_schema'       => AbilitySchemas::get_llms_txt_output(),
 				'permission_callback' => array( $this, 'can_read' ),
 				'execute_callback'    => array( $this, 'execute_get' ),
-				'meta'                => self::read_meta(),
+				'meta'                => AbilityMeta::read(),
 			)
 		);
 
@@ -104,7 +104,7 @@ final readonly class LlmsAbilities {
 				'output_schema'       => AbilitySchemas::preview_update_llms_txt_output(),
 				'permission_callback' => array( $this, 'can_write' ),
 				'execute_callback'    => array( $this, 'execute_preview' ),
-				'meta'                => self::preview_meta(),
+				'meta'                => AbilityMeta::preview(),
 			)
 		);
 
@@ -118,7 +118,10 @@ final readonly class LlmsAbilities {
 				'output_schema'       => AbilitySchemas::update_llms_txt_output(),
 				'permission_callback' => array( $this, 'can_write' ),
 				'execute_callback'    => array( $this, 'execute_update' ),
-				'meta'                => self::write_meta( false ),
+				// Destructive under ADR 0028: this replaces a complete stored
+				// configuration, so a field absent from the request is a field
+				// removed. Not idempotent, so the HTTP method stays POST.
+				'meta'                => AbilityMeta::write( true, false ),
 			)
 		);
 
@@ -132,7 +135,7 @@ final readonly class LlmsAbilities {
 				'output_schema'       => AbilitySchemas::regenerate_llms_txt_output(),
 				'permission_callback' => array( $this, 'can_write' ),
 				'execute_callback'    => array( $this, 'execute_regenerate' ),
-				'meta'                => self::write_meta( true ),
+				'meta'                => AbilityMeta::write( false, true ),
 			)
 		);
 	}
@@ -271,66 +274,17 @@ final readonly class LlmsAbilities {
 	 */
 	private function to_error( Throwable $error ): WP_Error {
 		if ( $error instanceof InvalidArgumentException ) {
-			return new WP_Error( 'wpcb_invalid_input', $error->getMessage() );
+			return AbilityError::create( 'wpcb_invalid_input', $error->getMessage() );
 		}
 		if ( $error instanceof MutationConflict || $error instanceof MutationWriteFailed ) {
-			return new WP_Error( $error->error_code(), $error->getMessage() );
+			return AbilityError::create( $error->error_code(), $error->getMessage() );
 		}
 
 		return self::internal_error();
 	}
 
-	/**
-	 * Returns standard write annotations.
-	 *
-	 * @param bool $idempotent Whether replaying the same input has no additional effect.
-	 * @return array<string, mixed>
-	 */
-	private static function write_meta( bool $idempotent ): array {
-		return array(
-			'annotations'  => array(
-				'readonly'    => false,
-				'destructive' => false,
-				'idempotent'  => $idempotent,
-			),
-			'show_in_rest' => true,
-			'mcp'          => array( 'public' => true ),
-		);
-	}
 
-	/**
-	 * Returns the shared annotations for the side-effect-free preview ability.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private static function preview_meta(): array {
-		return array(
-			'annotations'  => array(
-				'readonly'    => true,
-				'destructive' => false,
-				'idempotent'  => true,
-			),
-			'show_in_rest' => true,
-			'mcp'          => array( 'public' => true ),
-		);
-	}
 
-	/**
-	 * Returns standard read annotations.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private static function read_meta(): array {
-		return array(
-			'annotations'  => array(
-				'readonly'    => true,
-				'destructive' => false,
-				'idempotent'  => true,
-			),
-			'show_in_rest' => true,
-			'mcp'          => array( 'public' => true ),
-		);
-	}
 
 	/**
 	 * Creates a stable forbidden result.
@@ -338,7 +292,7 @@ final readonly class LlmsAbilities {
 	 * @return WP_Error
 	 */
 	private static function forbidden(): WP_Error {
-		return new WP_Error( 'wpcb_forbidden', __( 'You are not permitted to perform this llms.txt operation.', 'wp-content-bridge' ) );
+		return AbilityError::create( 'wpcb_forbidden', __( 'You are not permitted to perform this llms.txt operation.', 'wp-content-bridge' ) );
 	}
 
 	/**
@@ -347,6 +301,6 @@ final readonly class LlmsAbilities {
 	 * @return WP_Error
 	 */
 	private static function internal_error(): WP_Error {
-		return new WP_Error( 'wpcb_internal_error', __( 'An unexpected error occurred.', 'wp-content-bridge' ) );
+		return AbilityError::create( 'wpcb_internal_error', __( 'An unexpected error occurred.', 'wp-content-bridge' ) );
 	}
 }

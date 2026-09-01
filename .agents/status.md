@@ -1,7 +1,19 @@
 # Project status
 
-**Released version: 0.8.3.** Static quality is green at 498 tests / 1,208
-assertions. Runtime verification is defined in `docs/setup/VERIFICATION.md`.
+**Released version: 0.8.4.** Static quality is green at 513 tests / 1,269
+assertions. Runtime verification is defined in `docs/setup/VERIFICATION.md`
+and stands at 24 of 24 green on WordPress 7.1.
+
+`0.8.4` is the WordPress 7.1 adoption release (ADRs 0027-0029, plan
+`docs/plan/WP_7_1_ABILITIES_ADOPTION_PLAN.md`). **Two changes are visible to
+existing clients** and the release note in `readme.txt` states both: domain
+rejections now answer 4xx instead of the HTTP 500 every one of them used to
+return, with public error codes unchanged; and `update-llms-txt` is now
+annotated `destructive` (its HTTP method is provably unmoved, since it stays
+non-idempotent). It is numbered as a patch rather than a minor only because
+`0.9.0` is reserved for the complete Slice 5 feature; the minimum-version
+bump to 7.1 is the one part of it that would otherwise argue for a minor,
+and it is called out at the top of the changelog entry for that reason.
 
 `0.8.3` is an internal-only patch: the redirect-provider foundation below
 (port, registry, guard, Redirection adapter) lands under version control with
@@ -1120,6 +1132,153 @@ that deletes the option, and a bounded one-time cleanup in
 installs shed the row on their next upgrade without a migration framework.
 The root-owned `cloudflared` service removal remains the user's manual
 `sudo` step, untouched here.
+
+## WordPress 7.1 Abilities API — baseline bumped, no 7.1 API consumed yet (2026-09-01)
+
+`docs/plan/WP_7_1_ABILITIES_ADOPTION_PLAN.md` is the plan. **Task 1 is done
+(ADR 0027 accepted): WordPress 7.1 is the minimum**, stubs are on v7.1.0,
+`AGENTS.md` forbids 7.0 back-compatibility branches, and `composer check` is
+green (498 tests). Unreleased — no version bump; the plugin still consumes zero
+7.1 API, so no behavior, schema, or contract changed.
+
+**Task 2 is also done, and the full inventory ran: 23/23 green on WordPress 7.1**
+(2026-09-01, Kormas Local bumped to 7.1 / PHP 8.4.6), including all three shell
+verifiers and the MCP transport smoke. Nothing regressed on 7.1. `Tested up to:`
+is now 7.1 and earned rather than asserted; see `docs/setup/VERIFICATION.md`.
+
+New verifier: `tests/Integration/rest-input-coercion-verification.php`. It
+refuses to run below 7.1 and pins the coercion contract measured in
+`docs/architecture/ABILITIES.md`. **Core is far more conservative than the dev
+note suggests**: coercion runs only on input `validate_input()` already accepts,
+and falls back to the raw input on any sanitization error, so no bound moved and
+`type: string` fields are never comma-split. The one real change is that a
+numeric string now reaches a use case natively typed over REST, so requests that
+previously failed inside our code now succeed — wider *input*, identical
+authority. A direct `execute()` still refuses a string `post_id`, and that is
+now asserted so a future core change cannot quietly move coercion into the
+domain.
+
+**Defect found by that run and fixed the same day (task 9): every domain
+rejection answered HTTP 500.** None of the 86 `new WP_Error()` returns carried a
+`status`, so core defaulted them all — an unknown `post_id`, a disallowed
+`post_types`, an invalid URL selector. Agent clients read 500 as transient and
+retry; monitoring reads routine refusal as an outage.
+
+Fixed by `src/Adapter/Abilities/AbilityError.php`, now the **only** place an
+ability's `WP_Error` is constructed. All 86 sites go through it; the status is
+applied last so extra error data survives and no caller can override its own
+status. Codes are unchanged — statuses are new public contract, catalogued in
+`ABILITIES.md`. Two decisions not to relitigate: an absent optional provider is
+**501, not 503** (nothing is overloaded, retrying will not help), and **404
+deliberately conflates "does not exist" with "not visible to you"** so the
+status cannot enumerate content — that one is in `SECURITY.md`, because the
+obvious "improvement" to a 403 would open the channel.
+
+`AbilityErrorTest` discovers the vocabulary from the source rather than
+restating it, so a new error code without a status is a failing test instead of
+a silent 500. The full inventory was re-run after the change (23/23) because it
+touched every error path in the plugin.
+
+**This is a client-visible change and needs a release note**: consumers that saw
+500 now see 4xx.
+
+**Tasks 3, 4 and 8 also done (2026-09-01).** Diagnostics gained
+`minimum_wordpress_version` (read from the plugin header, so the requirement has
+one source of truth) and `abilities_api_features.declarative_filtering` (probed
+by reflecting `wp_get_abilities()`); diagnostics `schema_version` is 1.1 and
+`abilities_api` stays a boolean, so the change is additive. Task 3 landed
+**smaller than planned**: with 7.1 as the floor most feature entries would be
+tautologies, and the two that would not be — `wp_ability_invoked` and
+`meta.public` — cannot be probed at all, so inventing a version-derived probe
+was rejected. `McpServerProvider::discover()` now filters declaratively and
+**keeps** its category comparison; the reason is at the call site, and the
+existing unit test turns out to be the fail-open assertion because the suite's
+`wp_get_abilities()` stub declares no parameters, exactly like a WordPress
+without the filter. The 7.1 execution filters we refuse, and why, are written
+into `ABILITIES.md` so the next agent does not adopt them as an obvious win.
+
+**Tasks 5, 6 and 7 are also done — the 7.1 adoption plan is complete.**
+
+- **Task 5** — `src/Adapter/Abilities/AbilityMeta.php` is now the only source of
+  registration metadata, replacing thirteen per-class helpers and eight inline
+  literals, and all 31 abilities declare 7.1's `public` **alongside** an explicit
+  `show_in_rest` (not instead of it: `CLOSED_PROFILE` asserts that surface).
+  Verified rather than assumed: the 31 abilities' annotations were parsed before
+  and after the refactor and compared — **zero differences**. Two real footguns
+  died with the helpers: two same-named `write_meta()` taking different single
+  booleans, and three names producing one identical array.
+- **Task 6 (ADR 0028)** — `destructive` finally has a definition: *can lose
+  content or configuration the client did not supply*. Under it, 30 of 31
+  annotations were already right; exactly one changed (`update-llms-txt` →
+  `true`, because its input is a complete replacement configuration). The audit's
+  "broadly inconsistent" framing was wrong — the defect was the missing
+  definition. **The real risk was the HTTP method**: core maps
+  `destructive && idempotent` to DELETE, so an annotation edit can move an
+  endpoint. Checked before changing, and verified live: method stayed POST, and
+  no ability in this plugin sets that pair.
+- **Task 7 (ADR 0029)** — invocation telemetry as an **off-by-default diagnostic
+  mode**, closing the gap that started this: a `permission_callback` denial now
+  leaves a trace. Off by default and *absent* when off (no listener attached).
+  Bounded by construction — a 200-entry ring buffer, so it can never grow into
+  or evict `wpcb_audit`. One database write per request, not per invocation
+  (entries buffer and flush on `shutdown`), which is what lets an entry be
+  created before the permission check and upgraded to `completed` after success.
+
+Two things about telemetry that must not be forgotten when reading it:
+`wp_after_execute_ability` fires **only on success** and no hook fires on the
+failure paths, so `attempted` means only "did not complete" — a denial, invalid
+input and an internal error are indistinguishable. And an entry is **not
+evidence**: the hook fires before validation and authorization. `wpcb_audit`
+remains the record of what happened; correlate, never merge.
+
+Full inventory ran **five times** on 7.1 today, green each time, last at
+**24/24** (see `docs/setup/VERIFICATION.md`). Every one of those changes touched
+a cross-cutting path — error returns, ability registration, or execution itself
+— which is why each got a whole-inventory run rather than a targeted one.
+
+Anomaly recorded rather than hidden: the first invocation of
+`abilities-runtime-verification` in the batch exited non-zero, then passed four
+consecutive re-runs. It ran immediately after a verifier deleted its fixture
+post; most plausibly a settling object cache, but it is unreproduced, so treat a
+single unexplained failure there as worth re-running rather than as proven
+flakiness.
+
+Side effect worth remembering: bumping the stubs to v7.1.0 surfaced eight
+pre-existing PHPStan errors at `level: max`, because the 7.1 stubs are more
+precise, and forced `szepeviktor/phpstan-wordpress` to `^2.0.4` (v2.0.3
+constrains the stubs to `^6.6.2`). Four were a real unguarded
+`WP_Query::$posts` nullable; four were guards the new PHPDoc claims are
+unreachable, kept behind `treatPhpDocTypesAsCertain: false` because WordPress
+does not enforce its own PHPDoc and one set of those guards is the security
+control in an origin comparison. See ADR 0027's consequences.
+
+Unrelated, surfaced while resolving dependencies and **not fixed**:
+`squizlabs/php_codesniffer` CVE-2026-67434 (high, OS command injection, fixed
+in 3.13.6). Dev-only dependency.
+
+Three findings from the audit behind it, recorded because they are true of
+`0.8.3` regardless of whether that plan is executed:
+
+- **A denial at `permission_callback` leaves no trace anywhere.** The
+  `wpcb_audit` table only records denials that reached a use case
+  (`MutationForbidden`, `TrashUnavailable`). Reads are not audited at all, by
+  design. 7.1's `wp_ability_invoked` is the first hook that can observe this,
+  and it must not write to `wpcb_audit` — that table prunes at 5,000 rows and
+  read traffic would evict the mutation history.
+- **`meta.public` in 7.1 is *not* our existing `mcp.public`.** Core reads
+  top-level `$meta['public']`; ours is nested under `mcp` and read by the
+  Adapter. Nothing to consolidate. All 31 registrations already set
+  `show_in_rest => true` explicitly, so core's new fallback never fires and
+  nothing is currently broken.
+- **`wp_get_abilities( $args )` fails open on 7.0.** Extra arguments to a
+  userland function are ignored, so the args-based category filter returns every
+  registered ability — including other plugins' — on a 7.0 install.
+  `McpServerProvider::narrow()` does not save us, because the discovered set is
+  what widens. Any adoption keeps the explicit category comparison.
+
+Blocked on the stubs: `php-stubs/wordpress-stubs` resolves to `v6.9.4`, whose
+`wp_get_abilities(): array` takes no parameters, and PHPStan runs at
+`level: max`.
 
 ## Guardrail
 

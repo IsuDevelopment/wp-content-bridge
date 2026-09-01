@@ -68,6 +68,30 @@ final class AbilitySchemasTest extends TestCase {
 	}
 
 	/**
+	 * Diagnostics make an unsupported WordPress diagnosable from one read.
+	 *
+	 * `abilities_api` is a boolean that cannot tell 7.0 from 7.1, so "the
+	 * feature is missing" and "the API is missing" used to look identical here.
+	 * The requirement and the one capability this plugin's own projection
+	 * depends on are now both reported, and both are required rather than
+	 * optional so their absence is a contract failure instead of a silent gap.
+	 */
+	public function test_diagnostics_report_the_supported_wordpress_surface(): void {
+		$diagnostics = AbilitySchemas::diagnostics_output();
+
+		self::assertContains( 'minimum_wordpress_version', $diagnostics['required'] );
+		self::assertContains( 'abilities_api_features', $diagnostics['required'] );
+		self::assertFalse( $diagnostics['properties']['abilities_api_features']['additionalProperties'] );
+		self::assertSame(
+			array( 'declarative_filtering' ),
+			$diagnostics['properties']['abilities_api_features']['required']
+		);
+		self::assertNotEmpty(
+			$diagnostics['properties']['abilities_api_features']['properties']['declarative_filtering']['description']
+		);
+	}
+
+	/**
 	 * SEO selectors are exclusive and normalized output sections are strict.
 	 */
 	public function test_seo_contract_is_exclusive_and_strict(): void {

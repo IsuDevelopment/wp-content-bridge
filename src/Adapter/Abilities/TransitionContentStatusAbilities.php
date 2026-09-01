@@ -61,15 +61,7 @@ final readonly class TransitionContentStatusAbilities {
 				'output_schema'       => AbilitySchemas::transition_content_status_output(),
 				'permission_callback' => array( $this, 'can_transition' ),
 				'execute_callback'    => array( $this, 'execute' ),
-				'meta'                => array(
-					'annotations'  => array(
-						'readonly'    => false,
-						'destructive' => false,
-						'idempotent'  => false,
-					),
-					'show_in_rest' => true,
-					'mcp'          => array( 'public' => true ),
-				),
+				'meta'                => AbilityMeta::write( false, false ),
 			)
 		);
 	}
@@ -106,25 +98,25 @@ final readonly class TransitionContentStatusAbilities {
 	 */
 	public function execute( array $input ): array|WP_Error {
 		if ( ! $this->can_transition( $input ) ) {
-			return new WP_Error( 'wpcb_forbidden', __( 'You are not permitted to transition this content.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_forbidden', __( 'You are not permitted to transition this content.', 'wp-content-bridge' ) );
 		}
 
 		try {
 			return $this->transition->execute( self::normalize_input( $input ), get_current_user_id() )->to_array();
 		} catch ( InvalidArgumentException $error ) {
-			return new WP_Error( 'wpcb_invalid_input', $error->getMessage() );
+			return AbilityError::create( 'wpcb_invalid_input', $error->getMessage() );
 		} catch ( ContentUnavailable ) {
-			return new WP_Error( 'wpcb_content_unavailable', __( 'Content is unavailable.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_content_unavailable', __( 'Content is unavailable.', 'wp-content-bridge' ) );
 		} catch ( MutationForbidden $error ) {
-			return new WP_Error( 'wpcb_forbidden', $error->getMessage() );
+			return AbilityError::create( 'wpcb_forbidden', $error->getMessage() );
 		} catch ( MutationConflict $error ) {
-			return new WP_Error( $error->error_code(), $error->getMessage() );
+			return AbilityError::create( $error->error_code(), $error->getMessage() );
 		} catch ( MutationInvalidState $error ) {
-			return new WP_Error( $error->error_code(), $error->getMessage() );
+			return AbilityError::create( $error->error_code(), $error->getMessage() );
 		} catch ( MutationWriteFailed $error ) {
-			return new WP_Error( 'wpcb_write_failed', $error->getMessage() );
+			return AbilityError::create( 'wpcb_write_failed', $error->getMessage() );
 		} catch ( Throwable ) {
-			return new WP_Error( 'wpcb_internal_error', __( 'The status transition could not be completed.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_internal_error', __( 'The status transition could not be completed.', 'wp-content-bridge' ) );
 		}
 	}
 

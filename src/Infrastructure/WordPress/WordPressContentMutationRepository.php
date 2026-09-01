@@ -75,7 +75,6 @@ final class WordPressContentMutationRepository implements ContentMutationReposit
 			true
 		);
 
-		// @phpstan-ignore identical.alwaysFalse
 		if ( is_wp_error( $id ) || 0 === $id ) {
 			throw new MutationWriteFailed( 'WordPress rejected the new draft.' );
 		}
@@ -106,7 +105,6 @@ final class WordPressContentMutationRepository implements ContentMutationReposit
 		}
 
 		$result = wp_update_post( $args, true );
-		// @phpstan-ignore identical.alwaysFalse
 		if ( is_wp_error( $result ) || 0 === $result ) {
 			throw new MutationWriteFailed( 'WordPress rejected the update.' );
 		}
@@ -202,7 +200,6 @@ final class WordPressContentMutationRepository implements ContentMutationReposit
 		}
 
 		$result = wp_update_post( $args, true );
-		// @phpstan-ignore identical.alwaysFalse
 		if ( is_wp_error( $result ) || 0 === $result ) {
 			throw new MutationWriteFailed( 'WordPress rejected the status transition.' );
 		}

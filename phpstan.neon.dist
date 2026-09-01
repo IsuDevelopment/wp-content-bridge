@@ -1,5 +1,12 @@
 parameters:
   level: max
+  # WordPress does not enforce the types in its own PHPDoc, and the 7.1 stubs
+  # tightened several of them (notably wp_parse_url()'s array shape). Treating
+  # those as certain turns every deliberate runtime guard against a lying core
+  # docblock into an error, which pressures us to delete the guard — including
+  # in origin comparisons, where the guard is the security control. Keep the
+  # guards; do not trust the docblock.
+  treatPhpDocTypesAsCertain: false
   paths:
     - src
     - wp-content-bridge.php

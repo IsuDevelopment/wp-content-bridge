@@ -63,7 +63,7 @@ final readonly class CustomSchemaAbilities {
 				'output_schema'       => AbilitySchemas::get_custom_schema_output(),
 				'permission_callback' => array( $this, 'can_manage' ),
 				'execute_callback'    => array( $this, 'execute_get' ),
-				'meta'                => self::read_meta(),
+				'meta'                => AbilityMeta::read(),
 			)
 		);
 
@@ -77,7 +77,7 @@ final readonly class CustomSchemaAbilities {
 				'output_schema'       => AbilitySchemas::preview_custom_schema_output(),
 				'permission_callback' => array( $this, 'can_manage' ),
 				'execute_callback'    => array( $this, 'execute_preview' ),
-				'meta'                => self::read_meta(),
+				'meta'                => AbilityMeta::read(),
 			)
 		);
 
@@ -91,15 +91,7 @@ final readonly class CustomSchemaAbilities {
 				'output_schema'       => AbilitySchemas::update_custom_schema_output(),
 				'permission_callback' => array( $this, 'can_manage' ),
 				'execute_callback'    => array( $this, 'execute' ),
-				'meta'                => array(
-					'annotations'  => array(
-						'readonly'    => false,
-						'destructive' => true,
-						'idempotent'  => false,
-					),
-					'show_in_rest' => true,
-					'mcp'          => array( 'public' => true ),
-				),
+				'meta'                => AbilityMeta::write( true, false ),
 			)
 		);
 	}
@@ -128,7 +120,7 @@ final readonly class CustomSchemaAbilities {
 	 */
 	public function execute_get( array $input ): array|WP_Error {
 		if ( ! $this->can_manage( $input ) ) {
-			return new WP_Error( 'wpcb_forbidden', __( 'You are not permitted to read this configuration.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_forbidden', __( 'You are not permitted to read this configuration.', 'wp-content-bridge' ) );
 		}
 
 		try {
@@ -146,7 +138,7 @@ final readonly class CustomSchemaAbilities {
 	 */
 	public function execute_preview( array $input ): array|WP_Error {
 		if ( ! $this->can_manage( $input ) ) {
-			return new WP_Error( 'wpcb_forbidden', __( 'You are not permitted to preview this configuration.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_forbidden', __( 'You are not permitted to preview this configuration.', 'wp-content-bridge' ) );
 		}
 
 		try {
@@ -164,7 +156,7 @@ final readonly class CustomSchemaAbilities {
 	 */
 	public function execute( array $input ): array|WP_Error {
 		if ( ! $this->can_manage( $input ) ) {
-			return new WP_Error( 'wpcb_forbidden', __( 'You are not permitted to perform this write.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_forbidden', __( 'You are not permitted to perform this write.', 'wp-content-bridge' ) );
 		}
 
 		try {
@@ -181,35 +173,18 @@ final readonly class CustomSchemaAbilities {
 	 */
 	private function map_error( Throwable $error ): WP_Error {
 		if ( $error instanceof CustomSchemaInvalid ) {
-			return new WP_Error( $error->error_code(), $error->getMessage(), array( 'validation' => $error->validation() ) );
+			return AbilityError::create( $error->error_code(), $error->getMessage(), array( 'validation' => $error->validation() ) );
 		}
 		if ( $error instanceof InvalidArgumentException ) {
-			return new WP_Error( 'wpcb_invalid_input', $error->getMessage() );
+			return AbilityError::create( 'wpcb_invalid_input', $error->getMessage() );
 		}
 		if ( $error instanceof ContentUnavailable ) {
-			return new WP_Error( 'wpcb_content_unavailable', __( 'Content is unavailable.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_content_unavailable', __( 'Content is unavailable.', 'wp-content-bridge' ) );
 		}
 		if ( $error instanceof MutationConflict || $error instanceof MutationForbidden || $error instanceof MutationWriteFailed || $error instanceof CustomSchemaUnavailable ) {
-			return new WP_Error( $error->error_code(), $error->getMessage() );
+			return AbilityError::create( $error->error_code(), $error->getMessage() );
 		}
 
-		return new WP_Error( 'wpcb_internal_error', __( 'An unexpected error occurred.', 'wp-content-bridge' ) );
-	}
-
-	/**
-	 * Returns the shared MCP annotations for side-effect-free operations.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private static function read_meta(): array {
-		return array(
-			'annotations'  => array(
-				'readonly'    => true,
-				'destructive' => false,
-				'idempotent'  => true,
-			),
-			'show_in_rest' => true,
-			'mcp'          => array( 'public' => true ),
-		);
+		return AbilityError::create( 'wpcb_internal_error', __( 'An unexpected error occurred.', 'wp-content-bridge' ) );
 	}
 }

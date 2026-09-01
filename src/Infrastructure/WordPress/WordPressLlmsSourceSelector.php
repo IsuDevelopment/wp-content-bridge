@@ -272,7 +272,7 @@ final class WordPressLlmsSourceSelector implements LlmsSourceSelector {
 		);
 
 		$post_ids = array();
-		foreach ( $query->posts as $post_id ) {
+		foreach ( $query->posts ?? array() as $post_id ) {
 			if ( is_int( $post_id ) ) {
 				$post_ids[] = $post_id;
 			}

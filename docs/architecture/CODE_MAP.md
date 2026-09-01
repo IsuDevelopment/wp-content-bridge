@@ -84,10 +84,43 @@ Rules for this flow:
 - `src/Infrastructure/WordPress/WordPressTaxonomyCatalog.php` — public/REST
   taxonomy discovery and all-effective-types assignment checks.
 - `src/Adapter/Abilities/AbilitySchemas.php` — public input/output JSON Schemas.
+- `src/Adapter/Abilities/AbilityError.php` — the only place an ability's
+  `WP_Error` is constructed. Maps the closed public error-code vocabulary onto
+  HTTP status, so a domain rejection no longer answers 500.
 - `src/Adapter/Abilities/ContentAbilities.php` — thin WordPress Abilities projection and stable error boundary.
 - `tests/Unit/Domain/Content/ContentQueryTest.php` — defaults, normalization, bounds, and effective-type copy contract.
 - `tests/Unit/Adapter/Abilities/AbilitySchemasTest.php` — strict public schema,
   taxonomy-bound, pagination-safety, and payload-metadata contract.
+- `tests/Unit/Adapter/Abilities/AbilityErrorTest.php` — discovers the error
+  vocabulary from the source and fails when a code has no status or the map
+  carries a code the source cannot produce.
+- `src/Adapter/Abilities/AbilityMeta.php` — the only source of ability
+  registration metadata: annotations plus the three exposure flags
+  (`show_in_rest`, 7.1's `public`, and the Adapter's `mcp.public`).
+- `tests/Integration/rest-input-coercion-verification.php` — WordPress 7.1 input
+  coercion stays at the REST boundary and inside every schema bound, and each
+  domain rejection answers its own HTTP status.
+
+### Invocation telemetry (ADR 0029, off by default)
+
+Closes the one thing nothing else could see: a denial at `permission_callback`.
+
+- `src/Application/Telemetry/InvocationAttempt.php` — immutable record with no
+  field that could hold ability input, a message, or a result.
+- `src/Application/Telemetry/InvocationLog.php` — port. Deliberately not
+  `Application\Mutation\AuditLog`: that one is evidence of what happened, this
+  one is a diagnostic of what was attempted.
+- `src/Infrastructure/WordPress/WordPressInvocationLog.php` — buffers per
+  request, flushes on `shutdown`, keeps a bounded ring buffer so it can never
+  grow into or evict the mutation audit.
+- `src/Adapter/Abilities/AbilityInvocationTelemetry.php` — listens on
+  `wp_ability_invoked` and `wp_after_execute_ability`, ignores other plugins'
+  abilities, and is registered only while the flag is on.
+- `tests/Unit/Application/Telemetry/InvocationAttemptTest.php` — asserts the
+  record cannot hold content.
+- `tests/Integration/invocation-telemetry-verification.php` — absent when off,
+  a denial recorded exactly once, a success upgraded rather than duplicated,
+  reads adding no audit rows, and the ring buffer's bound.
 - `tests/Unit/Domain/Content/ContentDetailTest.php` — byte accounting contract.
 - `tests/Integration/authorization-matrix.php` — isolated role/object fixtures,
   policy independence, search-total privacy, representation safety, and payload
