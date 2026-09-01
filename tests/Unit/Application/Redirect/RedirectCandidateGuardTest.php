@@ -12,6 +12,7 @@ namespace IsuDev\WPContentBridge\Tests\Unit\Application\Redirect;
 use IsuDev\WPContentBridge\Application\Redirect\PublishedPermalinkLookup;
 use IsuDev\WPContentBridge\Application\Redirect\RedirectCandidateGuard;
 use IsuDev\WPContentBridge\Application\Redirect\RedirectProvider;
+use IsuDev\WPContentBridge\Application\Redirect\RedirectRuleLookup;
 use IsuDev\WPContentBridge\Application\Redirect\RedirectSourceRejected;
 use IsuDev\WPContentBridge\Domain\Redirect\RedirectProviderStatus;
 use IsuDev\WPContentBridge\Domain\Redirect\RedirectRule;
@@ -39,7 +40,7 @@ final class RedirectCandidateGuardTest extends TestCase {
 
 		( new RedirectCandidateGuard() )->assert_creatable(
 			$this->rule( '/old-page', '/new-page' ),
-			$this->provider(),
+			$this->lookup(),
 			$this->permalinks( false )
 		);
 	}
@@ -69,7 +70,7 @@ final class RedirectCandidateGuardTest extends TestCase {
 
 		( new RedirectCandidateGuard() )->assert_creatable(
 			$this->rule( $source, '/new-page' ),
-			$this->provider(),
+			$this->lookup(),
 			$this->permalinks( false )
 		);
 	}
@@ -83,7 +84,7 @@ final class RedirectCandidateGuardTest extends TestCase {
 
 		( new RedirectCandidateGuard() )->assert_creatable(
 			$this->rule( '/old-page', '/new-page' ),
-			$this->provider(),
+			$this->lookup(),
 			$this->permalinks( true )
 		);
 	}
@@ -99,7 +100,7 @@ final class RedirectCandidateGuardTest extends TestCase {
 
 		( new RedirectCandidateGuard() )->assert_creatable(
 			$this->rule( '/old-page', '/new-page' ),
-			$this->provider( array( '/old-page' => $existing ) ),
+			$this->lookup( array( '/old-page' => $existing ) ),
 			$this->permalinks( false )
 		);
 	}
@@ -115,7 +116,7 @@ final class RedirectCandidateGuardTest extends TestCase {
 
 		( new RedirectCandidateGuard() )->assert_creatable(
 			$this->rule( '/old-page', '/b' ),
-			$this->provider( array( '/b' => $back_to_source ) ),
+			$this->lookup( array( '/b' => $back_to_source ) ),
 			$this->permalinks( false )
 		);
 	}
@@ -130,7 +131,7 @@ final class RedirectCandidateGuardTest extends TestCase {
 
 		( new RedirectCandidateGuard() )->assert_creatable(
 			$this->rule( '/a', '/b' ),
-			$this->provider(
+			$this->lookup(
 				array(
 					'/b' => $this->rule( '/b', '/c' ),
 					'/c' => $this->rule( '/c', '/d' ),
@@ -150,7 +151,7 @@ final class RedirectCandidateGuardTest extends TestCase {
 
 		( new RedirectCandidateGuard() )->assert_creatable(
 			$this->rule( '/a', '/b' ),
-			$this->provider(
+			$this->lookup(
 				array(
 					'/b' => $this->rule( '/b', '/c' ),
 				)
@@ -175,16 +176,63 @@ final class RedirectCandidateGuardTest extends TestCase {
 			$this->provider_status()
 		);
 
-		( new RedirectCandidateGuard() )->assert_creatable( $rule, $this->provider(), $this->permalinks( false ) );
+		( new RedirectCandidateGuard() )->assert_creatable( $rule, $this->lookup(), $this->permalinks( false ) );
+	}
+
+	/**
+	 * The two-plugin case ADR 0026 s5 was corrected for: the source is free in
+	 * the provider the write is addressed to, but claimed by the other active
+	 * plugin. Both engines serve redirects at runtime, so this is a collision
+	 * and the rejection names the provider that holds it.
+	 */
+	public function test_rejects_a_collision_held_only_by_another_provider(): void {
+		$held_elsewhere = new RedirectRuleLookup(
+			array(
+				$this->provider( array(), 'redirection' ),
+				$this->provider( array( '/old-page' => $this->rule( '/old-page', '/elsewhere' ) ), 'yoast-premium' ),
+			)
+		);
+
+		$this->expectException( RedirectSourceRejected::class );
+		$this->expectExceptionMessage( 'yoast-premium' );
+
+		( new RedirectCandidateGuard() )->assert_creatable(
+			$this->rule( '/old-page', '/new-page' ),
+			$held_elsewhere,
+			$this->permalinks( false )
+		);
+	}
+
+	/**
+	 * A loop that hops between backends: the candidate sends `/old-page` to
+	 * `/b` in one plugin, and the other plugin already sends `/b` back to
+	 * `/old-page`. Neither plugin can see this on its own.
+	 */
+	public function test_rejects_a_loop_that_spans_two_providers(): void {
+		$split_chain = new RedirectRuleLookup(
+			array(
+				$this->provider( array(), 'redirection' ),
+				$this->provider( array( '/b' => $this->rule( '/b', '/old-page' ) ), 'yoast-premium' ),
+			)
+		);
+
+		$this->expectException( RedirectSourceRejected::class );
+
+		( new RedirectCandidateGuard() )->assert_creatable(
+			$this->rule( '/old-page', '/b' ),
+			$split_chain,
+			$this->permalinks( false )
+		);
 	}
 
 	/**
 	 * Returns a shared provider status fixture.
 	 *
+	 * @param string $slug Provider slug.
 	 * @return RedirectProviderStatus
 	 */
-	private function provider_status(): RedirectProviderStatus {
-		return new RedirectProviderStatus( 'redirection', '5.5.2', true, array( 'create', 'search' ) );
+	private function provider_status( string $slug = 'redirection' ): RedirectProviderStatus {
+		return new RedirectProviderStatus( $slug, '5.5.2', true, array( 'create', 'search' ) );
 	}
 
 	/**
@@ -206,13 +254,25 @@ final class RedirectCandidateGuardTest extends TestCase {
 	}
 
 	/**
+	 * Builds a single-provider cross-provider lookup, which is what the guard
+	 * consumes on an ordinary one-plugin site.
+	 *
+	 * @param array<string, RedirectRule> $existing Existing rules keyed by source path.
+	 * @return RedirectRuleLookup
+	 */
+	private function lookup( array $existing = array() ): RedirectRuleLookup {
+		return new RedirectRuleLookup( array( $this->provider( $existing ) ) );
+	}
+
+	/**
 	 * Builds an always-available provider fake backed by a fixed rule map.
 	 *
 	 * @param array<string, RedirectRule> $existing Existing rules keyed by source path.
+	 * @param string                      $slug     Provider slug the fake reports.
 	 * @return RedirectProvider
 	 */
-	private function provider( array $existing = array() ): RedirectProvider {
-		$status = $this->provider_status();
+	private function provider( array $existing = array(), string $slug = 'redirection' ): RedirectProvider {
+		$status = $this->provider_status( $slug );
 
 		return new class( $existing, $status ) implements RedirectProvider {
 

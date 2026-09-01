@@ -35,15 +35,16 @@ final class RedirectCandidateGuard {
 	 * Rejects a candidate that fails any provider-neutral safety invariant.
 	 *
 	 * @param RedirectRule             $candidate  Candidate rule (id must be null).
-	 * @param RedirectProvider         $provider   Active provider, used for collision
-	 *                                              and chain resolution.
+	 * @param RedirectRuleLookup       $existing   Cross-provider lookup over every
+	 *                                              available provider, used for
+	 *                                              collision and chain resolution.
 	 * @param PublishedPermalinkLookup $permalinks Live-content shadow lookup.
 	 * @return void
 	 * @throws RedirectSourceRejected When any invariant fails.
 	 */
 	public function assert_creatable(
 		RedirectRule $candidate,
-		RedirectProvider $provider,
+		RedirectRuleLookup $existing,
 		PublishedPermalinkLookup $permalinks
 	): void {
 		$source = $candidate->source->value();
@@ -54,12 +55,24 @@ final class RedirectCandidateGuard {
 			throw new RedirectSourceRejected( 'Redirect source path resolves to published content.' );
 		}
 
-		if ( null !== $provider->search( $candidate->source ) ) {
-			throw new RedirectSourceRejected( 'A redirect rule for this source path already exists.' );
+		$claimants = $existing->claimants( $candidate->source );
+		if ( array() !== $claimants ) {
+			// Any available provider counts, not just the one this write is
+			// addressed to (ADR 0026 s5, corrected 2026-09-01). On a site
+			// running both plugins, both engines serve redirects and whichever
+			// hooks first wins, so a rule written "successfully" into one
+			// backend can be shadowed by the other's existing rule.
+			throw new RedirectSourceRejected(
+				sprintf(
+					'A redirect rule for this source path already exists in: %s.',
+					// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- provider slugs are regex-bounded tokens, not rendered output.
+					implode( ', ', $claimants )
+				)
+			);
 		}
 
 		if ( null !== $candidate->target ) {
-			self::assert_no_loop( $source, $candidate->target->value(), $provider );
+			self::assert_no_loop( $source, $candidate->target->value(), $existing );
 		}
 	}
 
@@ -84,13 +97,17 @@ final class RedirectCandidateGuard {
 	 * bounded hop count, rejecting a loop back to the original source or a
 	 * chain that has not terminated within the bound.
 	 *
-	 * @param string           $original_source Candidate's own source path.
-	 * @param string           $target          Candidate's target (path, optionally with a query string).
-	 * @param RedirectProvider $provider        Active provider.
+	 * Resolution spans every available provider, because a chain can hop
+	 * between backends: `/a -> /b` in one plugin and `/b -> /a` in the other
+	 * is a loop neither plugin can see on its own.
+	 *
+	 * @param string             $original_source Candidate's own source path.
+	 * @param string             $target          Candidate's target (path, optionally with a query string).
+	 * @param RedirectRuleLookup $existing        Cross-provider lookup.
 	 * @return void
 	 * @throws RedirectSourceRejected When a loop or an unresolvable chain is found.
 	 */
-	private static function assert_no_loop( string $original_source, string $target, RedirectProvider $provider ): void {
+	private static function assert_no_loop( string $original_source, string $target, RedirectRuleLookup $existing ): void {
 		$seen    = array( $original_source );
 		$current = self::path_only( $target );
 
@@ -101,7 +118,7 @@ final class RedirectCandidateGuard {
 			$seen[] = $current;
 
 			try {
-				$rule = $provider->search( new RedirectSourcePath( $current ) );
+				$rule = $existing->first( new RedirectSourcePath( $current ) );
 			} catch ( InvalidArgumentException ) {
 				// The resolved target is not itself a valid bounded source shape
 				// (e.g. it carries a query string), so no provider rule can

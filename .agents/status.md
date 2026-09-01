@@ -140,6 +140,55 @@ path. Requirements and the required mitigations are in the "Future backlog —
 in-editor AI schema assist" section of `docs/plan/IMPLEMENTATION_PLAN.md`. No ADR
 yet, so nothing may be implemented from it.
 
+## Slice 5 research corrected from plugin source — 2026-09-01
+
+Both redirect backends were read from the source installed on the designated
+environment, because ADR 0026's Yoast findings came from documentation and a
+community gist. One of them was wrong.
+
+**Yoast SEO Premium 28.0 does have a redirect REST API** (`yoast/v1/redirects`,
+`/delete`, `/list`, `/update`, `/settings`, all behind
+`wpseo_manage_redirects`), instantiated on every request, plus a fully
+non-admin-callable manager class set and a `wp yoast redirect` CLI command set.
+ADR 0026 is amended in place with the correction and with what it changes:
+Decision 1's build order and Decision 3's fixture-gated internal-class path
+both rested on Yoast having no callable API, and both are now open. Three
+further source facts an adapter must respect: redirects live in three options,
+of which two are derived caches the front end actually reads (so every write
+must go through `save_redirects()`); the manager performs **no** capability
+check, so this plugin is the only gate when calling in-process; and
+`WPSEO_Redirect_Validator` issues a live outbound `wp_remote_head()` against
+the target.
+
+**Statistics are provider-asymmetric, and that is the load-bearing finding.**
+Yoast Premium 28.0 and Free 28.4 collect no 404 or hit data at all — no table,
+no option, no counter; the Search Console crawl-error screen is a stub whose
+own copy says Google discontinued the API. Redirection 5.9.0 keeps
+`{prefix}redirection_404` and `{prefix}redirection_logs` (one row per hit) plus
+`last_count`/`last_access` per redirect, and its `GET /404` checks only
+`redirection_cap_404_manage` — independent of redirect management, so 404 read
+can be granted without any redirect write authority.
+
+Consequences for design, all still undecided (no ADR yet, nothing implemented):
+
+- Statistics cannot hang off `RedirectProvider`. A Yoast-backed site would
+  report zero 404s, which is indistinguishable from a healthy site. It needs a
+  separate port whose unavailable state is explicit.
+- Redirection's `groupBy` — the only aggregation primitive, and the thing that
+  makes "top 404s" cheap — is **not declared in any route's `args` schema**; it
+  is read straight off `get_params()` in a plugin that states its REST API is
+  not stable.
+- **There is no date filter of any kind** on either log route. "404s in the
+  last 7 days" is not expressible; the de facto window is the retention
+  setting (`expire_404`, default 7 days, pruned daily by cron).
+- Logging can be off and fails open: `expire_404 = -1` disables 404 logging,
+  `ip_logging = 0` drops IPs, `track_hits = false` freezes counters. A query
+  against a disabled log returns an empty list, not an error.
+- 404 rows carry `ip`, `agent`, `referrer` and, with `log_header` on, request
+  headers in `request_data`. Projecting rows through MCP would hand traffic
+  logs to a model; an aggregate-only surface (`url` + `count` + the retention
+  window) answers "where is a redirect missing" without any of them.
+
 ## MCP projection is owned by the plugin — 0.8.0, 2026-08-11
 
 ADR 0025. Registering abilities was never enough to use them: the official
