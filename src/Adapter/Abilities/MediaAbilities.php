@@ -59,7 +59,7 @@ final readonly class MediaAbilities {
 				'output_schema'       => AbilitySchemas::media_search_output(),
 				'permission_callback' => array( $this, 'can_read' ),
 				'execute_callback'    => array( $this, 'execute_search' ),
-				'meta'                => self::read_meta(),
+				'meta'                => AbilityMeta::read(),
 			)
 		);
 
@@ -73,7 +73,7 @@ final readonly class MediaAbilities {
 				'output_schema'       => AbilitySchemas::media_by_id_output(),
 				'permission_callback' => array( $this, 'can_read' ),
 				'execute_callback'    => array( $this, 'execute_get_by_id' ),
-				'meta'                => self::read_meta(),
+				'meta'                => AbilityMeta::read(),
 			)
 		);
 	}
@@ -106,7 +106,7 @@ final readonly class MediaAbilities {
 		} catch ( MediaUnavailable ) {
 			return self::unavailable();
 		} catch ( InvalidArgumentException $exception ) {
-			return new WP_Error( 'wpcb_invalid_input', $exception->getMessage() );
+			return AbilityError::create( 'wpcb_invalid_input', $exception->getMessage() );
 		} catch ( Throwable ) {
 			return self::internal_error();
 		}
@@ -127,7 +127,7 @@ final readonly class MediaAbilities {
 			$normalized = self::normalize_input( $input );
 			$id         = $normalized['id'] ?? 0;
 			if ( ! is_int( $id ) || 1 > $id ) {
-				return new WP_Error( 'wpcb_invalid_input', 'id must be a positive integer.' );
+				return AbilityError::create( 'wpcb_invalid_input', 'id must be a positive integer.' );
 			}
 
 			return array(
@@ -141,7 +141,7 @@ final readonly class MediaAbilities {
 		} catch ( MediaUnavailable ) {
 			return self::unavailable();
 		} catch ( InvalidArgumentException $exception ) {
-			return new WP_Error( 'wpcb_invalid_input', $exception->getMessage() );
+			return AbilityError::create( 'wpcb_invalid_input', $exception->getMessage() );
 		} catch ( Throwable ) {
 			return self::internal_error();
 		}
@@ -173,22 +173,6 @@ final readonly class MediaAbilities {
 		return $normalized;
 	}
 
-	/**
-	 * Returns standard read annotations.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private static function read_meta(): array {
-		return array(
-			'annotations'  => array(
-				'readonly'    => true,
-				'destructive' => false,
-				'idempotent'  => true,
-			),
-			'show_in_rest' => true,
-			'mcp'          => array( 'public' => true ),
-		);
-	}
 
 	/**
 	 * Returns a stable capability denial.
@@ -196,7 +180,7 @@ final readonly class MediaAbilities {
 	 * @return WP_Error
 	 */
 	private static function forbidden(): WP_Error {
-		return new WP_Error( 'wpcb_forbidden', __( 'You are not allowed to read media through WP Content Bridge.', 'wp-content-bridge' ) );
+		return AbilityError::create( 'wpcb_forbidden', __( 'You are not allowed to read media through WP Content Bridge.', 'wp-content-bridge' ) );
 	}
 
 	/**
@@ -205,7 +189,7 @@ final readonly class MediaAbilities {
 	 * @return WP_Error
 	 */
 	private static function unavailable(): WP_Error {
-		return new WP_Error( 'wpcb_media_unavailable', __( 'Media is unavailable.', 'wp-content-bridge' ) );
+		return AbilityError::create( 'wpcb_media_unavailable', __( 'Media is unavailable.', 'wp-content-bridge' ) );
 	}
 
 	/**
@@ -214,6 +198,6 @@ final readonly class MediaAbilities {
 	 * @return WP_Error
 	 */
 	private static function internal_error(): WP_Error {
-		return new WP_Error( 'wpcb_internal_error', __( 'WP Content Bridge could not complete the media request.', 'wp-content-bridge' ) );
+		return AbilityError::create( 'wpcb_internal_error', __( 'WP Content Bridge could not complete the media request.', 'wp-content-bridge' ) );
 	}
 }

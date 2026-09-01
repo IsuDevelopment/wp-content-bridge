@@ -26,6 +26,15 @@ existing Content Access Read policy, then reuses the normal update service; its
 second step remains the exact-target, fail-closed adoption operation. Neither
 step adds an Ability, and unavailable actions remain visible with explanations.
 
+WordPress 7.1 adoption is planned separately in
+`docs/plan/WP_7_1_ABILITIES_ADOPTION_PLAN.md`: the 7.1 baseline, declarative
+ability discovery, `meta.public`, invocation telemetry for the currently
+untraceable `permission_callback` denial, and a written refusal of the 7.1
+execution filters that would move authorization or auditing out of the layers
+that own them. Its first task is a decision (ADR 0027, the minimum WordPress
+version) and its first code task is a verification of 7.1's REST input coercion
+against shipped schemas, not a feature.
+
 **No roadmap slice starts while the runtime verification backlog below is
 open.** Releases 0.1.3 through 0.3.0 shipped on static checks alone because the
 verification environment was unavailable from 2026-07-21.

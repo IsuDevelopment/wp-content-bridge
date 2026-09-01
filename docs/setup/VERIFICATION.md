@@ -18,7 +18,7 @@ skipping it left no trace. This file is that definition.
 | Site | LocalWP `kormas-isu` |
 | WordPress root | `/Users/lukaszbiedron/Local Sites/kormas-isu/app/public` |
 | Site URL | `https://kormas-isu.local` |
-| WordPress / PHP | 7.0.2 / 8.4 |
+| WordPress / PHP | 7.1 / 8.4.6 |
 | Providers | Yoast SEO Free 28.2, Yoast Local 15.8, IsuDev Schema Extended 0.3.0 |
 
 The plugin directory is a symlink to this repository, so the working tree is
@@ -29,6 +29,8 @@ content/plugins/wp-content-bridge -> /Users/lukaszbiedron/Other Projects/wp-cont
 ```
 
 The Abilities API is WordPress core as of 7.0; no feature plugin is involved.
+Since ADR 0027 the plugin requires 7.1, so this environment must stay on 7.1 or
+later — a run on 7.0 verifies a configuration the plugin no longer supports.
 
 ### Why one machine
 
@@ -73,7 +75,9 @@ for v in abilities-runtime-verification \
          schema-custom-verification \
          llms-txt-verification \
          status-workflow-verification \
-         status-matrix-bulk-verification; do
+         status-matrix-bulk-verification \
+         rest-input-coercion-verification \
+         invocation-telemetry-verification; do
   wp eval "require \"$IT/$v.php\";" >/dev/null 2>&1 \
     && echo "PASS $v" || echo "FAIL $v"
 done
@@ -123,6 +127,8 @@ given machine can run the check at all:
 | `llms-txt-verification.php` ³ | core | The flag-off rewrite rule and 404 are indistinguishable from never-installed; exact byte/`ETag`/`Last-Modified` fidelity and `304` handling; the front-end route performs no post query and no write, proven by query count plus option `option_id`/value identity plus a behavioural absence proof; the leak matrix (draft, private, password-protected, `noindex`, non-public-post-type); de-publish staleness after regeneration; `preview-update-llms-txt` purity; `update-llms-txt` rejecting a stale token before any write; `regenerate-llms-txt` idempotency; the physical-artifact ownership conflict and its ABSPATH-vs-web-root regression with no filesystem path leaked; and deterministic bound truncation |
 | `status-workflow-verification.php` | core | `transition-content-status` absent while `wpcb_writes_enabled` is off, `get-status-transitions` always present; the empty-graph deny-all default; the response reporting the status read back from storage; ADR 0024's "may unpublish but not publish" asymmetry; `publish`/`future` refused while `wpcb_publish_enabled` is off despite the pair and capability being held; a stale `version_token` and a past `publish_at` both rejected with the stored row untouched; a scheduled transition storing the exact requested `post_date_gmt`; DST spring-forward-gap rejection and autumn-fold/ordinary-instant round-trips against the real Europe/Warsaw tz database; the revision and field-names-only audit invariants; the full draft → pending → publish flow; the deliberate per-target `gates` semantics for non-privileged targets; and the mutation repository's own read-back defence against a WordPress-rewritten transition |
 | `status-matrix-bulk-verification.php` | core | The settings matrix bulk toggles: one whole-matrix, one per ordered pair, one per content type; both axis attributes on every governed cell; that **no toggle carries a form field name**, so the submitted matrix is byte-for-byte what 0.7.0 submitted; that every toggle ships inside a hidden wrapper and so does nothing without JavaScript; the preset and legacy-adoption confirmation prompts; that both always-visible llms.txt workflow actions render; that the assets enqueue on the settings screen and on no other, at the current plugin version, with the hook suffix resolved the way `add_options_page()` resolves it rather than hard-coded; and that the content-access matrix above gained no bulk attributes |
+| `rest-input-coercion-verification.php` | core | WordPress 7.1 coerces run-endpoint input to the declared schema. Pins that coercion stays at the REST boundary (a direct `execute()` still refuses a string `post_id`), that every schema bound survives it, that `type: array` fields accept the comma-separated form and resolve identically to the array form, that `type: string` fields are never split, that nested objects get no coercion, and that a capability-less principal is still refused on a perfectly coercible request. Also pins the error-status contract: a domain rejection answers 400/404 with its public error code, not 500. Requires 7.1 and refuses to run below it. |
+| `invocation-telemetry-verification.php` | core | The off-by-default invocation-telemetry diagnostic (ADR 0029). Proves no listener is attached and nothing is written while the flag is off; that a `permission_callback` denial — invisible everywhere else — produces exactly one `attempted` entry attributed to the right principal; that a success upgrades that entry in place instead of duplicating it; that read invocations add **no** `wpcb_audit` rows, so read traffic cannot evict mutation history; that the ring buffer discards rather than grows; and that a stored entry carries exactly its five declared fields, never ability input. Restores both options in a `finally`. |
 | `http-url-runtime-verification.sh` | http | URL-target resolution through a real HTTP request context, public head parity |
 | `mcp-smoke-verification.sh` | mcp | `initialize` → `tools/list` → `tools/call` over Streamable HTTP as the least-privilege bridge principal |
 | `local-multilocation-runtime-verification.sh` | yoast + http | Branch identity from provider-emitted Local Schema, bounds, and that no private Local option leaks |
@@ -155,13 +161,22 @@ driven by the shell verifiers, not verifiers themselves.
 
 ## Last full run
 
-**2026-08-12 — 22 of 22 green**, against the environment above at 0.8.2.
+**2026-09-01 — 24 of 24 green on WordPress 7.1**, the last of five runs that
+day. The 7.1 adoption plan is complete; each run below re-ran the whole
+inventory because every one of those changes touched a cross-cutting path —
+error returns, ability registration, or execution itself. Against the
+environment above at 0.8.3 plus those unreleased changes.
 
 Record a dated line here on every release. A release whose line is missing
 shipped unverified, and that should be visible rather than reconstructable.
 
 | Date | Result | Notes |
 |---|---|---|
+| 2026-09-01 | 24/24 | Adds `invocation-telemetry-verification` for the ADR 0029 diagnostic mode, and covers the ADR 0028 annotation change (`update-llms-txt` is now `destructive`, with the HTTP method checked to be unmoved). This closes the 7.1 adoption plan: tasks 1–9 all done. Static gate: 513 tests / 1,269 assertions. |
+| 2026-09-01 | 23/23 | Fourth run, after the `AbilityMeta` factory replaced thirteen per-class metadata helpers and eight inline literals and added 7.1's `public` flag to all 31 abilities. The 31 abilities' annotations were parsed before and after and compared: zero differences, so only the new key changed. Static gate: 510 tests / 1,261 assertions. |
+| 2026-09-01 | 23/23 | Third run of the day, after declarative ability discovery (`wp_get_abilities( array( 'category' => … ) )`, defensive category comparison kept) and the diagnostics surface report (`minimum_wordpress_version`, `abilities_api_features.declarative_filtering`, diagnostics `schema_version` 1.1). Projection parity holds at 28 abilities. Static gate: 504 tests / 1,228 assertions. |
+| 2026-09-01 | 23/23 | Re-run after the error-status mapping (`AbilityError`), which rewrote all 86 `WP_Error` construction sites and therefore every error path in the plugin — a change that only a full inventory can sign off. Domain rejections now answer 400/404/409/413/501 instead of 500; public error codes are unchanged. Static gate: 503 tests / 1,223 assertions. |
+| 2026-09-01 | 23/23 | First run on **WordPress 7.1** (ADR 0027 makes it the minimum), and the run that earns `Tested up to: 7.1`. Adds `rest-input-coercion-verification`. Nothing regressed: all 19 pre-existing PHP verifiers and all three shell verifiers, MCP smoke included, pass unchanged on 7.1. Two things worth carrying forward: 7.1's input coercion widens what REST callers may *send* without widening what they may *do* (see `ABILITIES.md`), and the run exposed a pre-existing defect — every domain `WP_Error` answers HTTP 500 because none carries a `status` (task 9 of the adoption plan). Anomaly, recorded rather than hidden: the very first invocation of `abilities-runtime-verification` in the batch exited non-zero and then passed on four consecutive re-runs, immediately after a preceding verifier deleted its fixture post; not reproducible, most plausibly a settling object cache. Static gate: PHPCS + maximum-level PHPStan against the 7.1 stubs + 498 tests / 1,208 assertions. |
 | 2026-08-12 | 22/22 | 0.8.2. Full inventory after replacing the circular hidden llms.txt migration prerequisite with an always-visible, two-step wp-admin workflow. Step 1 creates a bounded initial snapshot from site-owned settings and existing Read policy; Step 2 lists its actual blockers and retains the exact-target adoption gate. No Ability or MCP surface changed. Static release gate: PHPCS + maximum-level PHPStan + 429 tests / 1,137 assertions. |
 | 2026-08-11 | 22/22 | 0.8.1. Full inventory after adding the wp-admin-only legacy llms.txt ownership-adoption path, additive ownership diagnostics, post-mutation ownership reads, and the endpoint verification fix. The llms.txt and settings-screen verifiers were also run visibly before the full inventory. Static release gate: PHPCS + maximum-level PHPStan + 425 tests / 1,126 assertions. |
 | 2026-08-09 | 22/22 | 0.7.1. Adds `status-matrix-bulk-verification`. No ability, schema, or stored value changed; the run is what proves it, since the release edits the screen that writes the transition allowlist. Also fixes a packaging leak: the maintainer notes file shipped inside every artifact from 0.5.0 through 0.7.0. |

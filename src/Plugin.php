@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace IsuDev\WPContentBridge;
 
 use IsuDev\WPContentBridge\Adapter\Admin\ContentAccessSettingsPage;
+use IsuDev\WPContentBridge\Adapter\Abilities\AbilityInvocationTelemetry;
 use IsuDev\WPContentBridge\Adapter\Abilities\BlockMutationAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\ContentAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\CustomSchemaAbilities;
@@ -82,6 +83,7 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentTrashReposit
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentTypeCatalog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressEditorialContextRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressIntegrationAccessRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressInvocationLog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressLlmsArtifactStore;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressLlmsLegacyArtifactArchiver;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressLlmsOwnershipInspector;
@@ -358,6 +360,18 @@ final class Plugin {
 		 */
 		if ( McpServerProvider::is_enabled() ) {
 			( new McpServerProvider() )->register_hooks();
+		}
+
+		/*
+		 * Invocation telemetry is an off-by-default diagnostic mode (ADR 0029).
+		 * The listener is registered only while the flag is on, so with it off
+		 * no hook observes ability execution at all — consistent with this
+		 * plugin's rule that a disabled feature is absent rather than
+		 * present-and-discarding, and it keeps the read path free of a
+		 * per-request write nobody asked for.
+		 */
+		if ( (bool) get_option( Installer::INVOCATION_TELEMETRY_ENABLED_OPTION, false ) ) {
+			( new AbilityInvocationTelemetry( new WordPressInvocationLog() ) )->register_hooks();
 		}
 
 		/**

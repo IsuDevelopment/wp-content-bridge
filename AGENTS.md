@@ -43,7 +43,8 @@ The plugin must remain reusable across site projects. Never add Kormas-specific 
 ## Code conventions
 
 - English only in code, documentation, identifiers, schemas, tests, and commits.
-- PHP 8.2+, WordPress 7.0+.
+- PHP 8.2+, WordPress 7.1+ (ADR 0027). 7.1 API may be called without
+  `function_exists()` guards; do not add back-compatibility branches for 7.0.
 - Every PHP file uses `declare(strict_types=1);`.
 - Namespace: `IsuDev\WPContentBridge`.
 - Text domain and plugin slug: `wp-content-bridge`.

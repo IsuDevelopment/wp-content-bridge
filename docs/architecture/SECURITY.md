@@ -63,6 +63,18 @@ same native editor-level gate as WordPress core. Metadata is allowlisted,
 content is opt-in and capped, filesystem paths are discarded, and listing does
 not trigger WordPress.org remote pattern downloads (ADR 0013).
 
+**HTTP status is a disclosure channel, and the mapping treats it as one.**
+Since 0.8.4 every ability error carries a status
+(`Adapter\Abilities\AbilityError`, catalogued in `ABILITIES.md`). One class of
+code — `wpcb_content_unavailable`, `wpcb_media_unavailable`,
+`wpcb_pattern_unavailable` — deliberately answers **404 for both "does not
+exist" and "exists but is not visible to you"**, so a principal cannot use the
+status to enumerate content it may not read. A missing object and a hidden one
+must stay indistinguishable; do not "improve" one of those into a 403. The
+inverse also matters: `wpcb_forbidden` is returned for an operation the
+principal genuinely may not perform on an object it may already see, so 403 does
+not itself confirm anything the principal could not already read.
+
 ### Privilege escalation
 
 Mitigations: shared content-operation policy, required permission callbacks,
@@ -292,6 +304,40 @@ Read events are observable but persistence may be configurable to control volume
 - expected/resulting version;
 - outcome and stable error code;
 - client/projection metadata when safely available.
+
+### Invocation telemetry is a diagnostic, not evidence
+
+Separate from the audit above, and separate on purpose (ADR 0029). Since 0.8.4
+the option `wpcb_invocation_telemetry_enabled` turns on a listener on WordPress
+7.1's `wp_ability_invoked`, which records **attempts** into a 200-entry ring
+buffer (`wpcb_invocation_telemetry`).
+
+It exists because **a denial at `permission_callback` leaves no trace anywhere
+else** — the audit table only records mutation attempts that reached a use case,
+and reads are never audited. That was the one thing an operator could not see
+after handing an agent credentials.
+
+Read it with these limits in mind:
+
+- **`attempted` means only "did not complete".** `wp_after_execute_ability`
+  fires only on success and no hook fires on the failure paths, so a permission
+  denial, invalid input and an internal error are indistinguishable here.
+- **An entry is not evidence that anything happened.** The hook fires before
+  validation and the permission check. `wpcb_audit` is the record of what
+  happened to content; correlate the two, never merge them, and never cite a
+  telemetry entry as proof of an operation.
+- **It is a recent-activity window, not a history.** 200 entries; under heavy
+  traffic that is seconds. Nothing compliance-shaped should be planned around
+  it. The flush happens on `shutdown`, so a fatal error loses that request's
+  entries — acceptable for a diagnostic, and one more reason it is not the audit.
+- **Shapes only.** An entry holds ability name, principal ID, channel, outcome
+  and a GMT timestamp. `InvocationAttempt` has no field for ability input, error
+  messages or results, so content cannot reach the option even though the hook
+  is handed the raw input.
+- **Off by default, and absent when off.** While the flag is off the listener is
+  not registered at all. It records only this plugin's own abilities, is never
+  exposed through an Ability or REST (it carries principal IDs), is
+  non-autoloaded, and both options are deleted on uninstall.
 
 ## Security release gates
 

@@ -155,7 +155,7 @@ final class WordPressMediaRepository implements MediaRepository {
 
 		$wp_query = new WP_Query( $arguments );
 		$result   = array();
-		foreach ( $wp_query->posts as $candidate_id ) {
+		foreach ( $wp_query->posts ?? array() as $candidate_id ) {
 			if ( is_int( $candidate_id ) ) {
 				$result[] = $candidate_id;
 			}

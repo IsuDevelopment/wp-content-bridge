@@ -44,6 +44,10 @@ foreach ( array(
 	'wpcb_llms_regen_staging',
 	'wpcb_llms_regen_dirty',
 	'wpcb_mcp_server_enabled',
+	// Telemetry entries carry principal IDs, so the buffer must not survive
+	// uninstall alongside its flag (ADR 0029).
+	'wpcb_invocation_telemetry_enabled',
+	'wpcb_invocation_telemetry',
 	'wpcb_integration_user_id',
 	'wpcb_public_base_url',
 	'wpcb_status_transitions',

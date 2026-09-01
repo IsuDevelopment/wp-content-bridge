@@ -96,6 +96,26 @@ final class Installer {
 	 */
 	public const LEGACY_PUBLIC_BASE_URL_OPTION = 'wpcb_public_base_url';
 
+	/**
+	 * Non-autoloaded invocation-telemetry flag, off by default (ADR 0029).
+	 *
+	 * While off, the lifecycle listener is not registered at all, so nothing
+	 * observes ability execution. Turning it on is a diagnostic mode: it pays a
+	 * database write per request on the read path, which is why it is not the
+	 * default for a plugin whose reads are the product.
+	 */
+	public const INVOCATION_TELEMETRY_ENABLED_OPTION = 'wpcb_invocation_telemetry_enabled';
+
+	/**
+	 * Non-autoloaded ring buffer of recent invocation attempts.
+	 *
+	 * Bounded by construction to `WordPressInvocationLog::MAX_ENTRIES`, so it
+	 * needs no pruning and can never grow into or evict the mutation audit. It
+	 * carries principal IDs, so it is never exposed through an Ability or REST
+	 * and is removed on uninstall.
+	 */
+	public const INVOCATION_TELEMETRY_OPTION = 'wpcb_invocation_telemetry';
+
 	private const AUDIT_TABLE = 'wpcb_audit';
 
 	/**
@@ -113,6 +133,7 @@ final class Installer {
 		add_option( self::TRASH_ENABLED_OPTION, false, '', false );
 		add_option( self::LLMS_ENABLED_OPTION, false, '', false );
 		add_option( self::MCP_SERVER_ENABLED_OPTION, true, '', false );
+		add_option( self::INVOCATION_TELEMETRY_ENABLED_OPTION, false, '', false );
 		add_option( self::INTEGRATION_USER_OPTION, 0, '', false );
 
 		/*

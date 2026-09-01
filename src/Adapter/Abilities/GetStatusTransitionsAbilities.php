@@ -57,15 +57,7 @@ final readonly class GetStatusTransitionsAbilities {
 				'output_schema'       => AbilitySchemas::get_status_transitions_output(),
 				'permission_callback' => array( $this, 'can_read' ),
 				'execute_callback'    => array( $this, 'execute' ),
-				'meta'                => array(
-					'annotations'  => array(
-						'readonly'    => true,
-						'destructive' => false,
-						'idempotent'  => true,
-					),
-					'show_in_rest' => true,
-					'mcp'          => array( 'public' => true ),
-				),
+				'meta'                => AbilityMeta::read(),
 			)
 		);
 	}
@@ -96,20 +88,20 @@ final readonly class GetStatusTransitionsAbilities {
 	 */
 	public function execute( array $input ): array|WP_Error {
 		if ( ! $this->can_read() ) {
-			return new WP_Error( 'wpcb_forbidden', __( 'You are not allowed to read content through WP Content Bridge.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_forbidden', __( 'You are not allowed to read content through WP Content Bridge.', 'wp-content-bridge' ) );
 		}
 
 		$post_id = isset( $input['post_id'] ) ? self::normalized_post_id( $input['post_id'] ) : 0;
 		if ( 0 >= $post_id ) {
-			return new WP_Error( 'wpcb_invalid_input', __( 'post_id must be a positive integer.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_invalid_input', __( 'post_id must be a positive integer.', 'wp-content-bridge' ) );
 		}
 
 		try {
 			return $this->get->execute( $post_id )->to_array();
 		} catch ( ContentUnavailable ) {
-			return new WP_Error( 'wpcb_content_unavailable', __( 'Content is unavailable.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_content_unavailable', __( 'Content is unavailable.', 'wp-content-bridge' ) );
 		} catch ( Throwable ) {
-			return new WP_Error( 'wpcb_internal_error', __( 'The status-transition query could not be completed.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_internal_error', __( 'The status-transition query could not be completed.', 'wp-content-bridge' ) );
 		}
 	}
 

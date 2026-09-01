@@ -42,7 +42,7 @@ final class WordPressContentRepository implements ContentRepository {
 
 		$wp_query      = new WP_Query( $arguments );
 		$candidate_ids = array();
-		foreach ( $wp_query->posts as $candidate_id ) {
+		foreach ( $wp_query->posts ?? array() as $candidate_id ) {
 			if ( is_int( $candidate_id ) ) {
 				$candidate_ids[] = $candidate_id;
 			}

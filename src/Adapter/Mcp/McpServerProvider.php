@@ -205,6 +205,17 @@ final class McpServerProvider {
 	/**
 	 * Reads the registered abilities belonging to this plugin's category.
 	 *
+	 * WordPress 7.1 filters declaratively, so the category is a query rather
+	 * than a convention (ADR 0027 makes 7.1 the minimum). The explicit
+	 * comparison afterwards is **not** a migration shim and must stay:
+	 * arguments to a userland PHP function are silently ignored, so on any
+	 * WordPress that does not implement the filter this same call returns every
+	 * registered ability on the site — including other plugins'. `narrow()`
+	 * cannot catch that, because the discovered set is what widens, and the
+	 * failure mode is a projection that hands a client tools this plugin never
+	 * wrote. One `===` is cheap insurance against a silent, over-wide public
+	 * surface.
+	 *
 	 * @return list<string>
 	 */
 	private static function discover(): array {
@@ -214,7 +225,7 @@ final class McpServerProvider {
 
 		$names = array();
 
-		foreach ( wp_get_abilities() as $ability ) {
+		foreach ( wp_get_abilities( array( 'category' => AbilityCategory::SLUG ) ) as $ability ) {
 			if ( AbilityCategory::SLUG === $ability->get_category() ) {
 				$names[] = $ability->get_name();
 			}

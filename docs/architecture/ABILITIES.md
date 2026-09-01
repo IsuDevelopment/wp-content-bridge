@@ -767,7 +767,10 @@ The successful mutation result includes the ownership state re-read after the
 write, so clients do not have to infer publication readiness from a stale
 pre-write diagnostic.
 
-Annotations: `readonly: false`, `destructive: false`, `idempotent: false`.
+Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
+`destructive` changed from `false` in 0.8.4 under ADR 0028: the input is a
+complete prospective configuration, so a field absent from the request is a
+field removed. The HTTP method is unaffected — POST before and after.
 
 ### `wp-content-bridge/regenerate-llms-txt`
 
@@ -857,3 +860,153 @@ The current SEO normalization schema is `1.3`. Schema 1.2 added
 `module_versions`, detailed Premium keyphrases, and resolved Local businesses;
 1.3 adds configured advanced robots flags and social attachment IDs. No raw
 Yoast Premium/Local options or licensing state are exposed.
+
+## Input typing over REST (WordPress 7.1)
+
+WordPress 7.1 coerces run-endpoint input to the ability's declared input schema.
+It is not opt-in. The contract below was **measured** on WordPress 7.1 against
+these schemas, not read from a dev note, and it is pinned by
+`tests/Integration/rest-input-coercion-verification.php`.
+
+Core applies `rest_sanitize_value_from_schema()` as the `sanitize_callback` of
+the run endpoint's `input` argument, and — this is the part that makes it safe —
+**only when `validate_input()` already accepts the raw input**, falling back to
+the raw input if sanitization surfaces any error
+(`WP_REST_Abilities_V1_Run_Controller::coerce_input_to_schema()`). Consequences
+for this plugin's contracts:
+
+- **The domain contract is unchanged and still strict.** Coercion happens at the
+  REST boundary. `WP_Ability::execute( array( 'post_id' => '123' ) )` called
+  directly still fails with `wpcb_invalid_input`. Do not relax a schema or a use
+  case on the assumption that input arrives coerced.
+- **Over REST, a numeric string now reaches the use case as an integer**, so
+  requests that previously failed inside our code now succeed. This widens what
+  REST callers may send; it does not widen what they may *do*.
+- **Every bound still holds.** `per_page=0`, `per_page=101`, `page=0`, and an
+  over-length `author_ids` list are all still rejected as invalid input, because
+  an uncoercible or out-of-bounds value never reaches the sanitizer.
+- **`type: array` fields accept the comma-separated form.** `post_types=post,page`
+  resolves to exactly the same result as `["post","page"]`, and a single value
+  resolves to a one-element list.
+- **`type: string` fields are never split.** A search phrase containing a comma
+  arrives intact.
+- **Nested objects get no magic.** A comma string offered where `taxonomy`
+  expects objects is rejected.
+- **Coercion is not authorization.** A principal without the capability is still
+  refused (`403 rest_ability_cannot_execute`) on a perfectly coercible request.
+
+## Error codes and HTTP status
+
+Error codes are stable public API, and since 0.8.4 so is the HTTP status each
+one answers with. Every `WP_Error` an ability returns is built by
+`Adapter\Abilities\AbilityError::create()`, which attaches the status from one
+central map; WordPress respects a status already present in the error data and
+defaults to 500 only when none is set.
+
+**This replaced a defect, found while verifying 7.1: all 86 error returns
+answered HTTP 500.** A bad `post_types` value, an unknown `post_id`, and an
+invalid selector were indistinguishable from a server fault, so agent clients
+retried ordinary refusals as transient and monitoring read them as an outage.
+
+| Status | Meaning | Codes |
+|---|---|---|
+| 400 | The request is wrong: malformed input, an unusable reference inside the input, or an address that does not resolve within the addressed object | `wpcb_invalid_input`, `wpcb_invalid_selector`, `wpcb_invalid_blocks`, `wpcb_invalid_custom_schema`, `wpcb_block_mismatch`, `wpcb_block_path_not_found`, `wpcb_seo_field_unsupported`, `wpcb_seo_image_unavailable`, `wpcb_redirect_source_rejected` |
+| 403 | The principal is not permitted | `wpcb_forbidden` |
+| 404 | The addressed object does not exist **or is not visible to this principal** | `wpcb_content_unavailable`, `wpcb_media_unavailable`, `wpcb_pattern_unavailable` |
+| 409 | Stored state conflicts with the request; re-read and retry | `wpcb_conflict`, `wpcb_invalid_state` |
+| 413 | A declared payload bound would be exceeded | `wpcb_content_too_large`, `wpcb_pattern_content_too_large` |
+| 501 | This install cannot implement the operation because an optional provider or a WordPress feature it needs is absent. Deliberately not 503: nothing is overloaded and retrying will not help | `wpcb_service_schema_unavailable`, `wpcb_custom_schema_unavailable`, `wpcb_seo_data_unavailable`, `wpcb_trash_unavailable`, `wpcb_redirect_provider_unavailable` |
+| 500 | The plugin or WordPress failed | `wpcb_internal_error`, `wpcb_write_failed` |
+
+A denial caught by `permission_callback` never reaches this map — WordPress
+answers those `403 rest_ability_cannot_execute` itself.
+
+The 404 row is a deliberate conflation: "does not exist" and "exists but is not
+visible to you" answer identically, so a status code cannot be used to enumerate
+content. See `SECURITY.md`.
+
+An unmapped code answers 500 rather than guessing a 4xx that would blame the
+client. `AbilityErrorTest` discovers the vocabulary from the source — the
+literals passed to `AbilityError::create()` plus the application layer's
+`error_code()` returns — and fails both when a code has no status and when the
+map carries a code the source cannot produce. Adding an error code without a
+status is therefore a failing test, not a silent 500.
+
+### Versioning note
+
+The status per code is part of the contract. Changing one is a client-visible
+change: it alters what an HTTP consumer and an MCP client conclude about
+whether to retry. Treat it like a schema change.
+
+## WordPress 7.1 execution filters this plugin does not use
+
+7.1 added filters around ability execution. They are all deliberately unused,
+and this section exists so the next reader does not adopt one as an obvious
+improvement. If a future change needs one, it needs an ADR that answers the
+objection recorded here.
+
+- **`wp_pre_execute_ability`** — a feature area whose flag is off is not
+  registered at all (`src/Plugin.php`, `LlmsAbilities::publication_enabled()`),
+  so it has no ability to short-circuit. A filter is the weaker gate: it leaves
+  the ability discoverable and merely refuses it, which is exactly the "disabled
+  feature advertises itself" shape this project has already rejected.
+- **`wp_ability_permission_result`** — a filter that can flip an authorization
+  decision is an invisible gate, and AGENTS.md mandates a `permission_callback`
+  per ability precisely so authorization is readable at the registration site.
+  The real asymmetry it appears to fix — `ContentAccessManager` being enforced
+  inside use cases rather than in the permission layer, so a policy denial
+  surfaces as an execution error — is fixed by a shared gate object usable from
+  both layers, not by moving authorization into a global filter.
+- **`wp_ability_normalize_input`** — input shaping belongs to the schema and the
+  use case. A filter that mutates input before validation makes the published
+  schema stop describing what actually ran, and the schema is public API.
+- **`wp_ability_execute_result`** — output bounds, redaction, and provenance are
+  built where the payload is assembled and asserted there. A late filter can
+  reintroduce a leak past every test that pins a response shape.
+- **`wp_ability_validate_input` / `wp_ability_validate_output`** — schemas are
+  centralized in `AbilitySchemas` and contract-tested. A second validation
+  channel splits one contract into two, and only one of them is documented.
+- **`wp_ability_invoked`** — the one genuinely attractive hook, because a denial
+  at `permission_callback` currently leaves no trace anywhere and reads are not
+  audited at all. It is *not* rejected, only ungated: it needs its own ADR,
+  because invocation telemetry must not share the mutation audit's table (which
+  prunes at 5,000 rows, so read traffic would evict write history), must be off
+  by default, and must record shapes rather than values. Task 7 of
+  `docs/plan/WP_7_1_ABILITIES_ADOPTION_PLAN.md`.
+
+## Registration metadata and exposure flags
+
+Every ability's `meta` comes from `Adapter\Abilities\AbilityMeta` —
+`read()`, `preview()`, or `write( $destructive, $idempotent )`. There are no
+per-class copies of the shape.
+
+Three exposure flags, all stated explicitly rather than inferred:
+
+| Flag | Consumer |
+|---|---|
+| `show_in_rest` | WordPress core's REST listing. Kept explicit even though 7.1 would fall back to `public`, because `CLOSED_PROFILE` asserts exactly which abilities REST lists — an explicit value makes a future intentional divergence a one-line reviewable change instead of a side effect of a fallback. |
+| `public` | WordPress 7.1's unified flag, resolved by core as `show_in_rest ?? public ?? false`. Declared so channels that read only `public` (AI Client function declarations, future adapters) see these abilities at all. |
+| `mcp.public` | The MCP Adapter. **Not** core's `public`: different key, different nesting, different consumer. Do not consolidate the two. |
+
+None of them authorizes anything. Exposure decides what a client may discover;
+`permission_callback` plus the capability and policy gates decide what it may
+execute (ADR 0025).
+
+### What the safety annotations mean
+
+Annotations are public API, and WordPress also derives the **expected HTTP
+method** from them: `readonly` → GET, `destructive` **and** `idempotent`
+together → DELETE, otherwise POST. Changing one can therefore move an endpoint's
+method, not merely its advice. No ability in this plugin sets
+`destructive && idempotent`, so every write is POST and every read is GET.
+
+- **`readonly`** — the operation stores nothing. Previews are read-only: they
+  compute a write's result and discard it.
+- **`destructive`** — **the operation can lose content or configuration the
+  client did not supply in the request** (ADR 0028). This is the definition, not
+  a synonym for "writes": a whole-object replacement is destructive because a
+  field absent from the request is a field removed, while creating a new object
+  or moving one between states is not. Do not widen it to mean "risky" —
+  publication is consequential and gated separately (ADR 0024), and it is not
+  content loss.
+- **`idempotent`** — replaying the same input has no additional effect.

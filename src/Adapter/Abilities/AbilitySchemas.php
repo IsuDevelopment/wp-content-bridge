@@ -748,12 +748,28 @@ final class AbilitySchemas {
 	public static function diagnostics_output(): array {
 		return array(
 			'type'                 => 'object',
-			'required'             => array( 'schema_version', 'plugin_version', 'wordpress_version', 'abilities_api', 'mcp_adapter', 'mcp_projection', 'max_content_representation_bytes', 'seo_provider', 'readable_post_types' ),
+			'required'             => array( 'schema_version', 'plugin_version', 'wordpress_version', 'minimum_wordpress_version', 'abilities_api', 'abilities_api_features', 'mcp_adapter', 'mcp_projection', 'max_content_representation_bytes', 'seo_provider', 'readable_post_types' ),
 			'properties'           => array(
 				'schema_version'                   => array( 'type' => 'string' ),
 				'plugin_version'                   => array( 'type' => 'string' ),
 				'wordpress_version'                => array( 'type' => 'string' ),
 				'abilities_api'                    => array( 'type' => 'boolean' ),
+				'abilities_api_features'           => array(
+					'description'          => 'Abilities API capabilities this plugin depends on, each probed from the running code rather than inferred from the version string. An absent entry means "not observable", never "missing".',
+					'type'                 => 'object',
+					'required'             => array( 'declarative_filtering' ),
+					'properties'           => array(
+						'declarative_filtering' => array(
+							'description' => 'Whether wp_get_abilities() accepts filter arguments (WordPress 7.1). False on an install below the plugin\'s declared minimum, which is what a missing or over-wide MCP projection would look like.',
+							'type'        => 'boolean',
+						),
+					),
+					'additionalProperties' => false,
+				),
+				'minimum_wordpress_version'        => array(
+					'description' => 'The WordPress version this plugin requires (ADR 0027). Compare against wordpress_version: an install below it is unsupported and its symptoms are not defects.',
+					'type'        => 'string',
+				),
 				'mcp_adapter'                      => array( 'type' => 'boolean' ),
 				'mcp_projection'                   => array(
 					'description'          => 'What this plugin currently projects as MCP tools, so a missing tool can be told from a missing ability.',

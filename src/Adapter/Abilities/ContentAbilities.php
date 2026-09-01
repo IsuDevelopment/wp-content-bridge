@@ -22,6 +22,8 @@ use IsuDev\WPContentBridge\Application\Seo\SeoProviderRegistry;
 use IsuDev\WPContentBridge\Domain\Content\ContentQuery;
 use IsuDev\WPContentBridge\Domain\ContentAccess\ContentOperation;
 use IsuDev\WPContentBridge\Domain\Editorial\EditorialContextQuery;
+use ReflectionException;
+use ReflectionFunction;
 use Throwable;
 use WP_Error;
 
@@ -93,7 +95,7 @@ final readonly class ContentAbilities {
 				'output_schema'       => AbilitySchemas::search_output(),
 				'permission_callback' => array( $this, 'can_read' ),
 				'execute_callback'    => array( $this, 'execute_search' ),
-				'meta'                => self::read_meta(),
+				'meta'                => AbilityMeta::read(),
 			)
 		);
 
@@ -107,7 +109,7 @@ final readonly class ContentAbilities {
 				'output_schema'       => AbilitySchemas::get_output(),
 				'permission_callback' => array( $this, 'can_read' ),
 				'execute_callback'    => array( $this, 'execute_get' ),
-				'meta'                => self::read_meta(),
+				'meta'                => AbilityMeta::read(),
 			)
 		);
 
@@ -121,7 +123,7 @@ final readonly class ContentAbilities {
 				'output_schema'       => AbilitySchemas::get_block_tree_output(),
 				'permission_callback' => array( $this, 'can_read' ),
 				'execute_callback'    => array( $this, 'execute_get_block_tree' ),
-				'meta'                => self::read_meta(),
+				'meta'                => AbilityMeta::read(),
 			)
 		);
 
@@ -134,7 +136,7 @@ final readonly class ContentAbilities {
 				'output_schema'       => AbilitySchemas::diagnostics_output(),
 				'permission_callback' => array( $this, 'can_read' ),
 				'execute_callback'    => array( $this, 'execute_diagnostics' ),
-				'meta'                => self::read_meta(),
+				'meta'                => AbilityMeta::read(),
 			)
 		);
 
@@ -148,7 +150,7 @@ final readonly class ContentAbilities {
 				'output_schema'       => AbilitySchemas::editorial_context_output(),
 				'permission_callback' => array( $this, 'can_read' ),
 				'execute_callback'    => array( $this, 'execute_editorial_context' ),
-				'meta'                => self::read_meta(),
+				'meta'                => AbilityMeta::read(),
 			)
 		);
 	}
@@ -181,7 +183,7 @@ final readonly class ContentAbilities {
 
 			return $this->search->execute( ContentQuery::from_input( $normalized ) )->to_array();
 		} catch ( InvalidArgumentException $exception ) {
-			return new WP_Error( 'wpcb_invalid_input', $exception->getMessage() );
+			return AbilityError::create( 'wpcb_invalid_input', $exception->getMessage() );
 		} catch ( Throwable ) {
 			return self::internal_error();
 		}
@@ -205,16 +207,16 @@ final readonly class ContentAbilities {
 			$include         = self::selected_strings( $normalized['include'] ?? array() );
 
 			if ( $post_id < 1 ) {
-				return new WP_Error( 'wpcb_invalid_input', 'post_id must be a positive integer.' );
+				return AbilityError::create( 'wpcb_invalid_input', 'post_id must be a positive integer.' );
 			}
 
 			return $this->get->execute( $post_id, $representations, $include )->to_array();
 		} catch ( ContentPayloadTooLarge ) {
-			return new WP_Error( 'wpcb_content_too_large', __( 'Selected content representations exceed the 2 MiB response limit. Request fewer representations.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_content_too_large', __( 'Selected content representations exceed the 2 MiB response limit. Request fewer representations.', 'wp-content-bridge' ) );
 		} catch ( ContentUnavailable ) {
-			return new WP_Error( 'wpcb_content_unavailable', __( 'Content is unavailable.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_content_unavailable', __( 'Content is unavailable.', 'wp-content-bridge' ) );
 		} catch ( InvalidArgumentException $exception ) {
-			return new WP_Error( 'wpcb_invalid_input', $exception->getMessage() );
+			return AbilityError::create( 'wpcb_invalid_input', $exception->getMessage() );
 		} catch ( Throwable ) {
 			return self::internal_error();
 		}
@@ -239,17 +241,17 @@ final readonly class ContentAbilities {
 			$include_attrs = $normalized['include_attrs'] ?? false;
 
 			if ( $post_id < 1 ) {
-				return new WP_Error( 'wpcb_invalid_input', 'post_id must be a positive integer.' );
+				return AbilityError::create( 'wpcb_invalid_input', 'post_id must be a positive integer.' );
 			}
 			if ( ! is_bool( $include_attrs ) ) {
-				return new WP_Error( 'wpcb_invalid_input', 'include_attrs must be a boolean.' );
+				return AbilityError::create( 'wpcb_invalid_input', 'include_attrs must be a boolean.' );
 			}
 
 			return $this->get_block_tree->execute( $post_id, $path, $max_depth, $include_attrs )->to_array();
 		} catch ( ContentUnavailable ) {
-			return new WP_Error( 'wpcb_content_unavailable', __( 'Content is unavailable.', 'wp-content-bridge' ) );
+			return AbilityError::create( 'wpcb_content_unavailable', __( 'Content is unavailable.', 'wp-content-bridge' ) );
 		} catch ( InvalidArgumentException $exception ) {
-			return new WP_Error( 'wpcb_invalid_input', $exception->getMessage() );
+			return AbilityError::create( 'wpcb_invalid_input', $exception->getMessage() );
 		} catch ( Throwable ) {
 			return self::internal_error();
 		}
@@ -269,7 +271,7 @@ final readonly class ContentAbilities {
 		try {
 			return $this->editorial->execute( EditorialContextQuery::from_input( self::normalize_editorial_input( $input ) ) )->to_array();
 		} catch ( InvalidArgumentException $exception ) {
-			return new WP_Error( 'wpcb_invalid_input', $exception->getMessage() );
+			return AbilityError::create( 'wpcb_invalid_input', $exception->getMessage() );
 		} catch ( Throwable ) {
 			return self::internal_error();
 		}
@@ -293,10 +295,12 @@ final readonly class ContentAbilities {
 		}
 
 		return array(
-			'schema_version'                   => '1.0',
+			'schema_version'                   => '1.1',
 			'plugin_version'                   => defined( 'WPCB_VERSION' ) ? WPCB_VERSION : 'unknown',
 			'wordpress_version'                => get_bloginfo( 'version' ),
+			'minimum_wordpress_version'        => self::minimum_wordpress_version(),
 			'abilities_api'                    => function_exists( 'wp_register_ability' ),
+			'abilities_api_features'           => self::abilities_api_features(),
 			'mcp_adapter'                      => self::mcp_adapter_active(),
 			'mcp_projection'                   => McpServerProvider::projection_status(),
 			'max_content_representation_bytes' => GetContent::MAX_REPRESENTATION_BYTES,
@@ -315,6 +319,61 @@ final readonly class ContentAbilities {
 	 */
 	private static function mcp_adapter_active(): bool {
 		return McpServerProvider::adapter_active();
+	}
+
+	/**
+	 * Probes which Abilities API capabilities this WordPress actually exposes.
+	 *
+	 * `abilities_api` alone cannot tell 7.0 from 7.1, so "the feature is
+	 * missing" and "the API is missing" used to read identically here. Every
+	 * entry below is probed from the running code rather than compared against
+	 * `get_bloginfo( 'version' )`, because a version string is a claim and a
+	 * reflected signature is an observation — and because a site can run a
+	 * patched or partially loaded core.
+	 *
+	 * Reported capabilities are limited to the ones this plugin's own code
+	 * depends on and can actually test for. `wp_ability_invoked`, `meta.public`
+	 * and the execution filters are deliberately absent: an action that has not
+	 * fired and a meta key read only during registration leave nothing to
+	 * observe, and a probe that guessed from the version string would be the one
+	 * thing this report exists to avoid. REST input coercion is likewise absent —
+	 * core performs it, this plugin never calls it, and there is nothing an
+	 * operator could act on.
+	 *
+	 * @return array<string, bool>
+	 */
+	private static function abilities_api_features(): array {
+		$declarative_filtering = false;
+		if ( function_exists( 'wp_get_abilities' ) ) {
+			try {
+				$declarative_filtering = ( new ReflectionFunction( 'wp_get_abilities' ) )->getNumberOfParameters() > 0;
+			} catch ( ReflectionException ) {
+				$declarative_filtering = false;
+			}
+		}
+
+		return array(
+			'declarative_filtering' => $declarative_filtering,
+		);
+	}
+
+	/**
+	 * Reads the WordPress version this plugin requires.
+	 *
+	 * Taken from the plugin header so the requirement has exactly one source of
+	 * truth; a constant here would be a second copy to drift from `readme.txt`.
+	 *
+	 * @return string
+	 */
+	private static function minimum_wordpress_version(): string {
+		if ( ! defined( 'WPCB_FILE' ) ) {
+			return 'unknown';
+		}
+
+		$headers = get_file_data( WPCB_FILE, array( 'requires_wp' => 'Requires at least' ) );
+		$value   = $headers['requires_wp'] ?? '';
+
+		return '' !== $value ? $value : 'unknown';
 	}
 
 	/**
@@ -427,22 +486,6 @@ final readonly class ContentAbilities {
 		return $result;
 	}
 
-	/**
-	 * Returns standard read annotations.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private static function read_meta(): array {
-		return array(
-			'annotations'  => array(
-				'readonly'    => true,
-				'destructive' => false,
-				'idempotent'  => true,
-			),
-			'show_in_rest' => true,
-			'mcp'          => array( 'public' => true ),
-		);
-	}
 
 	/**
 	 * Creates a stable forbidden result.
@@ -450,7 +493,7 @@ final readonly class ContentAbilities {
 	 * @return WP_Error
 	 */
 	private static function forbidden(): WP_Error {
-		return new WP_Error( 'wpcb_forbidden', __( 'You are not allowed to read content through WP Content Bridge.', 'wp-content-bridge' ) );
+		return AbilityError::create( 'wpcb_forbidden', __( 'You are not allowed to read content through WP Content Bridge.', 'wp-content-bridge' ) );
 	}
 
 	/**
@@ -459,6 +502,6 @@ final readonly class ContentAbilities {
 	 * @return WP_Error
 	 */
 	private static function internal_error(): WP_Error {
-		return new WP_Error( 'wpcb_internal_error', __( 'The content operation could not be completed.', 'wp-content-bridge' ) );
+		return AbilityError::create( 'wpcb_internal_error', __( 'The content operation could not be completed.', 'wp-content-bridge' ) );
 	}
 }
