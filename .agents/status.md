@@ -1241,24 +1241,20 @@ verified.
 - Strict least-privilege re-consent as `wpcb-bridge-reader` (Task 6's live
   ChatGPT consent was done as admin `dev` for exploration; re-run on staging
   with a real certificate).
-- Controlled status transitions (`transition-content-status`) are not
-  implemented. Public and scheduled transitions are part of that future
-  contract; the old `publish-content` plan is superseded by ADR 0015.
-  `list-block-patterns`, `update-seo`, `create-draft`, and `update-content` are
-  implemented. `list-block-patterns` passed its runtime sign-off on
-  2026-08-07 (`tests/Integration/block-patterns-verification.php`, 0.4.5
-  task 3).
+- ~~Controlled status transitions (`transition-content-status`)~~ — **shipped**
+  and verified (`status-workflow-verification.php`), including scheduled
+  transitions, per ADR 0015 and ADR 0024. `publish`/`future` stay behind the
+  separate `wpcb_publish_enabled` flag.
 - Media P1 writes are not implemented: `update-media`, upload, featured-image
   assignment/removal, and remote import remain separately gated future work.
 - Runtime verification of the current official Adapter profile and explicit
   miniOrange grants for the intended principal. The OAuth grant is site
   configuration and must not use a wildcard or enable unrelated `mosmcp/*`
   tools.
-- Restore-from-trash. `trash-content` shipped in 0.1.5 as reversible, but no
-  ability undoes it; recovery requires wp-admin. **Decided 2026-08-07:**
-  `restore-trashed-content` is built in 0.4.5, pulled forward out of roadmap
-  Slice 3 because the destructive half is already live. It must never reach
-  `publish` or `future`; see `docs/plan/RELEASE_0_4_5_PLAN.md` task 1.
+- ~~Restore-from-trash~~ — **shipped** as `restore-trashed-content` in 0.4.5,
+  pulled forward because the destructive half was already live. It never
+  restores to `publish` or `future`
+  (`restore-trashed-content-verification.php`).
 - A second verification environment. Runtime sign-off depends on one machine's
   Local instance and will continue to. **Decided 2026-08-07 (0.4.5 task 4):** a
   containerised environment was tried and rejected. It reproduces only the
@@ -1268,6 +1264,27 @@ verified.
   the absence of a defined inventory, now `docs/setup/VERIFICATION.md`.
 - Role-management UI beyond the capability grant.
 - Agents API integration.
+
+**Surface gaps, as of 2026-09-02.** Recorded because the question "can this
+replace a general-purpose WordPress API connector" turns on these, not on
+performance. 32 abilities are registered; none of the following exist:
+
+- **Media writes.** `get-media` / `get-media-by-id` read only. No upload, no
+  `update-media`, no featured-image assignment or removal, no remote import.
+- **Permanent delete.** `trash-content` is reversible by design and
+  `restore-trashed-content` undoes it; nothing bypasses trash.
+- **Permalink / slug writes.** `update-permalink` is designed but unbuilt, and
+  it is the natural companion to the redirect surface.
+- **Taxonomy and term writes.** `create-draft` and `update-content` assign
+  existing terms; no ability creates, renames, merges, or deletes one.
+- **Comments, users, roles, options, plugins, themes, menus, widgets.** Out of
+  scope by design, not merely unbuilt — this is a content and SEO bridge.
+
+Also relevant to that decision and easy to mistake for a fault: reads are
+**deny-by-default for every post type except `post` and `page`**, and all writes
+need `wpcb_writes_enabled` plus a per-post-type opt-in. A freshly installed
+bridge answers almost nothing until an administrator configures it. That is the
+security posture working, not a defect.
 
 ## Next action
 
