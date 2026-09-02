@@ -63,6 +63,7 @@ for v in abilities-runtime-verification \
          block-patterns-verification \
          media-read-verification \
          featured-image-verification \
+         media-upload-verification \
          cache-invalidation-verification \
          writes-foundation-verification \
          writes-mutation-verification \
@@ -160,6 +161,7 @@ given machine can run the check at all:
 | `block-patterns-verification.php` | core | Pattern-read gating, that filesystem paths never appear in a response (ADR 0013), the 2 MiB bound, deterministic pagination |
 | `media-read-verification.php` | core | Media read surface, identity lookup, normalized fields, anonymous denial |
 | `featured-image-verification.php` | core | `update-featured-image` end to end: assignment round-trips to storage, a second assignment replaces rather than adds, removal works and a **repeated** removal still succeeds (`delete_post_thumbnail()` returns false both when nothing was assigned and when a write failed, so the adapter asserts the post-condition instead of the return value), a non-image attachment and an absent ID are both refused with the same error and leave storage untouched, a stale token is refused before the attachment is examined, the per-type policy is enforced independently of read access, and the write **moves the version token** with the pre-write token then rejected. Uses a discarding audit sink and restores all four options it touches. |
+| `media-upload-verification.php` | core | `create-media` end to end (ADR 0031). Proves the SSRF allowlist refuses loopback, `localhost`, `169.254.169.254`, all three private ranges, a literal IPv6 host, embedded credentials, and a disallowed port — all literal addresses, so a refusal must happen before any socket opens. Proves `file://`, `ftp://`, `gopher://` and `data:` are refused. Proves **SVG is refused even renamed to `.png`**, and a PHP text file named `.jpg` is refused, so the type comes from the bytes. Proves a real PNG imports with the right MIME and generated metadata and is attached to **no** post; that a GIF served as `.jpg` is stored as `.gif`; that a replayed idempotency key returns the same attachment and creates no second one; that a body over the 12 MiB ceiling is refused; and that the media gate refuses. Fixtures are inlined 1x1 images written into uploads and served from the site's own host, so the verifier needs no network and no binary files in the repository. Deletes every attachment and fixture and restores all three options. |
 | `cache-invalidation-verification.php` | core | Post-scoped invalidation after a mutation (ADR 0012) |
 | `writes-foundation-verification.php` | core | Capabilities, flags default-off, audit table schema, upgrade path |
 | `writes-mutation-verification.php` | core | `create-draft` / `update-content` authorization matrix, idempotency, concurrency, audit, write invariants |

@@ -30,6 +30,7 @@ use IsuDev\WPContentBridge\Adapter\Abilities\ContentAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\CustomSchemaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\GetStatusTransitionsAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\LlmsAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\CreateMediaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\FeaturedImageAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\MediaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\MutationAbilities;
@@ -74,6 +75,7 @@ use IsuDev\WPContentBridge\Application\Mutation\TrashContent;
 use IsuDev\WPContentBridge\Application\Pattern\ListBlockPatterns;
 use IsuDev\WPContentBridge\Application\Pattern\PatternAccessManager;
 use IsuDev\WPContentBridge\Application\Media\GetMediaById;
+use IsuDev\WPContentBridge\Application\Media\CreateMedia;
 use IsuDev\WPContentBridge\Application\Media\MediaAccessManager;
 use IsuDev\WPContentBridge\Application\Media\UpdateFeaturedImage;
 use IsuDev\WPContentBridge\Application\Media\SearchMedia;
@@ -108,6 +110,7 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressMediaRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressPostCacheInvalidator;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressFeaturedImageRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressMediaUploader;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSchemaTargetReader;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressRenderedSchemaReader;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoImageRepository;
@@ -334,6 +337,24 @@ final class Plugin {
 					new GetCustomSchema( $manager, $mutation_repository, $custom_schema_provider, new WordPressSchemaTargetReader() ),
 					new PreviewCustomSchema( $manager, $mutation_repository, $custom_schema_provider ),
 					new UpdateCustomSchema( $manager, $mutation_repository, $custom_schema_provider, $audit_log )
+				) )->register_hooks();
+			}
+
+			/*
+			 * Importing gets its own switch rather than sharing the
+			 * featured-image one: assigning an image the site already holds and
+			 * making the site fetch a URL an agent chose are different grants
+			 * (ADR 0031 decision 5).
+			 */
+			if ( $media_access->reads_enabled && get_option( Installer::MEDIA_UPLOADS_ENABLED_OPTION ) ) {
+				( new CreateMediaAbilities(
+					new CreateMedia(
+						$media_access,
+						new WordPressMediaUploader( new WordPressMediaRepository() ),
+						new WordPressMediaRepository(),
+						$idempotency,
+						$audit_log
+					)
 				) )->register_hooks();
 			}
 

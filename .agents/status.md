@@ -182,6 +182,76 @@ one of them was taking its token *before* writing fixture meta.
 Full inventory 22/22 PHP verifiers green after the change; static gate 575
 tests / 1,374 assertions.
 
+## Media import shipped, with its SSRF surface written down — 2026-09-02
+
+`create-media` (ADR 0031). The other half of the media gap: assigning an
+existing image was not enough because the agent sometimes brings a new one in.
+
+Upload is not a bigger featured-image write, and the ADR names why: the bytes
+come from outside, fetching by URL makes the site issue an outbound request on a
+caller's instruction, and an upload is not naturally idempotent.
+
+**The SSRF decision worth not relitigating:** the fetch uses
+`wp_safe_remote_get()` rather than a hand-rolled IP filter. Core's
+`wp_http_validate_url()` is maintained, is re-applied to **every redirect
+target** by `WP_Http::validate_redirects()`, and already covers what a
+hand-rolled check gets wrong — loopback, all three private ranges, `169.254/16`
+(the cloud metadata endpoint, the highest-value target on hosted WordPress),
+CGNAT, multicast, the reserved top of the space, the TEST-NET blocks, embedded
+credentials, and any port outside 80/443/8080. Read from core to confirm this
+rather than assumed.
+
+Three residual gaps are **recorded, not closed** (ADR 0031 decision 2):
+
+- **DNS rebinding.** Validation resolves the host, then the request resolves it
+  again. Not fixable from userland PHP without pinning the resolved address into
+  the socket, which the WordPress HTTP API does not expose. Mitigated by this
+  being authenticated, capability-gated, off by default, and audited.
+- **Same-host URLs skip every IP check**, by core's design.
+- **IPv6 is not range-checked.** In practice refused rather than waved through:
+  a literal `[::1]` fails core's `strpbrk` check and an AAAA-only host fails
+  `gethostbyname()`. Verified both.
+
+**Type comes from the bytes**, never the URL, extension, or `Content-Type`.
+Raster only — JPEG, PNG, GIF, WebP, AVIF — and the allowlist is not an input
+parameter. SVG is excluded on purpose: script-bearing XML served from the site's
+own origin. The verifier proves an SVG renamed `.png` is still refused, and that
+a GIF served as `.jpg` is stored as `.gif`.
+
+**`idempotency_key` is required, not optional.** `create-draft` could afford
+optional — a duplicate draft is visible and free to delete. A duplicate upload
+consumes storage, regenerates every image size, and stays invisible until
+someone opens the media library. Given a transport observed returning 504
+*after* doing the work, an agent that cannot safely retry either duplicates or
+gives up.
+
+**It does not place the image.** No post attachment, no featured image, no
+content insertion. Combining them would be one call that both fetches remote
+bytes and publishes them into a page; separate means placement still passes
+`update-featured-image`'s policy, capability, and version-token checks.
+
+Every refusal stage returns the same public error, and the audit row never
+records the source URL — stage-specific errors are the reconnaissance an SSRF
+attempt wants.
+
+Own flag (`wpcb_media_uploads_enabled`) and own capability
+(`wpcb_upload_media`, schema version 12 → **13** so `maybe_upgrade()` grants it
+on active installs). Deliberately not `wpcb_edit_content`: a principal that may
+edit text is not thereby one that may put files on the server.
+
+Known and accepted: imported images keep their EXIF, GPS included. WordPress
+does not strip it; stripping also discards orientation and colour profile, so it
+is a separate decision.
+
+Verified by `tests/Integration/media-upload-verification.php`; inventory is now
+**24 PHP verifiers** plus 3 shell. Both media flags were set back to `0` on the
+reference site after the run.
+
+**Deliberately not built:** inline base64 bytes. An agent almost always has a
+URL, and a 1 MB image is ~1.4 MB of base64 inside a JSON tool call on a
+transport that already fails at 120 s on payloads orders of magnitude smaller.
+It is an additive optional `data` field later, not a contract change.
+
 ## Featured-image writes shipped — 2026-09-02
 
 `update-featured-image` (`wp-content-bridge/update-featured-image`). Built
@@ -1320,11 +1390,10 @@ verified.
 replace a general-purpose WordPress API connector" turns on these, not on
 performance. 32 abilities are registered; none of the following exist:
 
-- **Media writes.** Featured-image assignment and removal **shipped**
-  (`update-featured-image`). Still absent: upload, remote import, and
-  `update-media` (editing alt text, caption, title on an attachment). Upload is
-  a separate slice — MIME sniffing, size bounds, and an SSRF surface for remote
-  URLs — and needs its own ADR.
+- **Media writes.** Featured-image assignment/removal and remote-URL import
+  both **shipped** (`update-featured-image`, `create-media`). Still absent:
+  `update-media` (editing alt text, caption, or title on an existing
+  attachment), attachment deletion, and inline base64 upload.
 - **Permanent delete.** `trash-content` is reversible by design and
   `restore-trashed-content` undoes it; nothing bypasses trash.
 - **Permalink / slug writes.** `update-permalink` is designed but unbuilt, and

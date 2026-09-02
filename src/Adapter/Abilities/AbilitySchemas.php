@@ -1740,6 +1740,71 @@ final class AbilitySchemas {
 	}
 
 	/**
+	 * Returns the media import input contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function create_media_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'source_url', 'idempotency_key' ),
+			'properties'           => array(
+				'source_url'      => array(
+					'description' => 'HTTPS or HTTP URL of the image to import. The site fetches it, so the host must be publicly reachable: private, loopback, link-local, and cloud-metadata addresses are refused, as is any redirect to one.',
+					'type'        => 'string',
+					'format'      => 'uri',
+					'minLength'   => 8,
+					'maxLength'   => 2048,
+				),
+				'idempotency_key' => array(
+					'description' => 'Caller-chosen retry key, scoped to the acting principal. Required: a repeated call with the same key returns the attachment the first call created, performing no fetch and no second import.',
+					'type'        => 'string',
+					'minLength'   => 8,
+					'maxLength'   => 191,
+				),
+				'title'           => array(
+					'description' => 'Optional attachment title. Defaults to the stored filename.',
+					'type'        => array( 'string', 'null' ),
+					'maxLength'   => 500,
+				),
+				'alt_text'        => array(
+					'description' => 'Optional alternative text.',
+					'type'        => array( 'string', 'null' ),
+					'maxLength'   => 500,
+				),
+				'caption'         => array(
+					'description' => 'Optional caption.',
+					'type'        => array( 'string', 'null' ),
+					'maxLength'   => 500,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the media import result contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function create_media_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'schema_version', 'media', 'created', 'provenance' ),
+			'properties'           => array(
+				'schema_version' => array( 'type' => 'string' ),
+				'media'          => self::media_item(),
+				'created'        => array(
+					'description' => 'False when an idempotency key replayed an earlier import rather than performing a new one.',
+					'type'        => 'boolean',
+				),
+				'provenance'     => self::provenance(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
 	 * Returns the featured-image write input contract.
 	 *
 	 * @return array<string, mixed>

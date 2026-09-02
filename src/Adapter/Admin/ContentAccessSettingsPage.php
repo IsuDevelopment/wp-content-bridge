@@ -211,6 +211,17 @@ final readonly class ContentAccessSettingsPage {
 
 		register_setting(
 			self::OPTION_GROUP,
+			Installer::MEDIA_UPLOADS_ENABLED_OPTION,
+			array(
+				'type'              => 'boolean',
+				'default'           => false,
+				'sanitize_callback' => array( self::class, 'sanitize_checkbox' ),
+				'show_in_rest'      => false,
+			)
+		);
+
+		register_setting(
+			self::OPTION_GROUP,
 			Installer::MEDIA_WRITES_ENABLED_OPTION,
 			array(
 				'type'              => 'boolean',
@@ -514,9 +525,20 @@ final readonly class ContentAccessSettingsPage {
 								</label>
 							</td>
 						</tr>
+						<tr>
+							<th scope="row"><?php echo esc_html__( 'Import images from a URL', 'wp-content-bridge' ); ?></th>
+							<td>
+								<input type="hidden" name="<?php echo esc_attr( Installer::MEDIA_UPLOADS_ENABLED_OPTION ); ?>" value="0">
+								<label>
+									<input type="checkbox" name="<?php echo esc_attr( Installer::MEDIA_UPLOADS_ENABLED_OPTION ); ?>" value="1" <?php checked( (bool) get_option( Installer::MEDIA_UPLOADS_ENABLED_OPTION ) ); ?>>
+									<?php echo esc_html__( 'Allow fetching an image from a remote URL into the media library (off by default).', 'wp-content-bridge' ); ?>
+								</label>
+							</td>
+						</tr>
 					</tbody>
 				</table>
-				<p id="wpcb-media-writes-enabled-help" class="description"><?php echo esc_html__( 'Requires media reads, the content-writes master switch, and the per-type Set featured image policy. The attachment must already exist, be an image, and be readable by the acting principal: this never uploads or imports a file, and never fetches a remote URL.', 'wp-content-bridge' ); ?></p>
+				<p id="wpcb-media-writes-enabled-help" class="description"><?php echo esc_html__( 'Setting a featured image requires media reads, the content-writes master switch, and the per-type Set featured image policy; the attachment must already exist, be an image, and be readable by the acting principal.', 'wp-content-bridge' ); ?></p>
+				<p class="description"><?php echo esc_html__( 'Importing makes this site fetch a URL an agent supplies, so it is a separate grant with its own Upload media capability. Private, loopback, link-local, and cloud-metadata addresses are refused, as is any redirect to one. Only JPEG, PNG, GIF, WebP, and AVIF are accepted, decided by the file bytes rather than the URL, and never SVG. Imported images are not attached to any post.', 'wp-content-bridge' ); ?></p>
 
 				<h2><?php echo esc_html__( 'Redirects', 'wp-content-bridge' ); ?></h2>
 				<table class="widefat striped" aria-describedby="wpcb-redirects-enabled-help">

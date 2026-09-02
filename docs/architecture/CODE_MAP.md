@@ -391,6 +391,16 @@ Files:
   `wp_insert_post`/`wp_update_post`, revisions, and `result_for()` replay
   lookup; the only place `post_status` is written, and it is never
   `publish`/`future`/`pending`. Also implements `ContentSnapshotRepository`.
+- `src/Infrastructure/WordPress/WordPressMediaUploader.php` — the remote image
+  import (ADR 0031). The SSRF defence is `wp_safe_remote_get()`, chosen over a
+  hand-rolled IP filter because core's `wp_http_validate_url()` is maintained,
+  is re-applied to every redirect target, and already covers the metadata range
+  and the reserved space. The stored MIME type comes from
+  `wp_check_filetype_and_ext()` against the downloaded bytes with a raster-image
+  allowlist — never from the URL, its extension, or the response headers — and
+  SVG is excluded because it is script-bearing XML served from the site's
+  origin. The byte ceiling is checked against the real body as well as the
+  declared `Content-Length`, and the temporary file is deleted on every path.
 - `src/Infrastructure/WordPress/WordPressFeaturedImageRepository.php` — the only
   place `_thumbnail_id` is written, and both writes are confirmed by re-reading
   (a filter on `update_post_metadata` can short-circuit a write while the call

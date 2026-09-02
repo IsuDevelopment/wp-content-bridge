@@ -38,6 +38,7 @@ foreach ( array(
 	'wpcb_trash_enabled',
 	'wpcb_redirects_enabled',
 	'wpcb_media_writes_enabled',
+	'wpcb_media_uploads_enabled',
 	'wpcb_llms_enabled',
 	'wpcb_llms_config',
 	'wpcb_llms_artifact',

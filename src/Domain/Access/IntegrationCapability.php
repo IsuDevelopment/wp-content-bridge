@@ -23,4 +23,5 @@ enum IntegrationCapability: string {
 	case DELETE_CONTENT   = 'wpcb_delete_content';
 	case MANAGE_LLMS      = 'wpcb_manage_llms';
 	case MANAGE_REDIRECTS = 'wpcb_manage_redirects';
+	case UPLOAD_MEDIA     = 'wpcb_upload_media';
 }

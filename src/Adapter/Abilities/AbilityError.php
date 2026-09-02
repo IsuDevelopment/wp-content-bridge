@@ -72,6 +72,7 @@ final class AbilityError {
 		// 404 — the addressed object does not exist or is not visible.
 		'wpcb_content_unavailable'             => 404,
 		'wpcb_media_unavailable'               => 404,
+		'wpcb_media_upload_failed'             => 422,
 		'wpcb_pattern_unavailable'             => 404,
 
 		// 409 — stored state conflicts with the request.

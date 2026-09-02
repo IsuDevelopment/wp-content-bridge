@@ -452,6 +452,28 @@ permalink, status, dates, and authorized featured-image identity - the fields a
 JSON-LD document is built from - so authoring a document for one page does not
 require a separate content read.
 
+### `wp-content-bridge/create-media`
+
+Fetches one image from a remote URL into the media library. It does not attach
+the image to anything — placement stays with `update-featured-image`.
+
+Because the site issues an outbound request on the caller's instruction, the URL
+goes through WordPress's own `wp_safe_remote_get()` allowlist, which refuses
+loopback, private ranges, link-local and cloud-metadata addresses, embedded
+credentials, unusual ports, and any redirect to one of those. The stored file
+type is decided by the downloaded **bytes**, not the URL or extension, and only
+JPEG, PNG, GIF, WebP, and AVIF are accepted — never SVG, which is script-bearing
+XML that would be served from the site's own origin.
+
+`idempotency_key` is required: a retried call returns the attachment the first
+call created instead of importing a second copy. Every refusal returns the same
+error, so the response cannot be used to map the site's network position.
+
+It needs media reads, the content-writes master switch, its own
+`wpcb_media_uploads_enabled` flag, the `wpcb_upload_media` capability, and native
+`upload_files`. See `docs/adr/0031-media-upload-fetches-one-image-from-a-validated-remote-url.md`,
+including the SSRF gaps that are documented rather than closed.
+
 ### `wp-content-bridge/update-featured-image`
 
 Assigns an existing image attachment as one post's featured image, or removes

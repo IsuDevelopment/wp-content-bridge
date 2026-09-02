@@ -666,6 +666,67 @@ existing `get-url-seo` Ability, avoiding a duplicate full-graph endpoint.
 
 Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
 
+### `wp-content-bridge/create-media`
+
+Fetches one image from a remote URL and stores it in the media library. See
+ADR 0031. Input requires `source_url` and `idempotency_key`; `title`,
+`alt_text`, and `caption` are optional.
+
+**SSRF.** The site makes an outbound request on the caller's instruction, so the
+URL goes through `wp_safe_remote_get()`, which applies
+`wp_http_validate_url()` — and core re-applies it to every redirect target. That
+refuses loopback, `10/8`, `172.16/12`, `192.168/16`, `169.254/16` (the cloud
+metadata range), `100.64/10`, multicast, the reserved space, embedded
+credentials, and any port outside 80/443/8080. We use core's implementation
+rather than a hand-rolled filter because core's is maintained and covers more.
+
+Three residual gaps are recorded in the ADR rather than papered over: DNS
+rebinding (validation resolves, then the request resolves again — not fixable
+from userland PHP), same-host URLs skipping the IP checks by core's design, and
+IPv6 not being range-checked (in practice refused, not waved through).
+
+**File type comes from the bytes.** The URL, its extension, and the response
+`Content-Type` are untrusted hints. `wp_check_filetype_and_ext()` sniffs the
+downloaded file, and the allowlist is raster images only: JPEG, PNG, GIF, WebP,
+AVIF. **No SVG** — it is an XML document that can carry script and would be
+served from the site's own origin. The allowlist is not an input parameter, so a
+caller cannot widen it. A valid image served under the wrong extension is stored
+under the extension its bytes imply.
+
+The byte ceiling (12 MiB) is checked against the declared `Content-Length` when
+present *and* against the real body, because `Content-Length` is a claim.
+
+**`idempotency_key` is required, not optional.** A repeated call with the same
+key returns the attachment the first call created and performs no fetch. Unlike
+a duplicate draft, a duplicate upload consumes storage, regenerates every
+image size, and stays invisible until someone opens the media library — and the
+transport has been observed returning 504 *after* doing the work. The key is
+scoped per principal.
+
+**It only creates the attachment.** It does not attach it to a post, set it as a
+featured image, or insert it into content. Placement stays with
+`update-featured-image` and its own policy, capability, and version-token
+checks.
+
+Every refusal stage returns the **same** public error. Telling a caller whether
+a host resolved, answered, or answered with the wrong bytes is the
+reconnaissance an SSRF attempt is after. The audit row never records the source
+URL.
+
+Registration requires media reads, `wpcb_writes_enabled`, and the separate
+`wpcb_media_uploads_enabled` (off by default). Execution requires the new
+`wpcb_upload_media` capability **and** native `upload_files`; the plugin
+capability is deliberately not `wpcb_edit_content`, because a principal that may
+edit text is not thereby one that may put files on the server.
+
+Annotations: `readonly: false`, `destructive: false`, `idempotent: false`.
+Not destructive because creating an attachment loses nothing (ADR 0028). Not
+idempotent because the *operation* is not — annotating it otherwise would tell a
+client that blind retries are safe, which is what the key exists to prevent.
+
+Imported images keep their EXIF, including GPS where present. WordPress does not
+strip it and neither do we; that would be a separate decision.
+
 ### `wp-content-bridge/update-featured-image`
 
 Assigns an existing image attachment as one post's featured image, or removes
