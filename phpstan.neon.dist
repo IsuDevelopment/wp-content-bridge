@@ -13,6 +13,7 @@ parameters:
   scanFiles:
     - vendor/php-stubs/wordpress-stubs/wordpress-stubs.php
     - stubs/yoast.stub.php
+    - stubs/yoast-premium.stub.php
     - stubs/schema-extended.stub.php
     - stubs/mcp-adapter.stub.php
   bootstrapFiles:

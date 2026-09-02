@@ -26,6 +26,7 @@
                 <element value="wpcb_publish_content" />
                 <element value="wpcb_delete_content" />
                 <element value="wpcb_manage_llms" />
+                <element value="wpseo_manage_redirects" />
             </property>
         </properties>
     </rule>

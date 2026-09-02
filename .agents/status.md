@@ -140,6 +140,43 @@ path. Requirements and the required mitigations are in the "Future backlog —
 in-editor AI schema assist" section of `docs/plan/IMPLEMENTATION_PLAN.md`. No ADR
 yet, so nothing may be implemented from it.
 
+## Yoast Premium redirect adapter built — 2026-09-02, still unwired
+
+`Infrastructure\Yoast\YoastPremiumRedirectProvider` implements the redirect
+port against Premium 28.0, unblocked by ADR 0026's amendment. It calls the
+manager in-process (classmap-autoloaded, no `is_admin()` guard) and never
+touches `WPSEO_Redirect_Page`/`_Ajax`. Four deliberate choices:
+
+- **It asserts Yoast's native `wpseo_manage_redirects` itself**, because the
+  manager checks nothing. This is *not* the bridge gate — that stays with the
+  Ability's `permission_callback`, as everywhere else in this plugin.
+- **It never calls `WPSEO_Redirect_Validator`**, which issues a live outbound
+  `wp_remote_head()` against the target. A redirect write must not silently
+  make an HTTP request to a third party.
+- **Writes go through `create_redirect()`**, which calls `save_redirects()` and
+  so regenerates the two derived export options the front-end matcher reads.
+  Writing the canonical option alone would create a rule that never fires.
+- **A rule Premium holds but this plugin cannot express** (regex format, a
+  `307`/`451` status, an off-site target) raises
+  `RedirectRuleNotRepresentable`, never "no rule found". Answering "none"
+  would let the guard create a duplicate for a path Premium already claims.
+
+Two defects were found by writing the tests rather than after: prepending a
+slash to Premium's off-site target manufactured the same-site path
+`/https://elsewhere.example/x`, which the neutral target validator then
+accepted as local; and Premium stores plain origins with **both** slashes
+trimmed (`old-page`), unlike Redirection's `/old-page`, so the neutral form
+has to be translated in both directions or every search misses its own write.
+
+**Gap, deliberately not closed here: `wpcb_manage_redirects` is not registered
+anywhere.** `RedirectionProvider` only names it inside Redirection's own
+capability filters, so nothing broke; but no role holds it, so any
+`current_user_can( 'wpcb_manage_redirects' )` is false for everyone including
+administrators. Registering it touches `IntegrationCapability`, the installer's
+grant list, `uninstall.php`, the admin surface and the phpcs allowlist — it is
+an authorization change and belongs with the Abilities increment, not as a
+drive-by inside an adapter commit.
+
 ## Slice 5 research corrected from plugin source — 2026-09-01
 
 Both redirect backends were read from the source installed on the designated
