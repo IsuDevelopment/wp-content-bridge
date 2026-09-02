@@ -145,12 +145,20 @@ final readonly class YoastSeoProvider implements SeoProvider {
 			$local_source = 'yoast.schema.local';
 			$rendered_url = $this->rendered_target_url( $target );
 			if ( null !== $this->rendered_schema && null !== $rendered_url ) {
-				$rendered_graph = $this->rendered_schema->graph_for_url( $rendered_url );
-				if ( array() !== $rendered_graph ) {
-					$local_graph  = $rendered_graph;
+				$rendered = $this->rendered_schema->graph_for_url( $rendered_url );
+				if ( $rendered->has_nodes() ) {
+					$local_graph  = $rendered->nodes;
 					$local_source = 'yoast.schema.local.rendered';
 				} else {
-					$warnings[] = 'Rendered Local schema was unavailable; local businesses use the resolved surface, which omits multiple-location branch relationships.';
+					/*
+					 * The fallback is the same either way, but the reason is not:
+					 * a blocked loopback request is a host fault to fix, while a
+					 * page that emits no JSON-LD is a correct answer. Naming the
+					 * outcome is the difference between an actionable warning and
+					 * one an operator can only shrug at.
+					 */
+					$warnings[] = 'Rendered Local schema was unavailable; local businesses use the resolved surface, which omits multiple-location branch relationships. '
+						. (string) $rendered->diagnosis();
 				}
 			}
 			$local_profiles               = ( new LocalSchemaProjector() )->project( $local_graph );

@@ -97,6 +97,50 @@ bash tests/Integration/mcp-smoke-verification.sh
 bash tests/Integration/local-multilocation-runtime-verification.sh
 ```
 
+## Diagnostic probes
+
+`tests/Integration/ability-timing-probe.php` is **not** a verifier: it asserts
+nothing, always exits zero, and only reads. It times each read ability in-process
+so a slow transport can be told apart from slow PHP.
+
+```bash
+cd "/Users/lukaszbiedron/Local Sites/kormas-isu/app/public"
+wp eval "require '/Users/lukaszbiedron/Other Projects/wp-content-bridge/tests/Integration/ability-timing-probe.php';"
+
+# a specific post, and a specific principal
+WPCB_PROBE_POST_ID=123 wp --user=1 eval "require '.../ability-timing-probe.php';"
+```
+
+It exists because a production schema session was traced to four MCP calls that
+each returned HTTP 504 after ~2 minutes, while the same abilities measure single
+or double-digit milliseconds locally. Both facts cannot describe the same PHP.
+Run the probe on the affected install, then request the same abilities through
+that install's MCP endpoint: **in-process fast plus MCP slow indicts the
+transport or the host** (the OAuth MCP server, PHP-FPM or gateway limits, the
+database), while both slow indicts an ability and the table says which.
+
+It adopts an administrator when the runtime has no user, because `wp eval` runs
+as user 0 and nearly every ability then refuses in well under a millisecond —
+which would look like a fast install while measuring nothing.
+
+Reference-site baseline (WordPress 7.1, warm object cache, first/warm):
+
+| Ability | First | Warm |
+|---|---|---|
+| `get-content` (raw + rendered + plain_text, all four relationships) | 14.9 ms | 3.6 ms |
+| `get-content` (`plain_text` only) | 3.7 ms | 3.4 ms |
+| `search-content` | 13.6 ms | 1.8 ms |
+| `get-block-tree` | 2.7 ms | 0.1 ms |
+| `get-diagnostics` | 3.2 ms | 0.2 ms |
+| `get-url-seo` | 24.9 ms | 0.9 ms |
+
+`get-url-seo` is the one read that can become genuinely slow, and only on a
+target with Yoast Local's `local_profile` capability: that path fetches the
+site's own page over HTTP to read the rendered JSON-LD graph. On a host that
+blocks loopback requests it pays the full 5-second timeout before falling back —
+and the SEO document's `warnings` now name that cause explicitly rather than
+reporting an indistinguishable empty graph.
+
 ## Inventory
 
 `Needs` records the hardest dependency, which is what determines whether a

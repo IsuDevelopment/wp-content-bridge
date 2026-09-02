@@ -391,6 +391,14 @@ Files:
   `wp_insert_post`/`wp_update_post`, revisions, and `result_for()` replay
   lookup; the only place `post_status` is written, and it is never
   `publish`/`future`/`pending`. Also implements `ContentSnapshotRepository`.
+- `src/Infrastructure/WordPress/WordPressRenderedSchemaReader.php` — fetches the
+  site's own page over HTTP to read its rendered JSON-LD graph, bounded by a
+  5 s timeout, 3 redirects, 3 MiB, 200 nodes, and a same-origin guard, cached
+  for 10 minutes. It returns `Domain\Seo\RenderedGraph` rather than a bare node
+  list: five distinct failure causes previously collapsed into one empty array,
+  which made a blocked loopback request indistinguishable from a page that
+  emits no JSON-LD. Those need opposite responses from an operator, and a
+  blocked self-request is the common production case.
 - `src/Infrastructure/WordPress/WordPressSchemaTargetReader.php` — the identity
   projection `get-custom-schema` returns as `target` (title, slug, permalink,
   status, dates, authorized featured image). It exists as its own narrow port

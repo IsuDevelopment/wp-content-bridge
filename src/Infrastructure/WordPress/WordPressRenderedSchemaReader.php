@@ -11,6 +11,7 @@ namespace IsuDev\WPContentBridge\Infrastructure\WordPress;
 
 use Closure;
 use IsuDev\WPContentBridge\Application\Seo\RenderedSchemaReader;
+use IsuDev\WPContentBridge\Domain\Seo\RenderedGraph;
 
 /**
  * Fetches a same-origin page and returns its public JSON-LD graph.
@@ -42,14 +43,19 @@ final readonly class WordPressRenderedSchemaReader implements RenderedSchemaRead
 	}
 
 	/**
-	 * Returns bounded public JSON-LD nodes for a same-origin URL.
+	 * Returns the bounded capture outcome for a same-origin URL.
+	 *
+	 * Every exit reports why it ended there. A blocked self-request and a page
+	 * with no JSON-LD both yield no nodes, but only the first is a fault, and
+	 * an operator cannot act on the difference unless it is stated.
 	 *
 	 * @param string $url Same-origin, already-authorized public URL.
-	 * @return list<array<string, mixed>>
+	 * @return RenderedGraph
 	 */
-	public function graph_for_url( string $url ): array {
+	public function graph_for_url( string $url ): RenderedGraph {
+		$started = microtime( true );
 		if ( '' === $url || ! $this->is_same_origin( $url ) ) {
-			return array();
+			return RenderedGraph::failed( RenderedGraph::NOT_SAME_ORIGIN, self::elapsed_ms( $started ) );
 		}
 
 		$cache_key = self::CACHE_PREFIX . md5( $url );
@@ -61,17 +67,23 @@ final readonly class WordPressRenderedSchemaReader implements RenderedSchemaRead
 				 *
 				 * @var list<array<string, mixed>> $cached
 				 */
-				return $cached;
+				return new RenderedGraph( $cached, RenderedGraph::CACHED, self::elapsed_ms( $started ) );
 			}
 		}
 
-		$response = $this->fetch( $url );
-		if ( null === $response || 200 !== $response['code'] ) {
-			return array();
+		$response = $this->fetch( $url, $started );
+		if ( $response instanceof RenderedGraph ) {
+			return $response;
+		}
+		if ( 200 !== $response['code'] ) {
+			return RenderedGraph::failed( RenderedGraph::HTTP_ERROR, self::elapsed_ms( $started ), $response['code'] );
 		}
 		$body = $response['body'];
-		if ( '' === $body || strlen( $body ) > self::MAX_BODY_BYTES ) {
-			return array();
+		if ( strlen( $body ) > self::MAX_BODY_BYTES ) {
+			return RenderedGraph::failed( RenderedGraph::BODY_TOO_LARGE, self::elapsed_ms( $started ), $response['code'] );
+		}
+		if ( '' === $body ) {
+			return RenderedGraph::failed( RenderedGraph::EMPTY_GRAPH, self::elapsed_ms( $started ), $response['code'] );
 		}
 
 		$nodes = $this->extract_graph( $body );
@@ -79,7 +91,19 @@ final readonly class WordPressRenderedSchemaReader implements RenderedSchemaRead
 			set_transient( $cache_key, $nodes, self::CACHE_TTL );
 		}
 
-		return $nodes;
+		return array() === $nodes
+			? RenderedGraph::failed( RenderedGraph::EMPTY_GRAPH, self::elapsed_ms( $started ), $response['code'] )
+			: new RenderedGraph( $nodes, RenderedGraph::CAPTURED, self::elapsed_ms( $started ), $response['code'] );
+	}
+
+	/**
+	 * Returns the elapsed wall-clock cost of one attempt.
+	 *
+	 * @param float $started Start timestamp from `microtime( true )`.
+	 * @return int
+	 */
+	private static function elapsed_ms( float $started ): int {
+		return (int) round( ( microtime( true ) - $started ) * 1000 );
 	}
 
 	/**
@@ -124,18 +148,25 @@ final readonly class WordPressRenderedSchemaReader implements RenderedSchemaRead
 	/**
 	 * Performs the bounded HTTP request through WordPress or an injected fetcher.
 	 *
-	 * @param string $url Same-origin URL.
-	 * @return array{code: int, body: string}|null
+	 * Returns a failure outcome rather than null so the caller can distinguish
+	 * a refused request from a missing HTTP API, and can carry the transport's
+	 * own message through to the operator.
+	 *
+	 * @param string $url     Same-origin URL.
+	 * @param float  $started Start timestamp from `microtime( true )`.
+	 * @return array{code: int, body: string}|RenderedGraph
 	 */
-	private function fetch( string $url ): ?array {
+	private function fetch( string $url, float $started ): array|RenderedGraph {
 		if ( null !== $this->fetcher ) {
 			$result = ( $this->fetcher )( $url );
 
-			return is_array( $result ) ? $result : null;
+			return is_array( $result )
+				? $result
+				: RenderedGraph::failed( RenderedGraph::REQUEST_FAILED, self::elapsed_ms( $started ) );
 		}
 
 		if ( ! function_exists( 'wp_remote_get' ) ) {
-			return null;
+			return RenderedGraph::failed( RenderedGraph::NO_HTTP_API, self::elapsed_ms( $started ) );
 		}
 
 		$sslverify = function_exists( 'apply_filters' )
@@ -152,13 +183,30 @@ final readonly class WordPressRenderedSchemaReader implements RenderedSchemaRead
 			)
 		);
 		if ( function_exists( 'is_wp_error' ) && is_wp_error( $response ) ) {
-			return null;
+			return RenderedGraph::failed(
+				RenderedGraph::REQUEST_FAILED,
+				self::elapsed_ms( $started ),
+				null,
+				self::bounded_detail( $response->get_error_message() )
+			);
 		}
 
 		return array(
 			'code' => (int) wp_remote_retrieve_response_code( $response ),
 			'body' => (string) wp_remote_retrieve_body( $response ),
 		);
+	}
+
+	/**
+	 * Bounds a transport message before it leaves the adapter.
+	 *
+	 * @param string $message Transport error message.
+	 * @return string|null
+	 */
+	private static function bounded_detail( string $message ): ?string {
+		$trimmed = trim( $message );
+
+		return '' === $trimmed ? null : mb_substr( $trimmed, 0, 200 );
 	}
 
 	/**

@@ -182,6 +182,36 @@ one of them was taking its token *before* writing fixture meta.
 Full inventory 22/22 PHP verifiers green after the change; static gate 575
 tests / 1,374 assertions.
 
+## The loopback graph fetch now says why it failed — 2026-09-02
+
+`WordPressRenderedSchemaReader::graph_for_url()` answered **five different
+failure causes with the same empty array**: cross-origin rejection, a refused
+request, a non-200 response, an oversize body, and a page that genuinely emits
+no JSON-LD. The port contract endorsed this ("never throw, an empty array means
+no usable graph was captured"), so the ambiguity was by design — and wrong.
+
+Those causes need opposite responses. A blocked self-request is a host fault to
+fix; a page with no JSON-LD is a correct answer. And self-requests are exactly
+what a firewall, HTTP auth, or an edge proxy blocks, so on production the
+ambiguous case is the common one, not a corner case. An operator seeing "rendered
+Local schema was unavailable" could not tell which had happened, and the fetch is
+also the one read that can pay a full 5-second timeout.
+
+`graph_for_url()` now returns `Domain\Seo\RenderedGraph`: nodes plus a fixed
+outcome (`captured`, `cached`, `empty_graph`, `not_same_origin`,
+`request_failed`, `http_error`, `body_too_large`, `no_http_api`), elapsed ms, the
+upstream status code, and a bounded transport message. `diagnosis()` turns each
+failure into an operator-facing sentence, and `YoastSeoProvider` appends it to
+the existing SEO `warnings` channel, so no new output surface was needed.
+
+The DTO refuses a failure outcome that carries nodes, refuses an unknown
+outcome, and bounds the transport detail — a failed capture must not be able to
+present itself as data, and an upstream message must not become unbounded
+ability output.
+
+Note `cached` is a *success* even with an empty node list: a warm cache of a
+page that has no graph must not be reported as a transport failure.
+
 ## `get-custom-schema` now answers a schema edit in one call — 2026-09-02
 
 Acted on the round-trip half of the section below, which is the half that holds
@@ -228,6 +258,38 @@ the schema.
 
 Still not measured, and still the actual blocker on the 11 minutes: the
 `wp eval` vs MCP-endpoint split on the production install.
+
+## A timing probe now exists, so the 504 split can be measured — 2026-09-02
+
+`tests/Integration/ability-timing-probe.php`. Not a verifier: it asserts
+nothing, exits zero, and only reads, which is what makes it safe to run on the
+affected production install. It times every read ability in-process and prints a
+comparable table, so the same abilities can then be requested through that
+install's MCP endpoint and compared. In-process fast plus MCP slow indicts the
+transport or the host; both slow indicts an ability, and the table says which.
+
+This is the part of the 504 diagnosis that **cannot** be done from the
+development machine, which only has the LocalWP reference site. The probe is
+what hands that measurement to whoever has shell access there.
+
+Two things it revealed about the reference install, worth recording:
+
+- `wp eval` runs as **user 0**, and nearly every ability then refuses in well
+  under a millisecond. A naive probe would have printed sub-millisecond times
+  and looked like proof of a fast install while measuring nothing. It now adopts
+  an administrator and says so.
+- Calling `wp_get_ability()` on an unregistered name triggers core's
+  `_doing_it_wrong()` notice, which buries the measurements. It checks
+  membership in `wp_get_abilities()` instead.
+
+Also: **`list-post-types` is not an ability of this plugin.** Point 6 of the
+production report ("`list-post-types` schema error") is therefore about EWPA,
+which is out of scope by instruction. The nearest surfaces here are
+`get-diagnostics` and `get-editorial-context`.
+
+Reference baseline is in `docs/setup/VERIFICATION.md`. Every read is single or
+low-double-digit milliseconds; `get-url-seo` is 24.9 ms on a target without
+Yoast Local, and only the `local_profile` path pays the loopback fetch.
 
 ## Reported MCP slowness is not this plugin's read path — measured 2026-09-02
 
