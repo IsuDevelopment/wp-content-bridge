@@ -22,9 +22,31 @@ use IsuDev\WPContentBridge\Domain\Redirect\RedirectSourcePath;
 final class RedirectCandidateGuard {
 
 	/**
-	 * A redirect can never shadow a core or plugin-owned endpoint.
+	 * A redirect can never shadow a core, plugin-owned, or this plugin's own
+	 * endpoint.
+	 *
+	 * Matched as prefixes against the path with leading slashes stripped, so
+	 * a bare filename entry protects that exact file and anything beneath it.
+	 * `llms.txt`/`llms-full.txt` are here because they are *this* plugin's
+	 * public endpoint: a redirect over them would silently disable a feature
+	 * the same plugin serves.
 	 */
-	private const RESERVED_PREFIXES = array( 'wp-json/', 'wp-admin/', 'wp-content/', 'feed/' );
+	private const RESERVED_PREFIXES = array(
+		'wp-json/',
+		'wp-admin/',
+		'wp-content/',
+		'wp-includes/',
+		'feed/',
+		'wp-login.php',
+		'wp-cron.php',
+		'wp-signup.php',
+		'wp-activate.php',
+		'xmlrpc.php',
+		'wp-sitemap',
+		'robots.txt',
+		'llms.txt',
+		'llms-full.txt',
+	);
 
 	/**
 	 * Bounded chain resolution depth (ADR 0026 s5).

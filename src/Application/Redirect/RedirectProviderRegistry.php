@@ -88,6 +88,27 @@ final readonly class RedirectProviderRegistry {
 	}
 
 	/**
+	 * Returns the status of a configured provider by slug, available or not.
+	 *
+	 * Used to label a result with the backend the caller addressed even when
+	 * the write never reached it, so a rejection does not silently attribute
+	 * itself to the wrong plugin.
+	 *
+	 * @param string $slug Provider slug.
+	 * @return RedirectProviderStatus
+	 */
+	public function status_for( string $slug ): RedirectProviderStatus {
+		foreach ( $this->providers as $provider ) {
+			$status = $provider->status();
+			if ( $status->provider === $slug ) {
+				return $status;
+			}
+		}
+
+		return $this->fallback->status();
+	}
+
+	/**
 	 * Returns a cross-provider lookup over the available providers.
 	 *
 	 * @return RedirectRuleLookup

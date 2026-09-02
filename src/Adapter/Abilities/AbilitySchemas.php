@@ -3042,6 +3042,206 @@ final class AbilitySchemas {
 	}
 
 	/**
+	 * Returns the redirect-provider status schema, reported by every redirect
+	 * result so a caller can always tell which backend answered.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function redirect_provider_status(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'provider', 'version', 'detected', 'capabilities' ),
+			'properties'           => array(
+				'provider'     => array(
+					'description' => 'Stable provider slug, or "none" when no provider is active.',
+					'type'        => 'string',
+				),
+				'version'      => array(
+					'description' => 'Provider plugin version, or null when it could not be read.',
+					'type'        => array( 'string', 'null' ),
+				),
+				'detected'     => array(
+					'description' => 'Whether a compatible provider is active.',
+					'type'        => 'boolean',
+				),
+				'capabilities' => array(
+					'description' => 'Normalized operations this provider supports.',
+					'type'        => 'array',
+					'items'       => array( 'type' => 'string' ),
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the provider-neutral redirect rule schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function redirect_rule(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'id', 'source', 'status', 'target', 'enabled', 'provider' ),
+			'properties'           => array(
+				'id'       => array(
+					'description' => 'Provider-assigned identity, or null when the provider assigns none.',
+					'type'        => array( 'string', 'null' ),
+				),
+				'source'   => array(
+					'description' => 'Exact site-relative source path.',
+					'type'        => 'string',
+				),
+				'status'   => array(
+					'description' => 'HTTP status this rule answers.',
+					'type'        => 'integer',
+					'enum'        => array( 301, 302, 410 ),
+				),
+				'target'   => array(
+					'description' => 'Site-relative destination; null for a 410 Gone rule.',
+					'type'        => array( 'string', 'null' ),
+				),
+				'enabled'  => array(
+					'description' => 'Whether the rule is active in its provider.',
+					'type'        => 'boolean',
+				),
+				'provider' => self::redirect_provider_status(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the search-redirects input schema.
+	 *
+	 * There is deliberately no provider parameter: a read spans every
+	 * available provider, because a site running two redirect plugins has two
+	 * live engines and asking only one misreports it (ADR 0026 s4, amended).
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function search_redirects_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'source' ),
+			'properties'           => array(
+				'source' => array(
+					'description' => 'Exact site-relative source path to look up, for example "/old-page".',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 2048,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the search-redirects result schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function search_redirects_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'source', 'claims', 'held_by', 'held_by_multiple', 'configured_providers' ),
+			'properties'           => array(
+				'source'               => array(
+					'description' => 'The source path that was looked up.',
+					'type'        => 'string',
+				),
+				'claims'               => array(
+					'description' => 'One entry per available provider, in registry order.',
+					'type'        => 'array',
+					'items'       => array(
+						'type'                 => 'object',
+						'required'             => array( 'provider', 'state', 'rule', 'reason' ),
+						'properties'           => array(
+							'provider' => self::redirect_provider_status(),
+							'state'    => array(
+								'description' => 'claimed: a readable rule exists. free: this provider holds nothing. not_representable: a rule exists that this contract cannot express, so the path is taken. unavailable: the provider could not answer, which is also not "free".',
+								'type'        => 'string',
+								'enum'        => array( 'claimed', 'free', 'not_representable', 'unavailable' ),
+							),
+							'rule'     => self::nullable_object( self::redirect_rule() ),
+							'reason'   => array(
+								'description' => 'Why the state is neither claimed nor free.',
+								'type'        => array( 'string', 'null' ),
+							),
+						),
+						'additionalProperties' => false,
+					),
+				),
+				'held_by'              => array(
+					'description' => 'Provider slugs that hold this path in any form a write must respect.',
+					'type'        => 'array',
+					'items'       => array( 'type' => 'string' ),
+				),
+				'held_by_multiple'     => array(
+					'description' => 'True when more than one engine holds this path. Both then serve redirects and whichever hooks first wins, which neither plugin\'s own screen shows.',
+					'type'        => 'boolean',
+				),
+				'configured_providers' => array(
+					'description' => 'Every configured provider, available or not, so "no provider" stays distinguishable from "no redirects".',
+					'type'        => 'array',
+					'items'       => self::redirect_provider_status(),
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the create-redirect input schema.
+	 *
+	 * `provider` is required and never inferred: on a two-plugin site the
+	 * choice decides which engine's rule actually fires.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function create_redirect_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'provider', 'source' ),
+			'properties'           => array(
+				'provider' => array(
+					'description' => 'Provider slug to write into, from search-redirects "configured_providers".',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 64,
+				),
+				'source'   => array(
+					'description' => 'Exact site-relative source path that no longer resolves to live content.',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 2048,
+				),
+				'target'   => array(
+					'description' => 'Site-relative destination on this site. Required unless status is 410, and rejected when it is.',
+					'type'        => 'string',
+					'maxLength'   => 2048,
+				),
+				'status'   => array(
+					'description' => 'HTTP status to answer. Defaults to 301.',
+					'type'        => 'integer',
+					'enum'        => array( 301, 302, 410 ),
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the create-redirect result schema: the rule as the provider
+	 * stored it, not as the caller asked for it.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function create_redirect_output(): array {
+		return self::redirect_rule();
+	}
+
+	/**
 	 * Widens an object schema to also accept `null`.
 	 *
 	 * @param array $schema Object schema to widen.

@@ -706,11 +706,16 @@ The only feature in this plugin with an unauthenticated public surface.
   `TransitionContentStatusAbilities`.
 - Runtime evidence: `tests/Integration/status-workflow-verification.php`.
 
-## Redirect feature (foundation only — no Ability wired yet)
+## Redirect feature
 
-Roadmap Slice 5 (ADR 0026). Domain/port/registry/guard and the Redirection
-adapter's pure logic are unit-tested; nothing here is reachable from an
-Ability, a capability, or MCP discovery yet.
+Roadmap Slice 5 (ADR 0026, amended 2026-09-01). Reachable from two Abilities
+behind the `wpcb_redirects_enabled` switch and the `wpcb_manage_redirects`
+capability; the write additionally requires `wpcb_writes_enabled`.
+
+The shape follows one fact: a site can run Redirection and Yoast Premium at the
+same time, and then **both engines serve redirects** and whichever hooks first
+wins. So reads and the safety guard span every provider, while a write goes to
+exactly one the caller names.
 
 - `Domain/Redirect/` — `RedirectSourcePath` (bounded, exact, site-relative,
   non-regex source), `RedirectTargetUrl` (same-site target, normalized to a
@@ -719,17 +724,37 @@ Ability, a capability, or MCP discovery yet.
   must have no target, every other status must have one). All pure, no
   WordPress dependency.
 - `Application/Redirect/RedirectProvider` — the provider-neutral port
-  (`is_available`, `status`, `search`, `create`). `RedirectProviderRegistry`
-  selects the first available configured provider (order: Yoast Premium,
-  then Redirection) with `NullRedirectProvider` as the required fallback,
-  mirroring `SeoProviderRegistry`.
+  (`is_available`, `status`, `search`, `create`).
+  `RedirectProviderRegistry` has **no** implicit active-provider accessor: a
+  unit test asserts `active()` stays absent, because an ordered first-available
+  pick would silently choose a backend whose rule may not be the one that
+  fires. `select( $slug )` returns the named provider or refuses;
+  `available()` returns all of them; `statuses()` reports every configured
+  provider plus the null fallback, so "no provider" stays distinguishable from
+  "no redirects".
+- `Application/Redirect/RedirectRuleLookup` — asks every available provider who
+  claims a source path. Attributes a claim to the provider that **answered**,
+  not to the `provider` field stamped on the returned rule, so a mis-stamping
+  adapter cannot make a collision name the wrong plugin. A provider that
+  cannot answer propagates instead of being skipped: silence there reads as
+  "nobody claims this path", the one wrong conclusion.
 - `Application/Redirect/RedirectCandidateGuard` — the provider-neutral
   invariants every candidate must pass before any adapter's `create()` runs:
-  reserved-prefix denylist (`wp-json/`, `wp-admin/`, `wp-content/`, `feed/`),
-  the live-content shadow guard (via the `PublishedPermalinkLookup` port),
-  collision against the active provider's own `search()`, and a 3-hop
-  chain/loop bound. Shared by both future adapters so neither one's looser
-  native validation becomes the effective contract.
+  the reserved-path denylist (core endpoints, `wp-sitemap*`, `robots.txt`, and
+  this plugin's own `llms.txt`/`llms-full.txt`), the live-content shadow guard
+  (via the `PublishedPermalinkLookup` port), **cross-provider** collision, and
+  a 3-hop **cross-provider** chain/loop bound.
+- `Application/Redirect/SearchRedirects` / `CreateRedirect` — the use cases.
+  The read reports one entry per provider with a `claimed` / `free` /
+  `not_representable` / `unavailable` state, so one provider's unreadable rule
+  never blanks out another's readable answer, and neither refusal is ever
+  reported as `free`. The write audits field names only, with `object_type`
+  `redirect` and no object ID.
+- `Adapter/Abilities/SearchRedirectsAbilities` /
+  `CreateRedirectAbilities` — one class per ability, matching the
+  trash/restore pair. The read is registered by the redirect flag alone,
+  because knowing which engine holds a path is a diagnostic; the write also
+  needs the master write switch.
 - `Infrastructure/Redirection/RedirectionProvider` — calls Redirection's
   `redirection/v1` REST routes through an internal `rest_do_request()`
   dispatch, scoped to `wpcb_manage_redirects` via the `redirection_role`/
@@ -738,17 +763,30 @@ Ability, a capability, or MCP discovery yet.
   payload mapping was initially assembled from Redirection's public
   documentation and **reconciled against a live 5.9.0 install on 2026-08-14**
   by reading the plugin's actual source, which disagreed with its own docs
-  twice (see the class docblock and `.agents/status.md`). No permanent
-  `tests/Integration` fixture exists yet for it — the reconciliation pass was
-  manual and is not repeatable on its own.
+  twice (see the class docblock and `.agents/status.md`).
+- `Infrastructure/Yoast/YoastPremiumRedirectProvider` — calls Premium 28.0's
+  redirect manager in-process (classmap-autoloaded, no `is_admin()` guard).
+  It asserts Yoast's native `wpseo_manage_redirects` itself because that
+  manager checks nothing; never calls `WPSEO_Redirect_Validator`, which issues
+  a live outbound `wp_remote_head()` against the target; writes through
+  `create_redirect()` so the two derived export options the front end actually
+  reads are regenerated; and translates origins in both directions, since
+  Yoast stores a plain origin with **both** slashes trimmed. A rule it holds
+  but this contract cannot express raises `RedirectRuleNotRepresentable`,
+  never "no rule found".
 - `Infrastructure/WordPress/WordPressPublishedPermalinkLookup` — the
-  `PublishedPermalinkLookup` adapter (`url_to_postid()` + `get_post_status()`
-  ), WordPress-dependent and covered by runtime verification, not
-  `tests/Unit`.
-- Not yet built: the Yoast SEO Premium adapter (gated behind a version-pinned
-  compatibility fixture per ADR 0026 s3, since it has no documented API),
-  `update`/`disable` on the port, the candidate Abilities themselves, their
-  capability/feature flag, audit events, and the MCP profile entries.
+  `PublishedPermalinkLookup` adapter. Handles the site root and public
+  post-type archives explicitly, because `url_to_postid()` answers `0` for the
+  root: relying on it alone allowed a redirect to be created **on `/`**, found
+  by a live probe. Term archives and other rewrite-driven routes are still not
+  resolved, and the class says so.
+- `tests/Integration/redirects-verification.php` — the repeatable runtime
+  fixture, including the `/`-shadow regression guard. Restores the feature flag
+  and deletes every rule it created.
+- Not yet built: `update`/`disable` on the port, and the ADR 0030 statistics
+  port (a separate port precisely because Yoast collects no 404 data at all,
+  so hanging statistics off this one would make a Yoast-backed site report zero
+  404s — indistinguishable from a healthy site).
 
 ## Specification routes
 

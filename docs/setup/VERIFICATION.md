@@ -77,7 +77,8 @@ for v in abilities-runtime-verification \
          status-workflow-verification \
          status-matrix-bulk-verification \
          rest-input-coercion-verification \
-         invocation-telemetry-verification; do
+         invocation-telemetry-verification \
+         redirects-verification; do
   wp eval "require \"$IT/$v.php\";" >/dev/null 2>&1 \
     && echo "PASS $v" || echo "FAIL $v"
 done
@@ -128,6 +129,7 @@ given machine can run the check at all:
 | `status-workflow-verification.php` | core | `transition-content-status` absent while `wpcb_writes_enabled` is off, `get-status-transitions` always present; the empty-graph deny-all default; the response reporting the status read back from storage; ADR 0024's "may unpublish but not publish" asymmetry; `publish`/`future` refused while `wpcb_publish_enabled` is off despite the pair and capability being held; a stale `version_token` and a past `publish_at` both rejected with the stored row untouched; a scheduled transition storing the exact requested `post_date_gmt`; DST spring-forward-gap rejection and autumn-fold/ordinary-instant round-trips against the real Europe/Warsaw tz database; the revision and field-names-only audit invariants; the full draft → pending → publish flow; the deliberate per-target `gates` semantics for non-privileged targets; and the mutation repository's own read-back defence against a WordPress-rewritten transition |
 | `status-matrix-bulk-verification.php` | core | The settings matrix bulk toggles: one whole-matrix, one per ordered pair, one per content type; both axis attributes on every governed cell; that **no toggle carries a form field name**, so the submitted matrix is byte-for-byte what 0.7.0 submitted; that every toggle ships inside a hidden wrapper and so does nothing without JavaScript; the preset and legacy-adoption confirmation prompts; that both always-visible llms.txt workflow actions render; that the assets enqueue on the settings screen and on no other, at the current plugin version, with the hook suffix resolved the way `add_options_page()` resolves it rather than hard-coded; and that the content-access matrix above gained no bulk attributes |
 | `rest-input-coercion-verification.php` | core | WordPress 7.1 coerces run-endpoint input to the declared schema. Pins that coercion stays at the REST boundary (a direct `execute()` still refuses a string `post_id`), that every schema bound survives it, that `type: array` fields accept the comma-separated form and resolve identically to the array form, that `type: string` fields are never split, that nested objects get no coercion, and that a capability-less principal is still refused on a perfectly coercible request. Also pins the error-status contract: a domain rejection answers 400/404 with its public error code, not 500. Requires 7.1 and refuses to run below it. |
+| `redirects-verification.php` | core | The redirect abilities (Slice 5, ADR 0026 as amended). Proves a create lands in the **named** provider and reads back as held by it; that a duplicate is refused with the holding provider named; that naming an unavailable provider is refused and **not** substituted into the available one; that reserved paths — including this plugin's own `/llms.txt` — are refused; and that the live-content shadow guard covers the site root and every public post-type archive. That last assertion is a regression guard: a manual probe created a redirect **on `/`** successfully, because `url_to_postid()` answers `0` for the site root. Turns the feature flag on, restores it exactly as found, deletes every rule it created through the provider's own write path, and uses a discarding audit sink so a run never appends to the site's audit record. Skips cleanly when no provider is active. |
 | `invocation-telemetry-verification.php` | core | The off-by-default invocation-telemetry diagnostic (ADR 0029). Proves no listener is attached and nothing is written while the flag is off; that a `permission_callback` denial — invisible everywhere else — produces exactly one `attempted` entry attributed to the right principal; that a success upgrades that entry in place instead of duplicating it; that read invocations add **no** `wpcb_audit` rows, so read traffic cannot evict mutation history; that the ring buffer discards rather than grows; and that a stored entry carries exactly its five declared fields, never ability input. Restores both options in a `finally`. |
 | `http-url-runtime-verification.sh` | http | URL-target resolution through a real HTTP request context, public head parity |
 | `mcp-smoke-verification.sh` | mcp | `initialize` → `tools/list` → `tools/call` over Streamable HTTP as the least-privilege bridge principal |
@@ -161,8 +163,14 @@ driven by the shell verifiers, not verifiers themselves.
 
 ## Last full run
 
-**2026-09-01 — 24 of 24 green on WordPress 7.1**, the last of five runs that
-day. The 7.1 adoption plan is complete; each run below re-ran the whole
+**2026-09-02 — 25 of 25 green on WordPress 7.1**, after the redirect
+abilities landed. The reference site runs Yoast SEO Premium 28.0 with
+Redirection inactive, so the redirect verifier exercised the Yoast adapter and
+reported `redirection` as configured-but-absent — which is exactly the
+"no provider" versus "no redirects" distinction the design requires.
+
+The previous headline: **2026-09-01 — 24 of 24 green**, the last of five runs
+that day. The 7.1 adoption plan is complete; each run below re-ran the whole
 inventory because every one of those changes touched a cross-cutting path —
 error returns, ability registration, or execution itself. Against the
 environment above at 0.8.3 plus those unreleased changes.
@@ -172,6 +180,7 @@ shipped unverified, and that should be visible rather than reconstructable.
 
 | Date | Result | Notes |
 |---|---|---|
+| 2026-09-02 | 25/25 | Adds `redirects-verification` for the redirect abilities. **Found a real defect before release**: creating a redirect for `/` succeeded, because the live-content shadow guard relied on `url_to_postid()`, which answers `0` for the site root whether the front page is static or the blog index — so the guard read the busiest URL on the site as dead. Fixed by handling the root and public post-type archives explicitly, and the verifier now asserts both. The same pass proved the schema bump to 12 actually grants `wpcb_manage_redirects` on an already-active install. Static gate: 557 tests / 1,344 assertions. |
 | 2026-09-01 | 24/24 | Adds `invocation-telemetry-verification` for the ADR 0029 diagnostic mode, and covers the ADR 0028 annotation change (`update-llms-txt` is now `destructive`, with the HTTP method checked to be unmoved). This closes the 7.1 adoption plan: tasks 1–9 all done. Static gate: 513 tests / 1,269 assertions. |
 | 2026-09-01 | 23/23 | Fourth run, after the `AbilityMeta` factory replaced thirteen per-class metadata helpers and eight inline literals and added 7.1's `public` flag to all 31 abilities. The 31 abilities' annotations were parsed before and after and compared: zero differences, so only the new key changed. Static gate: 510 tests / 1,261 assertions. |
 | 2026-09-01 | 23/23 | Third run of the day, after declarative ability discovery (`wp_get_abilities( array( 'category' => … ) )`, defensive category comparison kept) and the diagnostics surface report (`minimum_wordpress_version`, `abilities_api_features.declarative_filtering`, diagnostics `schema_version` 1.1). Projection parity holds at 28 abilities. Static gate: 504 tests / 1,228 assertions. |

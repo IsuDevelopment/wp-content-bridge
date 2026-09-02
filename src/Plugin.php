@@ -10,6 +10,16 @@ declare(strict_types=1);
 namespace IsuDev\WPContentBridge;
 
 use IsuDev\WPContentBridge\Adapter\Admin\ContentAccessSettingsPage;
+use IsuDev\WPContentBridge\Adapter\Abilities\CreateRedirectAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\SearchRedirectsAbilities;
+use IsuDev\WPContentBridge\Application\Redirect\CreateRedirect;
+use IsuDev\WPContentBridge\Application\Redirect\NullRedirectProvider;
+use IsuDev\WPContentBridge\Application\Redirect\RedirectCandidateGuard;
+use IsuDev\WPContentBridge\Application\Redirect\RedirectProviderRegistry;
+use IsuDev\WPContentBridge\Application\Redirect\SearchRedirects;
+use IsuDev\WPContentBridge\Infrastructure\Redirection\RedirectionProvider;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressPublishedPermalinkLookup;
+use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastPremiumRedirectProvider;
 use IsuDev\WPContentBridge\Adapter\Abilities\AbilityInvocationTelemetry;
 use IsuDev\WPContentBridge\Adapter\Abilities\BlockMutationAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\ContentAbilities;
@@ -348,6 +358,45 @@ final class Plugin {
 					$audit_log
 				)
 			) )->register_hooks();
+		}
+
+		/*
+		 * Redirects (Slice 5, ADR 0026 as amended 2026-09-01). The registry
+		 * order below is a stable *reporting* order, not a preference: it
+		 * never selects a write target, because a write names its provider.
+		 * Both adapters are constructed unconditionally and report themselves
+		 * unavailable when their plugin is absent, so "no provider" stays
+		 * distinguishable from "no redirects".
+		 */
+		if ( get_option( Installer::REDIRECTS_ENABLED_OPTION ) ) {
+			$redirect_providers = new RedirectProviderRegistry(
+				array(
+					new YoastPremiumRedirectProvider( home_url( '/' ) ),
+					new RedirectionProvider( home_url( '/' ) ),
+				),
+				new NullRedirectProvider()
+			);
+
+			( new SearchRedirectsAbilities( new SearchRedirects( $redirect_providers ) ) )->register_hooks();
+
+			/*
+			 * The read above is registered by the redirect flag alone, but the
+			 * write also requires `wpcb_writes_enabled`, like every other
+			 * write in this plugin. A redirect changes routing for real
+			 * visitors, so it must disappear with the master write switch
+			 * rather than merely refuse at execution time.
+			 */
+			if ( get_option( Installer::WRITES_ENABLED_OPTION ) ) {
+				( new CreateRedirectAbilities(
+					new CreateRedirect(
+						$redirect_providers,
+						new RedirectCandidateGuard(),
+						new WordPressPublishedPermalinkLookup(),
+						new WordPressAuditLog(),
+						home_url( '/' )
+					)
+				) )->register_hooks();
+			}
 		}
 
 		/*

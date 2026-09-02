@@ -15,8 +15,13 @@ use IsuDev\WPContentBridge\Domain\Redirect\RedirectSourcePath;
 
 /**
  * Provider-neutral contract implemented by optional redirect adapters
- * (Redirection, Yoast SEO Premium — ADR 0026). Never dual-written: exactly
- * one provider is active per `RedirectProviderRegistry` selection.
+ * (Redirection, Yoast SEO Premium — ADR 0026).
+ *
+ * Never dual-written: a write goes to exactly one provider the caller names
+ * (`RedirectProviderRegistry::select()`), and a provider error never triggers
+ * a fallback write to the other. Reads, and the candidate guard, span every
+ * available provider, because a site running both plugins has two live
+ * redirect engines and whichever hooks first wins.
  */
 interface RedirectProvider {
 
@@ -43,6 +48,12 @@ interface RedirectProvider {
 	 * @param RedirectSourcePath $source Exact source path.
 	 * @return RedirectRule|null
 	 * @throws RedirectProviderUnavailable When the provider is unavailable.
+	 * @throws RedirectProviderForbidden When the backend's own capability is missing.
+	 * @throws RedirectRuleNotRepresentable When a rule exists but falls outside
+	 *                                       this contract. Never answered as
+	 *                                       `null`: the path is taken, and a
+	 *                                       null would let a caller create a
+	 *                                       second rule for it.
 	 */
 	public function search( RedirectSourcePath $source ): ?RedirectRule;
 
@@ -51,7 +62,9 @@ interface RedirectProvider {
 	 *
 	 * @param RedirectRule $candidate Rule with a null `id`.
 	 * @return RedirectRule
-	 * @throws RedirectProviderUnavailable When the provider is unavailable.
+	 * @throws RedirectProviderUnavailable When the provider is unavailable or the write did not persist.
+	 * @throws RedirectProviderForbidden When the backend's own capability is missing.
+	 * @throws RedirectRuleNotRepresentable When the stored rule cannot be read back under this contract.
 	 */
 	public function create( RedirectRule $candidate ): RedirectRule;
 }

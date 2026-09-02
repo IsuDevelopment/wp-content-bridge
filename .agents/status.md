@@ -140,6 +140,62 @@ path. Requirements and the required mitigations are in the "Future backlog —
 in-editor AI schema assist" section of `docs/plan/IMPLEMENTATION_PLAN.md`. No ADR
 yet, so nothing may be implemented from it.
 
+## Redirect abilities shipped into the tree — 2026-09-02
+
+`search-redirects` and `create-redirect` are registered behind
+`wpcb_redirects_enabled` (write also behind `wpcb_writes_enabled`) and the new
+`wpcb_manage_redirects` capability. Verified on the live 7.1 reference site,
+which runs Yoast Premium 28.0 with Redirection inactive: both abilities
+register, the Yoast adapter is detected at 28.0, and `redirection` reports
+configured-but-absent — the "no provider" versus "no redirects" distinction
+working on real data. `tests/Integration/redirects-verification.php` is the
+repeatable fixture; the inventory is now 25/25.
+
+**A live probe found a real defect before release, and it was the important
+kind.** Creating a redirect for `/` **succeeded**. The live-content shadow
+guard relied on `url_to_postid()`, which answers `0` for the site root whether
+the front page is a static page or the blog index — so the guard read the
+busiest URL on the site as dead content. The rule was actually written to
+Yoast's store during the probe and was removed immediately (both derived export
+options confirmed empty afterwards). Fixed by handling the site root and every
+public post-type archive explicitly, re-verified live on `/` and on
+`/realizacje/`, and the verifier now asserts it. **Residual gap, stated in the
+class rather than papered over:** term archives and other rewrite-driven routes
+are still not resolved. Matching the rewrite rules does not help — with pretty
+permalinks the generic `pagename` rule matches nearly every path, so a rule
+match cannot tell a live route from a dead one; resolving each candidate
+properly means running the query WordPress itself would run.
+
+The same pass closed the capability gap recorded below: `SCHEMA_VERSION` went
+to 12, so `maybe_upgrade()` re-runs `activate()` and grants
+`wpcb_manage_redirects` on installs that are already active. Confirmed live —
+`schema=12`, administrator holds the capability. Without the bump the
+capability would have existed in code and on no role, making every check on it
+false for everyone.
+
+Reserved paths were widened while fixing the shadow guard, since the same probe
+showed how much a redirect can shadow: core endpoints (`wp-includes/`,
+`wp-login.php`, `wp-cron.php`, `wp-signup.php`, `wp-activate.php`,
+`xmlrpc.php`, `wp-sitemap*`, `robots.txt`) and **this plugin's own**
+`llms.txt`/`llms-full.txt` — a redirect over those would silently disable a
+feature the same plugin serves.
+
+Shape decisions, all from the two-plugin reality: `provider` is required on the
+write and never inferred; a write to an unavailable provider is refused rather
+than substituted; the read reports one entry per provider
+(`claimed`/`free`/`not_representable`/`unavailable`) so one plugin's unreadable
+rule never blanks out the other's readable answer, and neither refusal is ever
+reported as `free`; and `held_by_multiple` names the routing hazard neither
+plugin's own screen shows.
+
+Per-provider Abilities were considered and rejected — they would double a
+permanent public contract surface, two near-identically named tools are a known
+way for an agent to pick the wrong one (here: "wrote the rule into the plugin
+that loses"), and the cross-provider guard would still be needed, so the port
+would not disappear, only stop being the Ability boundary.
+
+Not built: `update`/`disable` on the port, and the ADR 0030 statistics port.
+
 ## Yoast Premium redirect adapter built — 2026-09-02, still unwired
 
 `Infrastructure\Yoast\YoastPremiumRedirectProvider` implements the redirect

@@ -211,6 +211,17 @@ final readonly class ContentAccessSettingsPage {
 
 		register_setting(
 			self::OPTION_GROUP,
+			Installer::REDIRECTS_ENABLED_OPTION,
+			array(
+				'type'              => 'boolean',
+				'default'           => false,
+				'sanitize_callback' => array( self::class, 'sanitize_checkbox' ),
+				'show_in_rest'      => false,
+			)
+		);
+
+		register_setting(
+			self::OPTION_GROUP,
 			Installer::LLMS_ENABLED_OPTION,
 			array(
 				'type'              => 'boolean',
@@ -478,6 +489,23 @@ final readonly class ContentAccessSettingsPage {
 					</tbody>
 				</table>
 				<p id="wpcb-trash-enabled-help" class="description"><?php echo esc_html__( 'Content writes, the per-type Trash policy, Delete content capability, native delete_post permission, and reversible WordPress trash must also be available.', 'wp-content-bridge' ); ?></p>
+
+				<h2><?php echo esc_html__( 'Redirects', 'wp-content-bridge' ); ?></h2>
+				<table class="widefat striped" aria-describedby="wpcb-redirects-enabled-help">
+					<tbody>
+						<tr>
+							<th scope="row"><?php echo esc_html__( 'Redirect abilities', 'wp-content-bridge' ); ?></th>
+							<td>
+								<input type="hidden" name="<?php echo esc_attr( Installer::REDIRECTS_ENABLED_OPTION ); ?>" value="0">
+								<label>
+									<input type="checkbox" name="<?php echo esc_attr( Installer::REDIRECTS_ENABLED_OPTION ); ?>" value="1" <?php checked( (bool) get_option( Installer::REDIRECTS_ENABLED_OPTION ) ); ?>>
+									<?php echo esc_html__( 'Enable reading redirects across providers, and creating them when content writes are also enabled (off by default).', 'wp-content-bridge' ); ?>
+								</label>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+				<p id="wpcb-redirects-enabled-help" class="description"><?php echo esc_html__( 'Requires the Manage redirects capability, plus an active redirect provider (Redirection, or Yoast SEO Premium) and that provider\'s own permission. Reading is available with this switch alone; creating additionally requires the content-writes master switch. A site running both plugins has two live redirect engines, so every result names which provider holds a path.', 'wp-content-bridge' ); ?></p>
 
 				<h2><?php echo esc_html__( 'llms.txt publication', 'wp-content-bridge' ); ?></h2>
 				<table class="widefat striped" aria-describedby="wpcb-llms-enabled-help">
@@ -1178,14 +1206,15 @@ final readonly class ContentAccessSettingsPage {
 	 */
 	private function integration_capability_labels(): array {
 		return array(
-			IntegrationCapability::READ_CONTENT->value    => esc_html__( 'Read content, SEO, editorial context, and diagnostics', 'wp-content-bridge' ),
-			IntegrationCapability::READ_MEDIA->value      => esc_html__( 'Read the authorized media library', 'wp-content-bridge' ),
-			IntegrationCapability::READ_PATTERNS->value   => esc_html__( 'Read registered block patterns (also requires native editor access)', 'wp-content-bridge' ),
-			IntegrationCapability::EDIT_CONTENT->value    => esc_html__( 'Create drafts and update content', 'wp-content-bridge' ),
-			IntegrationCapability::MANAGE_SEO->value      => esc_html__( 'Update supported SEO fields', 'wp-content-bridge' ),
-			IntegrationCapability::PUBLISH_CONTENT->value => esc_html__( 'Publish or schedule through status transition (reserved; not implemented)', 'wp-content-bridge' ),
-			IntegrationCapability::DELETE_CONTENT->value  => esc_html__( 'Move authorized content to trash', 'wp-content-bridge' ),
-			IntegrationCapability::MANAGE_LLMS->value     => esc_html__( 'Read, preview, update, and regenerate llms.txt configuration and publication', 'wp-content-bridge' ),
+			IntegrationCapability::READ_CONTENT->value     => esc_html__( 'Read content, SEO, editorial context, and diagnostics', 'wp-content-bridge' ),
+			IntegrationCapability::READ_MEDIA->value       => esc_html__( 'Read the authorized media library', 'wp-content-bridge' ),
+			IntegrationCapability::READ_PATTERNS->value    => esc_html__( 'Read registered block patterns (also requires native editor access)', 'wp-content-bridge' ),
+			IntegrationCapability::EDIT_CONTENT->value     => esc_html__( 'Create drafts and update content', 'wp-content-bridge' ),
+			IntegrationCapability::MANAGE_SEO->value       => esc_html__( 'Update supported SEO fields', 'wp-content-bridge' ),
+			IntegrationCapability::PUBLISH_CONTENT->value  => esc_html__( 'Publish or schedule through status transition (reserved; not implemented)', 'wp-content-bridge' ),
+			IntegrationCapability::DELETE_CONTENT->value   => esc_html__( 'Move authorized content to trash', 'wp-content-bridge' ),
+			IntegrationCapability::MANAGE_LLMS->value      => esc_html__( 'Read, preview, update, and regenerate llms.txt configuration and publication', 'wp-content-bridge' ),
+			IntegrationCapability::MANAGE_REDIRECTS->value => esc_html__( 'Read redirects across providers and create them in a named provider', 'wp-content-bridge' ),
 		);
 	}
 

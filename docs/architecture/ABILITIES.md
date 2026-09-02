@@ -793,6 +793,93 @@ not registered as another Ability: it accepts no configuration input, does not
 enable publication, and exists only to remove a circular operator prerequisite
 from the local ownership workflow.
 
+## Redirect abilities
+
+Two abilities, both requiring `wpcb_manage_redirects` and the
+`wpcb_redirects_enabled` switch. The write additionally requires the
+`wpcb_writes_enabled` master switch, and the selected backend's own authority:
+Redirection through its scoped permission filters, Yoast SEO Premium through
+its native `wpseo_manage_redirects` — which the Yoast adapter has to check
+itself, because Yoast's redirect manager checks no capability at all.
+
+**The premise these two are shaped by:** a site can run Redirection *and*
+Yoast Premium at the same time, and many do. When it does, **both engines
+serve redirects** — Yoast's handler is gated on `! is_admin()` and
+Redirection's module hooks the front end too — and whichever attaches first
+wins. So a single "active provider" is a fiction for reads and for conflict
+detection, even though a write must still land in exactly one backend.
+
+### `wp-content-bridge/search-redirects`
+
+Read. Input is one exact site-relative `source` path; there is deliberately no
+`provider` parameter, because a read spans every available provider.
+
+The result is **per provider**, not merged. Each entry carries the provider's
+identity and version plus a `state`:
+
+| State | Meaning |
+|---|---|
+| `claimed` | A readable rule exists in this provider. |
+| `free` | This provider answered, and holds nothing for this path. |
+| `not_representable` | A rule exists that this plugin's contract cannot express — a regex-format rule, an off-site target, or a status outside `301`/`302`/`410`. **The path is taken.** |
+| `unavailable` | The provider could not answer. Also **not** "free". |
+
+`held_by` lists the providers holding the path in any form a write must
+respect, and `held_by_multiple` flags the routing hazard that neither plugin's
+own screen shows. `configured_providers` lists every configured provider,
+available or not, so "no provider is installed" stays distinguishable from
+"no redirect exists".
+
+Only `claimed` and `free` are safe to act on. One provider holding an
+unreadable rule never blanks out another provider's readable answer.
+
+### `wp-content-bridge/create-redirect`
+
+Write. `provider` is **required and never inferred** — on a two-plugin site
+that choice decides which engine's rule actually fires, so guessing it would
+make the result unpredictable in exactly the case where it matters most. A
+write addressed to an unavailable provider is refused, never redirected into
+the other one.
+
+Input: `provider`, `source`, `target` (required unless `status` is `410`, and
+rejected when it is), and `status` from `301`/`302`/`410`, defaulting to `301`.
+The result is the rule **as the provider stored it**, not as the caller asked
+for it — the two differ, because Yoast stores a plain origin with both slashes
+trimmed while Redirection keeps the leading slash.
+
+Before anything is written, the provider-neutral guard clears the candidate
+against **every** available provider:
+
+- **Collision** — a source claimed by *any* available provider is refused, and
+  the rejection names which one holds it. Checking only the addressed provider
+  is unsound on a two-plugin site: the write would "succeed" while the other
+  plugin's rule keeps firing.
+- **Chain and loop bound** — the target is resolved through all providers' rules
+  up to three hops. `/a → /b` in one plugin and `/b → /a` in the other is a
+  loop neither plugin can see alone.
+- **Live-content shadow** — a source that is currently served content is
+  refused. This covers the site root and every public post-type archive
+  explicitly, because `url_to_postid()` answers `0` for the root: relying on it
+  alone let a redirect be created **on `/`**, found by a live probe before
+  release. Term archives and other rewrite-driven routes are still not
+  resolved; the reserved list and operator review are the defence there.
+- **Reserved paths** — `wp-json/`, `wp-admin/`, `wp-content/`, `wp-includes/`,
+  `feed/`, `wp-login.php`, `wp-cron.php`, `wp-signup.php`, `wp-activate.php`,
+  `xmlrpc.php`, `wp-sitemap*`, `robots.txt`, and this plugin's own `llms.txt` /
+  `llms-full.txt`.
+
+Error codes: `wpcb_invalid_input`, `wpcb_forbidden`,
+`wpcb_redirect_source_rejected`, `wpcb_redirect_rule_not_representable`,
+`wpcb_redirect_provider_unavailable`, `wpcb_write_failed`.
+
+Annotations: not `destructive` — it adds routing and loses no content or
+configuration the caller did not supply (ADR 0028) — and not `idempotent`,
+because a second identical call collides with the rule the first one created.
+
+The audit row records field **names** only (`source`, `target`, `status`,
+`provider`) with `object_type` `redirect` and no object ID, since a redirect is
+not a post.
+
 ## Status transition abilities
 
 Two abilities implement ADR 0015's semantic status workflow, shaped by ADR 0024.
@@ -913,7 +1000,7 @@ retried ordinary refusals as transient and monitoring read them as an outage.
 | 400 | The request is wrong: malformed input, an unusable reference inside the input, or an address that does not resolve within the addressed object | `wpcb_invalid_input`, `wpcb_invalid_selector`, `wpcb_invalid_blocks`, `wpcb_invalid_custom_schema`, `wpcb_block_mismatch`, `wpcb_block_path_not_found`, `wpcb_seo_field_unsupported`, `wpcb_seo_image_unavailable`, `wpcb_redirect_source_rejected` |
 | 403 | The principal is not permitted | `wpcb_forbidden` |
 | 404 | The addressed object does not exist **or is not visible to this principal** | `wpcb_content_unavailable`, `wpcb_media_unavailable`, `wpcb_pattern_unavailable` |
-| 409 | Stored state conflicts with the request; re-read and retry | `wpcb_conflict`, `wpcb_invalid_state` |
+| 409 | Stored state conflicts with the request; re-read and retry | `wpcb_conflict`, `wpcb_invalid_state`, `wpcb_redirect_rule_not_representable` |
 | 413 | A declared payload bound would be exceeded | `wpcb_content_too_large`, `wpcb_pattern_content_too_large` |
 | 501 | This install cannot implement the operation because an optional provider or a WordPress feature it needs is absent. Deliberately not 503: nothing is overloaded and retrying will not help | `wpcb_service_schema_unavailable`, `wpcb_custom_schema_unavailable`, `wpcb_seo_data_unavailable`, `wpcb_trash_unavailable`, `wpcb_redirect_provider_unavailable` |
 | 500 | The plugin or WordPress failed | `wpcb_internal_error`, `wpcb_write_failed` |

@@ -52,10 +52,23 @@ final class RedirectCandidateGuardTest extends TestCase {
 	 */
 	public static function provide_reserved_prefixes(): array {
 		return array(
-			'rest api' => array( '/wp-json/wp/v2/posts' ),
-			'admin'    => array( '/wp-admin/edit.php' ),
-			'content'  => array( '/wp-content/uploads/x.jpg' ),
-			'feed'     => array( '/feed/rss2' ),
+			'rest api'      => array( '/wp-json/wp/v2/posts' ),
+			'admin'         => array( '/wp-admin/edit.php' ),
+			'content'       => array( '/wp-content/uploads/x.jpg' ),
+			'includes'      => array( '/wp-includes/js/x.js' ),
+			'feed'          => array( '/feed/rss2' ),
+			'login'         => array( '/wp-login.php' ),
+			'cron'          => array( '/wp-cron.php' ),
+			'signup'        => array( '/wp-signup.php' ),
+			'activate'      => array( '/wp-activate.php' ),
+			'xmlrpc'        => array( '/xmlrpc.php' ),
+			'core sitemap'  => array( '/wp-sitemap.xml' ),
+			'sitemap index' => array( '/wp-sitemap-posts-post-1.xml' ),
+			'robots'        => array( '/robots.txt' ),
+			// This plugin's own public endpoint: shadowing it would disable a
+			// feature the same plugin serves.
+			'llms'          => array( '/llms.txt' ),
+			'llms full'     => array( '/llms-full.txt' ),
 		);
 	}
 
