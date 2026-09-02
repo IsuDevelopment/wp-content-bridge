@@ -39,6 +39,7 @@ final class YoastPremiumRedirectProviderTest extends TestCase {
 	protected function setUp(): void {
 		WPSEO_Redirect_Manager::$stored        = array();
 		WPSEO_Redirect_Manager::$refuse_create = false;
+		WPSEO_Redirect_Manager::$refuse_write  = false;
 		WPSEO_Redirect_Manager::$saves         = 0;
 		$GLOBALS['wpcb_test_capabilities']     = array( 'wpseo_manage_redirects' );
 	}
@@ -172,6 +173,75 @@ final class YoastPremiumRedirectProviderTest extends TestCase {
 		$this->expectException( RedirectProviderUnavailable::class );
 
 		$this->provider()->create( $this->candidate( '/old-page', '/new-page' ) );
+	}
+
+	/**
+	 * An update replaces target and status and persists through the manager,
+	 * so the derived export options the front end reads are regenerated.
+	 */
+	public function test_updates_an_existing_rule_and_persists(): void {
+		$provider = $this->provider();
+		$provider->create( $this->candidate( '/old-page', '/first' ) );
+		WPSEO_Redirect_Manager::$saves = 0;
+
+		$updated = $provider->update(
+			new RedirectSourcePath( '/old-page' ),
+			$this->candidate( '/old-page', '/second' )
+		);
+
+		self::assertSame( '/second', $updated->target?->value() );
+		self::assertGreaterThan( 0, WPSEO_Redirect_Manager::$saves );
+		self::assertSame( '/second', $provider->search( new RedirectSourcePath( '/old-page' ) )?->target?->value() );
+	}
+
+	/**
+	 * Updating a source Premium does not hold is reported, not silently
+	 * turned into a create.
+	 */
+	public function test_refuses_to_update_a_rule_that_does_not_exist(): void {
+		$this->expectException( RedirectProviderUnavailable::class );
+
+		$this->provider()->update(
+			new RedirectSourcePath( '/never-existed' ),
+			$this->candidate( '/never-existed', '/somewhere' )
+		);
+	}
+
+	/**
+	 * A delete removes the rule, confirmed by reading back.
+	 */
+	public function test_deletes_an_existing_rule(): void {
+		$provider = $this->provider();
+		$provider->create( $this->candidate( '/old-page', '/new-page' ) );
+
+		$provider->delete( new RedirectSourcePath( '/old-page' ) );
+
+		self::assertNull( $provider->search( new RedirectSourcePath( '/old-page' ) ) );
+	}
+
+	/**
+	 * Deleting a source Premium does not hold is reported rather than
+	 * answered as success.
+	 */
+	public function test_refuses_to_delete_a_rule_that_does_not_exist(): void {
+		$this->expectException( RedirectProviderUnavailable::class );
+
+		$this->provider()->delete( new RedirectSourcePath( '/never-existed' ) );
+	}
+
+	/**
+	 * Premium's `delete_redirects()` reports whether *any* removal happened,
+	 * not whether this one did, so the adapter reads back and refuses to
+	 * report success for a rule that is still there.
+	 */
+	public function test_reports_a_delete_that_did_not_persist(): void {
+		$provider = $this->provider();
+		$provider->create( $this->candidate( '/old-page', '/new-page' ) );
+		WPSEO_Redirect_Manager::$refuse_write = true;
+
+		$this->expectException( RedirectProviderUnavailable::class );
+
+		$provider->delete( new RedirectSourcePath( '/old-page' ) );
 	}
 
 	/**

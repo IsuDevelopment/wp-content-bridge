@@ -16,6 +16,7 @@ use IsuDev\WPContentBridge\Application\Redirect\RedirectProviderUnavailable;
 use IsuDev\WPContentBridge\Domain\Redirect\RedirectProviderStatus;
 use IsuDev\WPContentBridge\Domain\Redirect\RedirectRule;
 use IsuDev\WPContentBridge\Domain\Redirect\RedirectSourcePath;
+use IsuDev\WPContentBridge\Tests\Support\RecordingRedirectProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -122,63 +123,13 @@ final class RedirectProviderRegistryTest extends TestCase {
 	}
 
 	/**
-	 * Creates a provider fake with deterministic availability.
+	 * Creates a provider double with deterministic availability.
 	 *
 	 * @param string $name      Provider slug.
 	 * @param bool   $available Availability flag.
 	 * @return RedirectProvider
 	 */
 	private function provider( string $name, bool $available ): RedirectProvider {
-		return new class( $name, $available ) implements RedirectProvider {
-
-			/**
-			 * Creates the fake.
-			 *
-			 * @param string $name      Provider slug.
-			 * @param bool   $available Availability flag.
-			 */
-			public function __construct( private string $name, private bool $available ) {
-			}
-
-			/**
-			 * Returns configured availability.
-			 *
-			 * @return bool
-			 */
-			public function is_available(): bool {
-				return $this->available;
-			}
-
-			/**
-			 * Returns fake status.
-			 *
-			 * @return RedirectProviderStatus
-			 */
-			public function status(): RedirectProviderStatus {
-				return new RedirectProviderStatus( $this->name, '1.0', $this->available, array() );
-			}
-
-			/**
-			 * Never used by any test that exercises a real search result.
-			 *
-			 * @param RedirectSourcePath $source Unused source.
-			 * @return RedirectRule|null
-			 */
-			public function search( RedirectSourcePath $source ): ?RedirectRule {
-				unset( $source );
-
-				return null;
-			}
-
-			/**
-			 * Never used by any test that exercises a real create result.
-			 *
-			 * @param RedirectRule $candidate Candidate rule.
-			 * @return RedirectRule
-			 */
-			public function create( RedirectRule $candidate ): RedirectRule {
-				return $candidate;
-			}
-		};
+		return new RecordingRedirectProvider( $name, array(), $available );
 	}
 }

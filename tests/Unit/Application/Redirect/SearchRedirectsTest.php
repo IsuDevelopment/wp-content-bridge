@@ -22,6 +22,8 @@ use IsuDev\WPContentBridge\Domain\Redirect\RedirectRule;
 use IsuDev\WPContentBridge\Domain\Redirect\RedirectSourcePath;
 use IsuDev\WPContentBridge\Domain\Redirect\RedirectStatusCode;
 use IsuDev\WPContentBridge\Domain\Redirect\RedirectTargetUrl;
+use IsuDev\WPContentBridge\Tests\Support\RecordingRedirectProvider;
+use IsuDev\WPContentBridge\Tests\Support\RefusingRedirectProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -132,7 +134,7 @@ final class SearchRedirectsTest extends TestCase {
 	}
 
 	/**
-	 * Builds a provider fake over a fixed rule map.
+	 * Builds a provider double over a fixed rule map.
 	 *
 	 * @param string                      $slug      Provider slug.
 	 * @param array<string, RedirectRule> $existing  Rules keyed by source path.
@@ -140,56 +142,7 @@ final class SearchRedirectsTest extends TestCase {
 	 * @return RedirectProvider
 	 */
 	private function provider( string $slug, array $existing, bool $available = true ): RedirectProvider {
-		return new class( $slug, $existing, $available ) implements RedirectProvider {
-
-			/**
-			 * Creates the fake.
-			 *
-			 * @param string                      $slug      Provider slug.
-			 * @param array<string, RedirectRule> $existing  Rules keyed by source path.
-			 * @param bool                        $available Availability flag.
-			 */
-			public function __construct( private string $slug, private array $existing, private bool $available ) {
-			}
-
-			/**
-			 * Returns configured availability.
-			 *
-			 * @return bool
-			 */
-			public function is_available(): bool {
-				return $this->available;
-			}
-
-			/**
-			 * Returns fake status.
-			 *
-			 * @return RedirectProviderStatus
-			 */
-			public function status(): RedirectProviderStatus {
-				return new RedirectProviderStatus( $this->slug, '1.0', $this->available, array() );
-			}
-
-			/**
-			 * Looks up a rule by exact source path.
-			 *
-			 * @param RedirectSourcePath $source Exact source path.
-			 * @return RedirectRule|null
-			 */
-			public function search( RedirectSourcePath $source ): ?RedirectRule {
-				return $this->existing[ $source->value() ] ?? null;
-			}
-
-			/**
-			 * Not exercised here.
-			 *
-			 * @param RedirectRule $candidate Candidate rule.
-			 * @return RedirectRule
-			 */
-			public function create( RedirectRule $candidate ): RedirectRule {
-				return $candidate;
-			}
-		};
+		return new RecordingRedirectProvider( $slug, $existing, $available );
 	}
 
 	/**
@@ -199,58 +152,7 @@ final class SearchRedirectsTest extends TestCase {
 	 * @return RedirectProvider
 	 */
 	private function unreadable_provider( string $slug ): RedirectProvider {
-		return new class( $slug ) implements RedirectProvider {
-
-			/**
-			 * Creates the fake.
-			 *
-			 * @param string $slug Provider slug.
-			 */
-			public function __construct( private string $slug ) {
-			}
-
-			/**
-			 * Always available.
-			 *
-			 * @return bool
-			 */
-			public function is_available(): bool {
-				return true;
-			}
-
-			/**
-			 * Returns fake status.
-			 *
-			 * @return RedirectProviderStatus
-			 */
-			public function status(): RedirectProviderStatus {
-				return new RedirectProviderStatus( $this->slug, '1.0', true, array() );
-			}
-
-			/**
-			 * Holds a rule this contract cannot express.
-			 *
-			 * @param RedirectSourcePath $source Unused source.
-			 * @throws RedirectRuleNotRepresentable Always.
-			 */
-			public function search( RedirectSourcePath $source ): never {
-				unset( $source );
-
-				throw new RedirectRuleNotRepresentable( 'regex rule' );
-			}
-
-			/**
-			 * Not exercised here.
-			 *
-			 * @param RedirectRule $candidate Unused candidate.
-			 * @throws RedirectRuleNotRepresentable Always.
-			 */
-			public function create( RedirectRule $candidate ): never {
-				unset( $candidate );
-
-				throw new RedirectRuleNotRepresentable( 'regex rule' );
-			}
-		};
+		return new RefusingRedirectProvider( $slug, RefusingRedirectProvider::NOT_REPRESENTABLE );
 	}
 
 	/**
@@ -260,57 +162,6 @@ final class SearchRedirectsTest extends TestCase {
 	 * @return RedirectProvider
 	 */
 	private function failing_provider( string $slug ): RedirectProvider {
-		return new class( $slug ) implements RedirectProvider {
-
-			/**
-			 * Creates the fake.
-			 *
-			 * @param string $slug Provider slug.
-			 */
-			public function __construct( private string $slug ) {
-			}
-
-			/**
-			 * Reported available, then fails.
-			 *
-			 * @return bool
-			 */
-			public function is_available(): bool {
-				return true;
-			}
-
-			/**
-			 * Returns fake status.
-			 *
-			 * @return RedirectProviderStatus
-			 */
-			public function status(): RedirectProviderStatus {
-				return new RedirectProviderStatus( $this->slug, '1.0', true, array() );
-			}
-
-			/**
-			 * Always fails.
-			 *
-			 * @param RedirectSourcePath $source Unused source.
-			 * @throws RedirectProviderUnavailable Always.
-			 */
-			public function search( RedirectSourcePath $source ): never {
-				unset( $source );
-
-				throw new RedirectProviderUnavailable( 'gone mid-request' );
-			}
-
-			/**
-			 * Always fails.
-			 *
-			 * @param RedirectRule $candidate Unused candidate.
-			 * @throws RedirectProviderUnavailable Always.
-			 */
-			public function create( RedirectRule $candidate ): never {
-				unset( $candidate );
-
-				throw new RedirectProviderUnavailable( 'gone mid-request' );
-			}
-		};
+		return new RefusingRedirectProvider( $slug, RefusingRedirectProvider::UNAVAILABLE );
 	}
 }

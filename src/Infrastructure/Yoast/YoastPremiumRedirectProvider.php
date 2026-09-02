@@ -87,7 +87,7 @@ final class YoastPremiumRedirectProvider implements RedirectProvider {
 		}
 
 		$required = array(
-			self::MANAGER_CLASS  => array( 'get_redirect', 'create_redirect', 'save_redirects' ),
+			self::MANAGER_CLASS  => array( 'get_redirect', 'create_redirect', 'update_redirect', 'delete_redirects', 'save_redirects' ),
 			self::REDIRECT_CLASS => array( 'get_origin', 'get_target', 'get_type', 'get_format' ),
 		);
 
@@ -116,7 +116,7 @@ final class YoastPremiumRedirectProvider implements RedirectProvider {
 			$version  = is_string( $constant ) && '' !== $constant ? $constant : null;
 		}
 
-		return new RedirectProviderStatus( 'yoast-premium', $version, $available, array( 'search', 'create' ) );
+		return new RedirectProviderStatus( 'yoast-premium', $version, $available, array( 'search', 'create', 'update', 'delete' ) );
 	}
 
 	/**
@@ -183,6 +183,77 @@ final class YoastPremiumRedirectProvider implements RedirectProvider {
 		}
 
 		return $this->map_to_rule( $stored );
+	}
+
+	/**
+	 * Replaces the target and status of the rule for an exact source path.
+	 *
+	 * @param RedirectSourcePath $source      Source path of the rule to change.
+	 * @param RedirectRule       $replacement Desired end state.
+	 * @return RedirectRule
+	 * @throws RedirectProviderUnavailable When no such rule exists or the write did not persist.
+	 */
+	public function update( RedirectSourcePath $source, RedirectRule $replacement ): RedirectRule {
+		$this->assert_available();
+		$this->assert_authorized();
+
+		$origin  = self::to_provider_origin( $source->value() );
+		$manager = $this->manager();
+		$current = self::call( $manager, 'get_redirect', array( $origin ) );
+
+		if ( ! is_object( $current ) ) {
+			throw new RedirectProviderUnavailable( 'Yoast SEO Premium holds no redirect for this source path.' );
+		}
+
+		$redirect_class = self::REDIRECT_CLASS;
+		$formats_class  = self::FORMATS_CLASS;
+		$updated        = new $redirect_class(
+			$origin,
+			RedirectStatusCode::GONE === $replacement->status ? '' : (string) $replacement->target?->value(),
+			$replacement->status->value,
+			constant( $formats_class . '::PLAIN' )
+		);
+
+		// `update_redirect()` calls `save_redirects()` itself, so the derived
+		// export options the front end reads are regenerated with it.
+		if ( true !== self::call( $manager, 'update_redirect', array( $current, $updated ) ) ) {
+			throw new RedirectProviderUnavailable( 'Yoast SEO Premium refused the redirect update request.' );
+		}
+
+		$stored = self::call( $manager, 'get_redirect', array( $origin ) );
+		if ( ! is_object( $stored ) ) {
+			throw new RedirectProviderUnavailable( 'Yoast SEO Premium did not return the updated redirect.' );
+		}
+
+		return $this->map_to_rule( $stored );
+	}
+
+	/**
+	 * Removes the rule for an exact source path.
+	 *
+	 * @param RedirectSourcePath $source Source path of the rule to remove.
+	 * @return void
+	 * @throws RedirectProviderUnavailable When no such rule exists or the removal did not persist.
+	 */
+	public function delete( RedirectSourcePath $source ): void {
+		$this->assert_available();
+		$this->assert_authorized();
+
+		$origin  = self::to_provider_origin( $source->value() );
+		$manager = $this->manager();
+		$current = self::call( $manager, 'get_redirect', array( $origin ) );
+
+		if ( ! is_object( $current ) ) {
+			throw new RedirectProviderUnavailable( 'Yoast SEO Premium holds no redirect for this source path.' );
+		}
+
+		self::call( $manager, 'delete_redirects', array( array( $current ) ) );
+
+		// Read back rather than trusting the return value: the manager reports
+		// whether *any* deletion happened, not whether this one did.
+		if ( is_object( self::call( $manager, 'get_redirect', array( $origin ) ) ) ) {
+			throw new RedirectProviderUnavailable( 'Yoast SEO Premium did not remove the redirect.' );
+		}
 	}
 
 	/**

@@ -29,6 +29,20 @@ final class RecordingRedirectProvider implements RedirectProvider {
 	public array $created = array();
 
 	/**
+	 * Rules this provider stored through `update()`, in order.
+	 *
+	 * @var list<RedirectRule>
+	 */
+	public array $updated = array();
+
+	/**
+	 * Source paths this provider removed, in order.
+	 *
+	 * @var list<string>
+	 */
+	public array $deleted = array();
+
+	/**
 	 * Creates the fake.
 	 *
 	 * @param string                      $slug      Provider slug.
@@ -76,6 +90,58 @@ final class RecordingRedirectProvider implements RedirectProvider {
 	}
 
 	/**
+	 * Replaces the rule for a source path.
+	 *
+	 * @param RedirectSourcePath $source      Source path.
+	 * @param RedirectRule       $replacement Desired end state.
+	 * @return RedirectRule
+	 * @throws RedirectProviderUnavailable When unavailable or holding no such rule.
+	 */
+	public function update( RedirectSourcePath $source, RedirectRule $replacement ): RedirectRule {
+		if ( ! $this->available ) {
+			throw new RedirectProviderUnavailable( 'unavailable fake' );
+		}
+
+		if ( ! isset( $this->existing[ $source->value() ] ) ) {
+			throw new RedirectProviderUnavailable( 'no such rule in fake' );
+		}
+
+		$stored = new RedirectRule(
+			$this->slug . ':1',
+			$source,
+			$replacement->status,
+			$replacement->target,
+			true,
+			$this->status()
+		);
+
+		$this->existing[ $source->value() ] = $stored;
+		$this->updated[]                    = $stored;
+
+		return $stored;
+	}
+
+	/**
+	 * Removes the rule for a source path.
+	 *
+	 * @param RedirectSourcePath $source Source path.
+	 * @return void
+	 * @throws RedirectProviderUnavailable When unavailable or holding no such rule.
+	 */
+	public function delete( RedirectSourcePath $source ): void {
+		if ( ! $this->available ) {
+			throw new RedirectProviderUnavailable( 'unavailable fake' );
+		}
+
+		if ( ! isset( $this->existing[ $source->value() ] ) ) {
+			throw new RedirectProviderUnavailable( 'no such rule in fake' );
+		}
+
+		unset( $this->existing[ $source->value() ] );
+		$this->deleted[] = $source->value();
+	}
+
+	/**
 	 * Records the create and returns the rule with an assigned identity.
 	 *
 	 * @param RedirectRule $candidate Candidate rule.
@@ -89,7 +155,7 @@ final class RecordingRedirectProvider implements RedirectProvider {
 
 		$this->created[] = $candidate;
 
-		return new RedirectRule(
+		$stored = new RedirectRule(
 			$this->slug . ':1',
 			$candidate->source,
 			$candidate->status,
@@ -97,5 +163,9 @@ final class RecordingRedirectProvider implements RedirectProvider {
 			true,
 			$this->status()
 		);
+
+		$this->existing[ $candidate->source->value() ] = $stored;
+
+		return $stored;
 	}
 }

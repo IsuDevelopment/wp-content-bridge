@@ -99,6 +99,29 @@ final class RedirectCandidateGuard {
 	}
 
 	/**
+	 * Rejects an update whose new target would create a loop or an
+	 * unresolvable chain.
+	 *
+	 * Deliberately narrower than `assert_creatable()`. Collision and the
+	 * live-content shadow are not re-checked: the rule already exists at that
+	 * source, so the source is by definition already claimed, and re-running
+	 * those checks would make every existing rule impossible to fix — which
+	 * matters most for the rules that need fixing.
+	 *
+	 * @param RedirectRule       $replacement Desired end state for an existing source.
+	 * @param RedirectRuleLookup $existing    Cross-provider lookup.
+	 * @return void
+	 * @throws RedirectSourceRejected When the new target loops or does not resolve.
+	 */
+	public function assert_updatable( RedirectRule $replacement, RedirectRuleLookup $existing ): void {
+		if ( null === $replacement->target ) {
+			return;
+		}
+
+		self::assert_no_loop( $replacement->source->value(), $replacement->target->value(), $existing );
+	}
+
+	/**
 	 * Rejects a source under a reserved prefix.
 	 *
 	 * @param string $source Candidate source path.

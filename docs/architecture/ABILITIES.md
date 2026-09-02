@@ -880,6 +880,41 @@ The audit row records field **names** only (`source`, `target`, `status`,
 `provider`) with `object_type` `redirect` and no object ID, since a redirect is
 not a post.
 
+### `wp-content-bridge/update-redirect`
+
+Write. Changes the `target` and `status` of the rule answering an existing
+`source`, in the named `provider`. **The source is not changeable here**:
+moving a rule to a different source needs the full candidate guard an update
+deliberately skips, so that is a delete plus a create.
+
+The guard is narrower than on create, and the narrowing is the point.
+Collision and the live-content shadow are **not** re-checked: the rule already
+exists at that source, so the source is by definition already claimed, and
+re-running those checks would make every existing rule impossible to fix —
+which matters most for the rules that need fixing. The cross-provider
+chain/loop bound still applies to the new target.
+
+Updating a source the named provider does not hold is an error, never silently
+turned into a create.
+
+### `wp-content-bridge/delete-redirect`
+
+Write, and **`destructive`** under ADR 0028: the rule's target and status are
+configuration the caller did not supply, and removal is not reversible from
+this plugin.
+
+Removal, not disabling. Yoast Premium stores no per-rule enabled flag, so a
+rule it holds is always live and a "disable" operation could not mean the same
+thing in both backends; one operation that means the same everywhere is worth
+more than two that quietly differ.
+
+Only the named provider is touched, even when both engines hold the same path —
+a caller cleaning up one engine must not have the other's rule removed
+underneath it. Removing a rule that is not there is an error, not a quiet
+success: success would tell a caller the path is clear when another engine may
+still hold it. Both adapters confirm removal by re-reading the provider rather
+than trusting its "rows touched" answer, so `deleted` is only ever `true`.
+
 ## Status transition abilities
 
 Two abilities implement ADR 0015's semantic status workflow, shaped by ADR 0024.

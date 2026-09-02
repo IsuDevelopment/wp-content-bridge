@@ -3242,6 +3242,110 @@ final class AbilitySchemas {
 	}
 
 	/**
+	 * Returns the update-redirect input schema.
+	 *
+	 * The source is the identity and cannot be changed here: moving a rule to
+	 * a different source needs the full candidate guard an update skips, so it
+	 * is a delete plus a create.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_redirect_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'provider', 'source' ),
+			'properties'           => array(
+				'provider' => array(
+					'description' => 'Provider slug holding the rule, from search-redirects.',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 64,
+				),
+				'source'   => array(
+					'description' => 'Exact site-relative source path of the existing rule. Not changed by this ability.',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 2048,
+				),
+				'target'   => array(
+					'description' => 'New site-relative destination. Required unless status is 410, and rejected when it is.',
+					'type'        => 'string',
+					'maxLength'   => 2048,
+				),
+				'status'   => array(
+					'description' => 'New HTTP status. Defaults to 301.',
+					'type'        => 'integer',
+					'enum'        => array( 301, 302, 410 ),
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the update-redirect result schema: the rule as the provider
+	 * stored it after the change.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_redirect_output(): array {
+		return self::redirect_rule();
+	}
+
+	/**
+	 * Returns the delete-redirect input schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function delete_redirect_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'provider', 'source' ),
+			'properties'           => array(
+				'provider' => array(
+					'description' => 'Provider slug holding the rule, from search-redirects.',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 64,
+				),
+				'source'   => array(
+					'description' => 'Exact site-relative source path of the rule to remove.',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 2048,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the delete-redirect result schema. `deleted` is only ever true:
+	 * the adapters confirm removal by reading back, so a failure is an error,
+	 * never a result with `deleted` false.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function delete_redirect_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'deleted', 'source', 'provider' ),
+			'properties'           => array(
+				'deleted'  => array(
+					'description' => 'Always true. Removal is confirmed by re-reading the provider, so an unremoved rule is an error rather than a false result.',
+					'type'        => 'boolean',
+				),
+				'source'   => array(
+					'description' => 'The source path whose rule was removed.',
+					'type'        => 'string',
+				),
+				'provider' => self::redirect_provider_status(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
 	 * Widens an object schema to also accept `null`.
 	 *
 	 * @param array $schema Object schema to widen.

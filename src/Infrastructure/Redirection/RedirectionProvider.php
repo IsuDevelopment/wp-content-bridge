@@ -91,7 +91,7 @@ final class RedirectionProvider implements RedirectProvider {
 			}
 		}
 
-		return new RedirectProviderStatus( 'redirection', $version, $available, array( 'search', 'create' ) );
+		return new RedirectProviderStatus( 'redirection', $version, $available, array( 'search', 'create', 'update', 'delete' ) );
 	}
 
 	/**
@@ -152,9 +152,7 @@ final class RedirectionProvider implements RedirectProvider {
 				}
 				$response = rest_do_request( $request );
 				if ( $response->get_status() >= 400 ) {
-					$data    = $response->get_data();
-					$message = is_array( $data ) && is_string( $data['message'] ?? null ) ? $data['message'] : 'unknown error';
-					throw new RedirectProviderUnavailable( 'Redirection rejected the create request: ' . esc_html( $message ) );
+					throw new RedirectProviderUnavailable( 'Redirection rejected the create request: ' . esc_html( self::response_message( $response->get_data() ) ) );
 				}
 
 				// POST /redirect returns the same {items, total} list shape as
@@ -169,6 +167,116 @@ final class RedirectionProvider implements RedirectProvider {
 				return self::map_item_to_rule( $match, $status, $this->site_url );
 			}
 		);
+	}
+
+	/**
+	 * Replaces the target and status of the rule for an exact source path.
+	 *
+	 * @param RedirectSourcePath $source      Source path of the rule to change.
+	 * @param RedirectRule       $replacement Desired end state.
+	 * @return RedirectRule
+	 * @throws RedirectProviderUnavailable When Redirection is not active, holds no such rule, or refused the write.
+	 */
+	public function update( RedirectSourcePath $source, RedirectRule $replacement ): RedirectRule {
+		if ( ! $this->is_available() ) {
+			throw new RedirectProviderUnavailable( 'Redirection is not active.' );
+		}
+
+		$normalized = new RedirectSourcePath( self::normalize_trailing_slash( $source->value(), $this->uses_trailing_slashes() ) );
+		$current    = $this->search( $normalized );
+		if ( null === $current || null === $current->id ) {
+			throw new RedirectProviderUnavailable( 'Redirection holds no redirect for this source path.' );
+		}
+
+		$desired = new RedirectRule(
+			$current->id,
+			$normalized,
+			$replacement->status,
+			$replacement->target,
+			$replacement->enabled,
+			$replacement->provider
+		);
+		$status  = $this->status();
+
+		return $this->with_scoped_capability(
+			array( 'redirection_cap_redirect_add' ),
+			function () use ( $current, $desired, $normalized, $status ): RedirectRule {
+				$request = new WP_REST_Request( 'POST', '/' . self::REST_NAMESPACE . '/redirect/' . $current->id );
+				foreach ( self::build_create_payload( $desired ) as $key => $value ) {
+					$request->set_param( $key, $value );
+				}
+				$response = rest_do_request( $request );
+				if ( $response->get_status() >= 400 ) {
+					throw new RedirectProviderUnavailable( 'Redirection rejected the update request: ' . esc_html( self::response_message( $response->get_data() ) ) );
+				}
+
+				// The update route answers with the item, but read it back the
+				// same way create() does rather than trusting either shape.
+				$match = self::find_exact_match( self::response_items( $response->get_data() ), $normalized->value() );
+				if ( null === $match ) {
+					$reread = $this->search( $normalized );
+					if ( null === $reread ) {
+						throw new RedirectProviderUnavailable( 'Redirection did not return the updated redirect.' );
+					}
+
+					return $reread;
+				}
+
+				return self::map_item_to_rule( $match, $status, $this->site_url );
+			}
+		);
+	}
+
+	/**
+	 * Removes the rule for an exact source path.
+	 *
+	 * @param RedirectSourcePath $source Source path of the rule to remove.
+	 * @return void
+	 * @throws RedirectProviderUnavailable When Redirection is not active, holds no such rule, or refused the removal.
+	 */
+	public function delete( RedirectSourcePath $source ): void {
+		if ( ! $this->is_available() ) {
+			throw new RedirectProviderUnavailable( 'Redirection is not active.' );
+		}
+
+		$normalized = new RedirectSourcePath( self::normalize_trailing_slash( $source->value(), $this->uses_trailing_slashes() ) );
+		$current    = $this->search( $normalized );
+		if ( null === $current || null === $current->id ) {
+			throw new RedirectProviderUnavailable( 'Redirection holds no redirect for this source path.' );
+		}
+
+		// Deleting is gated by its own permission in Redirection
+		// (`redirection_cap_redirect_delete`), not by the add permission the
+		// other bulk actions use, so this call scopes only that one.
+		$this->with_scoped_capability(
+			array( 'redirection_cap_redirect_delete' ),
+			function () use ( $current, $normalized ): bool {
+				$request = new WP_REST_Request( 'POST', '/' . self::REST_NAMESPACE . '/bulk/redirect/delete' );
+				$request->set_param( 'items', array( (int) $current->id ) );
+				$response = rest_do_request( $request );
+				if ( $response->get_status() >= 400 ) {
+					throw new RedirectProviderUnavailable( 'Redirection rejected the delete request: ' . esc_html( self::response_message( $response->get_data() ) ) );
+				}
+
+				// The bulk route reports how many rows it touched, which is not
+				// the same as this row being gone, so confirm by reading back.
+				if ( null !== $this->search( $normalized ) ) {
+					throw new RedirectProviderUnavailable( 'Redirection did not remove the redirect.' );
+				}
+
+				return true;
+			}
+		);
+	}
+
+	/**
+	 * Extracts a human-readable message from an error response body.
+	 *
+	 * @param mixed $data Untrusted REST response data.
+	 * @return string
+	 */
+	private static function response_message( mixed $data ): string {
+		return is_array( $data ) && is_string( $data['message'] ?? null ) ? $data['message'] : 'unknown error';
 	}
 
 	/**

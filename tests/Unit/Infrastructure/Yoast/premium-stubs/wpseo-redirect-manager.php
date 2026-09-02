@@ -28,6 +28,13 @@ if ( ! class_exists( 'WPSEO_Redirect_Manager' ) ) {
 		public static bool $refuse_create = false;
 
 		/**
+		 * Whether update and delete should report failure.
+		 *
+		 * @var bool
+		 */
+		public static bool $refuse_write = false;
+
+		/**
 		 * How many times `save_redirects()` ran, so a test can prove a write
 		 * regenerated the derived export options.
 		 *
@@ -70,6 +77,49 @@ if ( ! class_exists( 'WPSEO_Redirect_Manager' ) ) {
 			$this->save_redirects();
 
 			return true;
+		}
+
+		/**
+		 * Replaces one stored redirect and persists.
+		 *
+		 * @param WPSEO_Redirect $current_redirect Redirect to replace.
+		 * @param WPSEO_Redirect $redirect         Replacement redirect.
+		 * @return bool
+		 */
+		public function update_redirect( WPSEO_Redirect $current_redirect, WPSEO_Redirect $redirect ): bool {
+			if ( self::$refuse_write ) {
+				return false;
+			}
+
+			unset( self::$stored[ $current_redirect->get_origin() ] );
+			self::$stored[ $redirect->get_origin() ] = $redirect;
+			$this->save_redirects();
+
+			return true;
+		}
+
+		/**
+		 * Removes redirects and persists. Like Premium's own method, reports
+		 * whether *any* removal happened, not whether a specific one did.
+		 *
+		 * @param array<int, WPSEO_Redirect> $delete_redirects Redirects to remove.
+		 * @return bool
+		 */
+		public function delete_redirects( array $delete_redirects ): bool {
+			$deleted = false;
+
+			foreach ( $delete_redirects as $redirect ) {
+				if ( isset( self::$stored[ $redirect->get_origin() ] ) && ! self::$refuse_write ) {
+					unset( self::$stored[ $redirect->get_origin() ] );
+					$deleted = true;
+				}
+			}
+
+			if ( $deleted ) {
+				$this->save_redirects();
+			}
+
+			return $deleted;
 		}
 
 		/**

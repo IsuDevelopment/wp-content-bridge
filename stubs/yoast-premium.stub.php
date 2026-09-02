@@ -123,6 +123,26 @@ namespace {
 		}
 
 		/**
+		 * Replaces one stored redirect and persists.
+		 *
+		 * @param WPSEO_Redirect $current_redirect Redirect to replace.
+		 * @param WPSEO_Redirect $redirect         Replacement redirect.
+		 * @return bool
+		 */
+		public function update_redirect( WPSEO_Redirect $current_redirect, WPSEO_Redirect $redirect ): bool {
+		}
+
+		/**
+		 * Removes redirects and persists. Reports whether *any* removal
+		 * happened, not whether a specific one did.
+		 *
+		 * @param array<int, WPSEO_Redirect> $delete_redirects Redirects to remove.
+		 * @return bool
+		 */
+		public function delete_redirects( array $delete_redirects ): bool {
+		}
+
+		/**
 		 * Persists the redirect option and rewrites the derived exports.
 		 *
 		 * @return void

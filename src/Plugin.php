@@ -11,12 +11,16 @@ namespace IsuDev\WPContentBridge;
 
 use IsuDev\WPContentBridge\Adapter\Admin\ContentAccessSettingsPage;
 use IsuDev\WPContentBridge\Adapter\Abilities\CreateRedirectAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\DeleteRedirectAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\UpdateRedirectAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\SearchRedirectsAbilities;
 use IsuDev\WPContentBridge\Application\Redirect\CreateRedirect;
+use IsuDev\WPContentBridge\Application\Redirect\DeleteRedirect;
 use IsuDev\WPContentBridge\Application\Redirect\NullRedirectProvider;
 use IsuDev\WPContentBridge\Application\Redirect\RedirectCandidateGuard;
 use IsuDev\WPContentBridge\Application\Redirect\RedirectProviderRegistry;
 use IsuDev\WPContentBridge\Application\Redirect\SearchRedirects;
+use IsuDev\WPContentBridge\Application\Redirect\UpdateRedirect;
 use IsuDev\WPContentBridge\Infrastructure\Redirection\RedirectionProvider;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressPublishedPermalinkLookup;
 use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastPremiumRedirectProvider;
@@ -387,14 +391,23 @@ final class Plugin {
 			 * rather than merely refuse at execution time.
 			 */
 			if ( get_option( Installer::WRITES_ENABLED_OPTION ) ) {
+				$redirect_guard = new RedirectCandidateGuard();
+				$redirect_audit = new WordPressAuditLog();
+
 				( new CreateRedirectAbilities(
 					new CreateRedirect(
 						$redirect_providers,
-						new RedirectCandidateGuard(),
+						$redirect_guard,
 						new WordPressPublishedPermalinkLookup(),
-						new WordPressAuditLog(),
+						$redirect_audit,
 						home_url( '/' )
 					)
+				) )->register_hooks();
+				( new UpdateRedirectAbilities(
+					new UpdateRedirect( $redirect_providers, $redirect_guard, $redirect_audit, home_url( '/' ) )
+				) )->register_hooks();
+				( new DeleteRedirectAbilities(
+					new DeleteRedirect( $redirect_providers, $redirect_audit )
 				) )->register_hooks();
 			}
 		}

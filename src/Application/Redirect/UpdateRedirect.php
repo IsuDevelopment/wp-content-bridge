@@ -1,6 +1,6 @@
 <?php
 /**
- * Create one redirect in a named provider.
+ * Change an existing redirect in a named provider.
  *
  * @package IsuDev\WPContentBridge
  */
@@ -19,46 +19,44 @@ use IsuDev\WPContentBridge\Domain\Redirect\RedirectTargetUrl;
 use Throwable;
 
 /**
- * Writes one redirect to the provider the caller named, after the
- * provider-neutral guard has cleared the candidate against **every** available
- * provider (ADR 0026 s4/s5, amended).
+ * Replaces the target and status of the rule answering one source path, in the
+ * provider the caller names.
  *
- * The provider is required input, never inferred. On a two-plugin site the
- * choice decides which engine's rule actually fires, so guessing it would make
- * the result unpredictable in exactly the case where it matters most.
+ * The source is the identity and is never changed here. Moving a rule to a
+ * different source is a delete plus a create, and it has to be, because the
+ * new source needs the full candidate guard — collision, live content,
+ * reserved paths — that an update deliberately skips.
  */
-final readonly class CreateRedirect {
+final readonly class UpdateRedirect {
 
-	public const ABILITY = 'wp-content-bridge/create-redirect';
+	public const ABILITY = 'wp-content-bridge/update-redirect';
 
 	/**
 	 * Creates the use case.
 	 *
-	 * @param RedirectProviderRegistry $registry   Provider registry.
-	 * @param RedirectCandidateGuard   $guard      Provider-neutral safety invariants.
-	 * @param PublishedPermalinkLookup $permalinks Live-content shadow lookup.
-	 * @param AuditLog                 $audit      Redacted audit sink.
-	 * @param string                   $site_url   Canonical site URL.
+	 * @param RedirectProviderRegistry $registry Provider registry.
+	 * @param RedirectCandidateGuard   $guard    Provider-neutral safety invariants.
+	 * @param AuditLog                 $audit    Redacted audit sink.
+	 * @param string                   $site_url Canonical site URL.
 	 */
 	public function __construct(
 		private RedirectProviderRegistry $registry,
 		private RedirectCandidateGuard $guard,
-		private PublishedPermalinkLookup $permalinks,
 		private AuditLog $audit,
 		private string $site_url,
 	) {
 	}
 
 	/**
-	 * Creates one redirect.
+	 * Updates one redirect.
 	 *
-	 * Every failure is audited and re-thrown unchanged, so the adapter maps
-	 * one vocabulary: `InvalidArgumentException` for a malformed candidate,
-	 * `RedirectSourceRejected` for a failed safety invariant,
+	 * Failures are audited and re-thrown unchanged, so the adapter maps one
+	 * vocabulary: `InvalidArgumentException` for malformed input,
+	 * `RedirectSourceRejected` for a target that would loop,
 	 * `RedirectProviderForbidden` for the backend's own capability,
-	 * `RedirectRuleNotRepresentable` for an existing rule outside this
-	 * contract, and `RedirectProviderUnavailable` for a provider that cannot
-	 * write.
+	 * `RedirectRuleNotRepresentable` for a stored rule outside this contract,
+	 * and `RedirectProviderUnavailable` when the provider cannot write or
+	 * holds no such rule.
 	 *
 	 * @param array<string, mixed> $input   Validated ability input.
 	 * @param int                  $user_id Acting principal.
@@ -69,15 +67,12 @@ final readonly class CreateRedirect {
 		$slug = is_string( $input['provider'] ?? null ) ? $input['provider'] : '';
 
 		try {
-			$candidate = $this->candidate( $input, $slug );
-			$provider  = $this->registry->select( $slug );
+			$replacement = $this->replacement( $input, $slug );
+			$provider    = $this->registry->select( $slug );
 
-			// The guard runs against every available provider, not just the
-			// named one: a source already claimed by the other plugin is a
-			// collision even though this write would "succeed".
-			$this->guard->assert_creatable( $candidate, $this->registry->lookup(), $this->permalinks );
+			$this->guard->assert_updatable( $replacement, $this->registry->lookup() );
 
-			$created = $provider->create( $candidate );
+			$updated = $provider->update( $replacement->source, $replacement );
 		} catch ( Throwable $error ) {
 			$this->audit->record(
 				new AuditEvent(
@@ -102,9 +97,7 @@ final readonly class CreateRedirect {
 				self::ABILITY,
 				null,
 				'redirect',
-				// Field names only, never values — a source path is content
-				// the caller supplied, and the audit table stores shapes.
-				array( 'source', 'target', 'status', 'provider' ),
+				array( 'target', 'status', 'provider' ),
 				null,
 				null,
 				'success',
@@ -112,18 +105,18 @@ final readonly class CreateRedirect {
 			)
 		);
 
-		return $created->to_array();
+		return $updated->to_array();
 	}
 
 	/**
-	 * Builds the candidate rule from validated input.
+	 * Builds the desired end state from validated input.
 	 *
 	 * @param array<string, mixed> $input Ability input.
 	 * @param string               $slug  Named provider slug.
 	 * @return RedirectRule
 	 * @throws InvalidArgumentException When any field is invalid.
 	 */
-	private function candidate( array $input, string $slug ): RedirectRule {
+	private function replacement( array $input, string $slug ): RedirectRule {
 		if ( '' === $slug ) {
 			throw new InvalidArgumentException( 'A redirect provider must be named explicitly.' );
 		}
@@ -151,9 +144,6 @@ final readonly class CreateRedirect {
 			$target = new RedirectTargetUrl( $this->site_url, $raw_target );
 		}
 
-		// The candidate carries the *named* provider's status so a rejection
-		// reports the backend the caller addressed, even when the write never
-		// reaches it.
 		return new RedirectRule( null, $source, $status, $target, true, $this->registry->status_for( $slug ) );
 	}
 }

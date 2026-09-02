@@ -140,6 +140,55 @@ path. Requirements and the required mitigations are in the "Future backlog —
 in-editor AI schema assist" section of `docs/plan/IMPLEMENTATION_PLAN.md`. No ADR
 yet, so nothing may be implemented from it.
 
+## Redirect lifecycle complete, and two engines finally verified — 2026-09-02
+
+`update-redirect` and `delete-redirect` join the two abilities below, so a
+redirect can be created, corrected and removed through the bridge. Before this
+an operator could create a rule and then had to leave the bridge to fix a typo
+in it. Both are wired behind the same switches and capability.
+
+**The two-engine case is verified for the first time.** Redirection 5.9.0 was
+temporarily activated alongside Yoast Premium 28.0 on the reference site — the
+configuration this whole design exists for, and one that had only ever been
+covered by unit tests with fakes. All three properties hold against two real
+engines: cross-engine collision (refused, naming the engine that holds the
+path), cross-engine trailing-slash equivalence **in both directions** (one
+engine trims both slashes, the other keeps the leading one, and the same
+logical path still collides), and a loop that hops between engines.
+
+**Redirection is still active on the reference site, with its database
+installed.** It was inactive with no tables before this work. Leave it until
+the ADR 0030 statistics work is done — that needs its 404 log — then restore:
+`wp redirection database remove` and `wp plugin deactivate redirection`.
+
+**The verifier itself had a defect, found by checking the site rather than
+trusting the verifier.** It confirmed cleanup by re-reading the same provider
+object it had just mutated, and only for the exact sources it expected to have
+created — so a **passing** run left two rules on the site. It now purges by
+shared name prefix and re-reads through a fresh provider object, proven clean
+from a separate request. A verifier that lies about leaving state behind is
+worse than no verifier, so this is recorded rather than quietly fixed.
+
+Design notes worth keeping:
+
+- An update runs a **narrower** guard on purpose. Collision and live-content
+  shadow are not re-checked, because the rule already exists at that source;
+  re-running them would make every rule that needs fixing unfixable. The
+  cross-provider loop bound still applies to the new target.
+- The source is not changeable by an update. Moving a rule needs the full
+  candidate guard, so it is a delete plus a create.
+- **Removal, not disabling.** Yoast stores no per-rule enabled flag, so a rule
+  it holds is always live; "disable" could not mean the same thing in both
+  backends, and one operation that means the same everywhere beats two that
+  quietly differ.
+- Delete touches only the named provider even when both engines hold the path,
+  and deleting an absent rule is an error — success would tell a caller the
+  path is clear while another engine still holds it.
+- Both adapters confirm removal by re-reading, because each provider reports
+  "rows touched" rather than whether this row is gone.
+- The four redirect abilities were added to `abilities-runtime-verification`'s
+  closed profile, which caught them as designed on the first full inventory run.
+
 ## Redirect abilities shipped into the tree — 2026-09-02
 
 `search-redirects` and `create-redirect` are registered behind

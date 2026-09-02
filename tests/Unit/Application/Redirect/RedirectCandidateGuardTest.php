@@ -19,6 +19,8 @@ use IsuDev\WPContentBridge\Domain\Redirect\RedirectRule;
 use IsuDev\WPContentBridge\Domain\Redirect\RedirectSourcePath;
 use IsuDev\WPContentBridge\Domain\Redirect\RedirectStatusCode;
 use IsuDev\WPContentBridge\Domain\Redirect\RedirectTargetUrl;
+use IsuDev\WPContentBridge\Tests\Support\FixedPublishedPermalinkLookup;
+use IsuDev\WPContentBridge\Tests\Support\RecordingRedirectProvider;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -267,8 +269,8 @@ final class RedirectCandidateGuardTest extends TestCase {
 	}
 
 	/**
-	 * Builds a single-provider cross-provider lookup, which is what the guard
-	 * consumes on an ordinary one-plugin site.
+	 * Builds a single-provider lookup, which is what the guard consumes on an
+	 * ordinary one-plugin site.
 	 *
 	 * @param array<string, RedirectRule> $existing Existing rules keyed by source path.
 	 * @return RedirectRuleLookup
@@ -278,94 +280,23 @@ final class RedirectCandidateGuardTest extends TestCase {
 	}
 
 	/**
-	 * Builds an always-available provider fake backed by a fixed rule map.
+	 * Builds an available provider double over a fixed rule map.
 	 *
 	 * @param array<string, RedirectRule> $existing Existing rules keyed by source path.
-	 * @param string                      $slug     Provider slug the fake reports.
+	 * @param string                      $slug     Provider slug the double reports.
 	 * @return RedirectProvider
 	 */
 	private function provider( array $existing = array(), string $slug = 'redirection' ): RedirectProvider {
-		$status = $this->provider_status( $slug );
-
-		return new class( $existing, $status ) implements RedirectProvider {
-
-			/**
-			 * Creates the fake.
-			 *
-			 * @param array<string, RedirectRule> $existing Existing rules keyed by source path.
-			 * @param RedirectProviderStatus      $status   Fixed provider status.
-			 */
-			public function __construct( private array $existing, private RedirectProviderStatus $status ) {
-			}
-
-			/**
-			 * Always available.
-			 *
-			 * @return bool
-			 */
-			public function is_available(): bool {
-				return true;
-			}
-
-			/**
-			 * Returns the fixed status.
-			 *
-			 * @return RedirectProviderStatus
-			 */
-			public function status(): RedirectProviderStatus {
-				return $this->status;
-			}
-
-			/**
-			 * Looks up an existing rule by exact source path.
-			 *
-			 * @param RedirectSourcePath $source Exact source path.
-			 * @return RedirectRule|null
-			 */
-			public function search( RedirectSourcePath $source ): ?RedirectRule {
-				return $this->existing[ $source->value() ] ?? null;
-			}
-
-			/**
-			 * Not exercised by any guard test; the guard never calls `create()`.
-			 *
-			 * @param RedirectRule $candidate Candidate rule.
-			 * @return RedirectRule
-			 */
-			public function create( RedirectRule $candidate ): RedirectRule {
-				return $candidate;
-			}
-		};
+		return new RecordingRedirectProvider( $slug, $existing );
 	}
 
 	/**
-	 * Builds a permalink lookup fake with a fixed answer for every path.
+	 * Builds a permalink lookup with a fixed answer for every path.
 	 *
 	 * @param bool $published Whether every lookup answers "published".
 	 * @return PublishedPermalinkLookup
 	 */
 	private function permalinks( bool $published ): PublishedPermalinkLookup {
-		return new class( $published ) implements PublishedPermalinkLookup {
-
-			/**
-			 * Creates the fake.
-			 *
-			 * @param bool $published Fixed answer for every lookup.
-			 */
-			public function __construct( private bool $published ) {
-			}
-
-			/**
-			 * Returns the fixed answer regardless of the path.
-			 *
-			 * @param string $path Unused path.
-			 * @return bool
-			 */
-			public function is_published_permalink( string $path ): bool {
-				unset( $path );
-
-				return $this->published;
-			}
-		};
+		return new FixedPublishedPermalinkLookup( $published );
 	}
 }
