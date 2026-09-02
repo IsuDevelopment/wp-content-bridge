@@ -1740,6 +1740,57 @@ final class AbilitySchemas {
 	}
 
 	/**
+	 * Returns the featured-image write input contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_featured_image_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'post_id', 'version_token', 'attachment_id' ),
+			'properties'           => array(
+				'post_id'       => array(
+					'description' => 'Target post ID.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+				),
+				'version_token' => array(
+					'description' => 'Optimistic-concurrency token from get-content.',
+					'type'        => 'string',
+					'minLength'   => 18,
+					'maxLength'   => 191,
+				),
+				'attachment_id' => array(
+					'description' => 'Existing image attachment to assign, or null to remove the current featured image. Required and nullable on purpose: removing an image and leaving it alone are different intents, and an omitted key cannot express the first.',
+					'type'        => array( 'integer', 'null' ),
+					'minimum'     => 1,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the featured-image write result schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_featured_image_output(): array {
+		$output = self::mutation_output();
+
+		$output['required'][]                   = 'featured_image';
+		$output['properties']['featured_image'] = array(
+			'description' => 'The attachment in effect after the write, re-read from storage, or null when none is assigned.',
+			'oneOf'       => array(
+				self::media_item(),
+				array( 'type' => 'null' ),
+			),
+		);
+
+		return $output;
+	}
+
+	/**
 	 * Returns the restore-trashed-content input schema. Identical shape to
 	 * the trash input — same post ID plus concurrency token.
 	 *

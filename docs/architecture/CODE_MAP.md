@@ -391,6 +391,15 @@ Files:
   `wp_insert_post`/`wp_update_post`, revisions, and `result_for()` replay
   lookup; the only place `post_status` is written, and it is never
   `publish`/`future`/`pending`. Also implements `ContentSnapshotRepository`.
+- `src/Infrastructure/WordPress/WordPressFeaturedImageRepository.php` — the only
+  place `_thumbnail_id` is written, and both writes are confirmed by re-reading
+  (a filter on `update_post_metadata` can short-circuit a write while the call
+  still reports success). `is_assignable_image()` is the gate WordPress does not
+  provide: `set_post_thumbnail()` accepts any attachment ID, including a PDF, a
+  private upload, or a non-attachment, and themes render the result in a public
+  image slot. `remove()` ignores `delete_post_thumbnail()`'s return value — it
+  is `false` both when nothing was assigned and when a write failed — and
+  asserts the absence instead, which also makes a retried removal idempotent.
 - `src/Infrastructure/WordPress/WordPressRenderedSchemaReader.php` — fetches the
   site's own page over HTTP to read its rendered JSON-LD graph, bounded by a
   5 s timeout, 3 redirects, 3 MiB, 200 nodes, and a same-origin guard, cached

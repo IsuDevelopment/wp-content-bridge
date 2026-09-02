@@ -182,6 +182,57 @@ one of them was taking its token *before* writing fixture meta.
 Full inventory 22/22 PHP verifiers green after the change; static gate 575
 tests / 1,374 assertions.
 
+## Featured-image writes shipped — 2026-09-02
+
+`update-featured-image` (`wp-content-bridge/update-featured-image`). Built
+because it is the one gap that actually blocks dropping the other connector:
+assigning a featured image was the capability this plugin did not have.
+
+Scope is deliberately narrow — **assign or remove an attachment that already
+exists**. No upload, no remote import, no file handling of any kind. Upload is a
+materially different problem (MIME sniffing, size bounds, and for remote URLs an
+SSRF surface) and belongs in its own slice with its own ADR, not smuggled in
+behind the same flag.
+
+The security substance is `is_assignable_image()`, which is a gate **WordPress
+does not provide**. `set_post_thumbnail()` accepts any attachment ID — a PDF, a
+private upload, or an ID that is not an attachment at all — and themes then
+render the result in a public image slot. The adapter requires an existing
+attachment, `wp_attachment_is_image()`, and native `read_post`.
+
+Three deliberate refusal decisions:
+
+- Absent, non-image, and unreadable attachments all return the **same**
+  refusal. Distinguishing them would let a caller enumerate which attachment IDs
+  exist and which are private.
+- The **version token is checked before the attachment is examined**, so a
+  caller without a current token cannot probe at all.
+- `attachment_id` is required and nullable rather than optional. Removal and
+  "leave it alone" are different intents, and an omitted key cannot express the
+  first without risking the second on a malformed request.
+
+Gated by three switches: media reads, `wpcb_writes_enabled`, and the new
+`wpcb_media_writes_enabled`. An operator who enabled content writes did not
+thereby consent to media being mutated. Plus the per-type
+`update_featured_image` policy — a new `ContentOperation` case, which the
+settings matrix picked up automatically since it is enum-driven.
+
+Both writes are confirmed by re-reading rather than by trusting the return
+value: a filter on `update_post_metadata` can short-circuit a write while the
+call still reports success. `remove()` ignores `delete_post_thumbnail()`'s
+return value entirely — it is `false` both when nothing was assigned and when a
+write genuinely failed — and asserts the absence instead, which also makes a
+retried removal idempotent.
+
+Worth noting: this write moves the version token **only because** the token now
+covers postmeta. A featured image never touches the post row. Before that fix
+this ability would have shipped with the same silent-overwrite defect.
+
+Verified by `tests/Integration/featured-image-verification.php`; inventory is
+now 23 PHP verifiers plus 3 shell. The reference site's
+`wpcb_media_writes_enabled` was set back to `0` after the run, so the flag is
+off as found — enable it in Settings › Media writes to use the ability there.
+
 ## The loopback graph fetch now says why it failed — 2026-09-02
 
 `WordPressRenderedSchemaReader::graph_for_url()` answered **five different
@@ -1269,8 +1320,11 @@ verified.
 replace a general-purpose WordPress API connector" turns on these, not on
 performance. 32 abilities are registered; none of the following exist:
 
-- **Media writes.** `get-media` / `get-media-by-id` read only. No upload, no
-  `update-media`, no featured-image assignment or removal, no remote import.
+- **Media writes.** Featured-image assignment and removal **shipped**
+  (`update-featured-image`). Still absent: upload, remote import, and
+  `update-media` (editing alt text, caption, title on an attachment). Upload is
+  a separate slice — MIME sniffing, size bounds, and an SSRF surface for remote
+  URLs — and needs its own ADR.
 - **Permanent delete.** `trash-content` is reversible by design and
   `restore-trashed-content` undoes it; nothing bypasses trash.
 - **Permalink / slug writes.** `update-permalink` is designed but unbuilt, and

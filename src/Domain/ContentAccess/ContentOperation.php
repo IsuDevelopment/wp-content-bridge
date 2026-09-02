@@ -21,6 +21,7 @@ enum ContentOperation: string {
 	case UPDATE_SEO        = 'update_seo';
 	case TRANSITION_STATUS = 'transition_content_status';
 	case TRASH             = 'trash_content';
+	case UPDATE_FEATURED   = 'update_featured_image';
 
 	/**
 	 * Returns operations that must also be enabled.
@@ -37,7 +38,8 @@ enum ContentOperation: string {
 			self::UPDATE,
 			self::UPDATE_SEO,
 			self::TRANSITION_STATUS,
-			self::TRASH => array( self::READ ),
+			self::TRASH,
+			self::UPDATE_FEATURED => array( self::READ ),
 		};
 	}
 }

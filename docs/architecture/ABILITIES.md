@@ -666,6 +666,51 @@ existing `get-url-seo` Ability, avoiding a duplicate full-graph endpoint.
 
 Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
 
+### `wp-content-bridge/update-featured-image`
+
+Assigns an existing image attachment as one post's featured image, or removes
+the current one. Input requires `post_id`, `version_token`, and `attachment_id`.
+
+`attachment_id` is **required and nullable**, not optional. Removing a featured
+image and leaving it alone are different intents, and an omitted key cannot
+express the first without risking the second on a malformed request. `null`
+means remove.
+
+It never uploads, imports, or fetches anything. The attachment must already
+exist, and the ability refuses any attachment that is not an image or that the
+acting principal cannot read. That gate exists because WordPress does not
+provide one: `set_post_thumbnail()` accepts any attachment ID — a PDF, a private
+upload, or an ID that is not an attachment at all — and themes then render the
+result in a public image slot.
+
+An absent attachment, a non-image, and an unreadable one all return the **same**
+refusal, so the response cannot be used to probe which attachment IDs exist or
+which are private. The version token is checked *before* the attachment is
+examined, for the same reason: a caller without a current token cannot probe at
+all.
+
+Registration needs three switches, not one: media reads, the content-writes
+master switch, and `wpcb_media_writes_enabled`. Enabling content writes does not
+imply consent to mutate media. Execution additionally requires
+`wpcb_edit_content`, native `edit_post` on the target, and the per-post-type
+`update_featured_image` policy.
+
+Output is the standard mutation envelope plus `featured_image`: the attachment
+in effect after the write, re-read from storage, or `null` when none is
+assigned. Both writes are confirmed by re-reading rather than by trusting the
+WordPress return value, because a filter on `update_post_metadata` can
+short-circuit a write while the call still reports success. A repeated removal
+succeeds rather than erroring, since `delete_post_thumbnail()` returns `false`
+both when nothing was assigned and when a write genuinely failed.
+
+A featured image is postmeta and the post row is untouched, so the version token
+only moves because the token covers postmeta. A chained caller must use the
+token the write returns.
+
+Annotations: `readonly: false`, `destructive: true`, `idempotent: true`.
+Destructive because an assignment replaces the previous image and a `null`
+removes one, neither recoverable from the request.
+
 ### `wp-content-bridge/trash-content`
 
 Moves one eligible content object to reversible WordPress trash. The ability is

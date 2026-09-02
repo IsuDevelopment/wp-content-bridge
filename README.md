@@ -452,6 +452,23 @@ permalink, status, dates, and authorized featured-image identity - the fields a
 JSON-LD document is built from - so authoring a document for one page does not
 require a separate content read.
 
+### `wp-content-bridge/update-featured-image`
+
+Assigns an existing image attachment as one post's featured image, or removes
+the current one when `attachment_id` is `null`. It never uploads, imports, or
+fetches a file: the attachment must already exist, be an image, and be readable
+by the acting principal.
+
+That last check is the point. `set_post_thumbnail()` accepts any attachment ID —
+a PDF, a private upload, or an ID that is not an attachment at all — and themes
+render the result in a public image slot, so the bridge refuses what WordPress
+would accept. An absent, non-image, and unreadable attachment all return the
+same refusal, and the version token is checked before the attachment is
+examined, so the ability cannot be used to enumerate attachment IDs.
+
+It needs media reads, the content-writes master switch, and its own
+`wpcb_media_writes_enabled` flag, plus the per-type Set featured image policy.
+
 ### `wp-content-bridge/trash-content`
 
 Moves one current object to reversible WordPress trash. It requires:

@@ -30,6 +30,7 @@ use IsuDev\WPContentBridge\Adapter\Abilities\ContentAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\CustomSchemaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\GetStatusTransitionsAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\LlmsAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\FeaturedImageAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\MediaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\MutationAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\PatternAbilities;
@@ -74,6 +75,7 @@ use IsuDev\WPContentBridge\Application\Pattern\ListBlockPatterns;
 use IsuDev\WPContentBridge\Application\Pattern\PatternAccessManager;
 use IsuDev\WPContentBridge\Application\Media\GetMediaById;
 use IsuDev\WPContentBridge\Application\Media\MediaAccessManager;
+use IsuDev\WPContentBridge\Application\Media\UpdateFeaturedImage;
 use IsuDev\WPContentBridge\Application\Media\SearchMedia;
 use IsuDev\WPContentBridge\Application\Seo\NullSeoProvider;
 use IsuDev\WPContentBridge\Application\Seo\GetSeo;
@@ -105,6 +107,7 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressLlmsSourceSelector;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressMediaRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressPostCacheInvalidator;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressFeaturedImageRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSchemaTargetReader;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressRenderedSchemaReader;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoImageRepository;
@@ -331,6 +334,25 @@ final class Plugin {
 					new GetCustomSchema( $manager, $mutation_repository, $custom_schema_provider, new WordPressSchemaTargetReader() ),
 					new PreviewCustomSchema( $manager, $mutation_repository, $custom_schema_provider ),
 					new UpdateCustomSchema( $manager, $mutation_repository, $custom_schema_provider, $audit_log )
+				) )->register_hooks();
+			}
+
+			/*
+			 * Featured-image writes need three switches, not one: media reads
+			 * (the effective result re-reads the attachment), the content-writes
+			 * master switch above, and their own flag. An operator who enabled
+			 * content writes did not thereby consent to media being mutated.
+			 */
+			if ( $media_access->reads_enabled && get_option( Installer::MEDIA_WRITES_ENABLED_OPTION ) ) {
+				( new FeaturedImageAbilities(
+					new UpdateFeaturedImage(
+						$manager,
+						$media_access,
+						$mutation_repository,
+						new WordPressFeaturedImageRepository(),
+						new WordPressMediaRepository(),
+						$audit_log
+					)
 				) )->register_hooks();
 			}
 

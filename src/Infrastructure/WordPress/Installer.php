@@ -30,6 +30,7 @@ final class Installer {
 	public const PATTERN_READS_ENABLED_OPTION = 'wpcb_pattern_reads_enabled';
 	public const TRASH_ENABLED_OPTION         = 'wpcb_trash_enabled';
 	public const REDIRECTS_ENABLED_OPTION     = 'wpcb_redirects_enabled';
+	public const MEDIA_WRITES_ENABLED_OPTION  = 'wpcb_media_writes_enabled';
 	public const INTEGRATION_USER_OPTION      = 'wpcb_integration_user_id';
 
 	/**
@@ -140,6 +141,7 @@ final class Installer {
 		add_option( self::PATTERN_READS_ENABLED_OPTION, false, '', false );
 		add_option( self::TRASH_ENABLED_OPTION, false, '', false );
 		add_option( self::REDIRECTS_ENABLED_OPTION, false, '', false );
+		add_option( self::MEDIA_WRITES_ENABLED_OPTION, false, '', false );
 		add_option( self::LLMS_ENABLED_OPTION, false, '', false );
 		add_option( self::MCP_SERVER_ENABLED_OPTION, true, '', false );
 		add_option( self::INVOCATION_TELEMETRY_ENABLED_OPTION, false, '', false );

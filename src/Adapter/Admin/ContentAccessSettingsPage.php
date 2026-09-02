@@ -211,6 +211,17 @@ final readonly class ContentAccessSettingsPage {
 
 		register_setting(
 			self::OPTION_GROUP,
+			Installer::MEDIA_WRITES_ENABLED_OPTION,
+			array(
+				'type'              => 'boolean',
+				'default'           => false,
+				'sanitize_callback' => array( self::class, 'sanitize_checkbox' ),
+				'show_in_rest'      => false,
+			)
+		);
+
+		register_setting(
+			self::OPTION_GROUP,
 			Installer::REDIRECTS_ENABLED_OPTION,
 			array(
 				'type'              => 'boolean',
@@ -489,6 +500,23 @@ final readonly class ContentAccessSettingsPage {
 					</tbody>
 				</table>
 				<p id="wpcb-trash-enabled-help" class="description"><?php echo esc_html__( 'Content writes, the per-type Trash policy, Delete content capability, native delete_post permission, and reversible WordPress trash must also be available.', 'wp-content-bridge' ); ?></p>
+
+				<h2><?php echo esc_html__( 'Media writes', 'wp-content-bridge' ); ?></h2>
+				<table class="widefat striped" aria-describedby="wpcb-media-writes-enabled-help">
+					<tbody>
+						<tr>
+							<th scope="row"><?php echo esc_html__( 'Featured image', 'wp-content-bridge' ); ?></th>
+							<td>
+								<input type="hidden" name="<?php echo esc_attr( Installer::MEDIA_WRITES_ENABLED_OPTION ); ?>" value="0">
+								<label>
+									<input type="checkbox" name="<?php echo esc_attr( Installer::MEDIA_WRITES_ENABLED_OPTION ); ?>" value="1" <?php checked( (bool) get_option( Installer::MEDIA_WRITES_ENABLED_OPTION ) ); ?>>
+									<?php echo esc_html__( 'Enable setting and removing a featured image on existing content (off by default).', 'wp-content-bridge' ); ?>
+								</label>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+				<p id="wpcb-media-writes-enabled-help" class="description"><?php echo esc_html__( 'Requires media reads, the content-writes master switch, and the per-type Set featured image policy. The attachment must already exist, be an image, and be readable by the acting principal: this never uploads or imports a file, and never fetches a remote URL.', 'wp-content-bridge' ); ?></p>
 
 				<h2><?php echo esc_html__( 'Redirects', 'wp-content-bridge' ); ?></h2>
 				<table class="widefat striped" aria-describedby="wpcb-redirects-enabled-help">
@@ -1232,6 +1260,7 @@ final readonly class ContentAccessSettingsPage {
 			ContentOperation::UPDATE_SEO->value        => esc_html__( 'Update SEO', 'wp-content-bridge' ),
 			ContentOperation::TRANSITION_STATUS->value => esc_html__( 'Change status (reserved)', 'wp-content-bridge' ),
 			ContentOperation::TRASH->value             => esc_html__( 'Trash', 'wp-content-bridge' ),
+			ContentOperation::UPDATE_FEATURED->value   => esc_html__( 'Set featured image', 'wp-content-bridge' ),
 		);
 	}
 }

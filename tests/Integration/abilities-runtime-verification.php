@@ -76,6 +76,9 @@ final class WPCB_Abilities_Runtime_Verification {
 		'wp-content-bridge/update-custom-schema',
 		'wp-content-bridge/get-status-transitions',
 		'wp-content-bridge/transition-content-status',
+		// Feature-gated by `wpcb_media_writes_enabled`, and additionally by
+		// media reads and `wpcb_writes_enabled`.
+		'wp-content-bridge/update-featured-image',
 		// Feature-gated by `wpcb_redirects_enabled`; the write trio also needs
 		// `wpcb_writes_enabled`. Absent when either switch is off, which is
 		// what "registration is the gate" means — the profile lists what may
