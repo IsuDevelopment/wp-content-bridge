@@ -146,12 +146,7 @@ final class WordPressContentRepository implements ContentRepository {
 			};
 		}
 
-		$version_token = VersionToken::for_content(
-			$post->post_modified_gmt,
-			$post->post_title,
-			$post->post_content,
-			$post->post_status
-		);
+		$version_token = PostVersionTokenFactory::for_post( $post );
 
 		return new ContentDetail(
 			$this->summary( $post ),

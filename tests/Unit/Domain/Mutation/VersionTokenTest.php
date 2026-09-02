@@ -76,4 +76,30 @@ final class VersionTokenTest extends TestCase {
 		yield 'non hex hash' => array( 'ZZZZZZZZZZZZZZZZ:2026-07-20 12:30:00' );
 		yield 'missing timestamp' => array( 'abcdef0123456789:' );
 	}
+	/**
+	 * The meta fingerprint is part of the hash.
+	 *
+	 * Without it the token was blind to every meta-only write this plugin
+	 * performs — SEO fields and Custom/Service Schema all live in post meta —
+	 * so a successful write returned the token it was given and a concurrent
+	 * write could not be detected.
+	 */
+	public function test_meta_fingerprint_changes_the_token(): void {
+		$before = VersionToken::for_content( '2026-09-02 10:00:00', 'Title', 'content', 'publish', 'aaaaaaaaaaaaaaaa' );
+		$after  = VersionToken::for_content( '2026-09-02 10:00:00', 'Title', 'content', 'publish', 'bbbbbbbbbbbbbbbb' );
+
+		self::assertNotSame( $before->to_string(), $after->to_string() );
+		self::assertFalse( $before->equals( $after ) );
+	}
+
+	/**
+	 * Identical inputs still produce identical tokens, so an unchanged post
+	 * does not spuriously conflict.
+	 */
+	public function test_identical_inputs_produce_the_same_token(): void {
+		$first  = VersionToken::for_content( '2026-09-02 10:00:00', 'Title', 'content', 'publish', 'aaaaaaaaaaaaaaaa' );
+		$second = VersionToken::for_content( '2026-09-02 10:00:00', 'Title', 'content', 'publish', 'aaaaaaaaaaaaaaaa' );
+
+		self::assertTrue( $first->equals( $second ) );
+	}
 }

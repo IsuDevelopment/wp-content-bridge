@@ -140,6 +140,89 @@ path. Requirements and the required mitigations are in the "Future backlog —
 in-editor AI schema assist" section of `docs/plan/IMPLEMENTATION_PLAN.md`. No ADR
 yet, so nothing may be implemented from it.
 
+## Version token was blind to every meta-only write — fixed 2026-09-02
+
+Reported from a real session: a Custom Schema update returned the **same**
+`version_token` it was given. Confirmed in code and it is worse than reported.
+The token hashed `post_modified_gmt`, title, content and status only. An SEO
+write goes through Yoast's `WPSEO_Meta::set_value()` and Custom/Service Schema
+through their provider's `update_post_meta()` — **none of the four fields
+changes**, and neither write touches the post row, so `post_modified_gmt` does
+not move either. So the token came back identical after a successful write, and
+two callers could each read the same token, each write, and the second would
+silently overwrite the first with **no conflict raised**. That is the one thing
+the token exists to prevent, and it shipped from the first write release.
+
+`Infrastructure\WordPress\PostVersionTokenFactory` is now the only place a
+token is derived, and it folds in a digest of the post's meta. It replaced six
+hand-rolled derivations across five repositories — that duplication was itself
+a live hazard, since a token issued by `get-content` is compared against one
+computed by the mutation repository, so any divergence would make every write
+conflict forever.
+
+Fingerprinting **all** meta rather than an allowlist is deliberate: two of the
+three writable key sets belong to third parties (Yoast's, and the Schema
+Extended provider's, the latter reached only through an opaque integration
+API), so an allowlist would stop covering a write the day either plugin renamed
+a key. Volatile keys (`_edit_lock`, `_edit_last`, `_wp_old_slug`, …) are
+excluded and the list is filterable via
+`wp_content_bridge_version_token_meta_exclusions`, because a plugin that writes
+meta on every page view would otherwise move the token under a caller that
+changed nothing — producing conflicts an automated caller answers by retrying
+forever.
+
+**Consequence callers must know:** after a successful SEO or schema write the
+token changes, so a chain of writes must use the token returned by the previous
+one. `writes-seo-verification` now asserts exactly that — the token moves, the
+returned token matches the post's current token, and the pre-write token is
+refused afterwards. Four verifiers had encoded the defect as expected behaviour
+by computing tokens by hand with four arguments; they now use the factory, and
+one of them was taking its token *before* writing fixture meta.
+
+Full inventory 22/22 PHP verifiers green after the change; static gate 575
+tests / 1,374 assertions.
+
+## Reported MCP slowness is not this plugin's read path — measured 2026-09-02
+
+An 11-minute schema session on production was traced by its operator to four
+MCP calls that each hung ~2 minutes and returned HTTP 504: full `get-content`,
+`get-content` with only `plain_text`, `search-content`, and `get-url-seo`. The
+accompanying analysis assumed the cause was inside these abilities ("MCP
+probably performs the expensive full read and filters afterwards").
+
+Measured on the reference site, per ability, with the same shapes:
+
+| Ability | Local time |
+|---|---|
+| `get-content` full (raw + rendered + plain_text, taxonomies + media + revision) | 177–326 ms |
+| `get-content` with `plain_text` only | 159–198 ms |
+| `search-content` | 89 ms |
+| `get-url-seo` | **1,756 ms** |
+
+So three of the four are two to three orders of magnitude away from a 120-second
+timeout, and no fast path or lazy representation would explain the gap. The
+only read that is genuinely slow is `get-url-seo`, and the reason is structural:
+`WordPressRenderedSchemaReader` performs an outbound `wp_remote_get()` against
+the site's own URL to read the rendered JSON-LD graph. Its timeout is 5 s with
+3 redirects, so even a hanging loopback cannot reach 120 s by itself.
+
+**Conclusion: the 504s are not explained by this plugin's PHP**, and the
+remaining suspects are the transport and the host — the miniOrange OAuth MCP
+server, PHP-FPM/gateway limits, or the production database. Not yet measured,
+and it must be measured on that install rather than inferred: the same abilities
+there, timed through `wp eval` (no MCP), then through the MCP endpoint. Until
+that split exists, optimizing the read path would be work aimed at the wrong
+layer.
+
+What *is* worth doing regardless, because it cuts the round trips the workflow
+needs rather than the cost of each: the session spent four of its calls
+gathering post identity (title, permalink, dates) that a schema write needs and
+`get-custom-schema` does not return, then fell back to a web search and a public
+HTTP request to find the permalink. Extending `get-custom-schema` with the post
+identity and the stored schema's node ids/types would collapse that to one
+call. Deliberately **not** including Yoast's merged graph there: that needs the
+loopback fetch, which is the one measured slow path.
+
 ## Redirect lifecycle complete, and two engines finally verified — 2026-09-02
 
 `update-redirect` and `delete-redirect` join the two abilities below, so a

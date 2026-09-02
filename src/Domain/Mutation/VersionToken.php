@@ -31,14 +31,33 @@ final readonly class VersionToken {
 	/**
 	 * Derives a token from the fields that must not change under a stale write.
 	 *
-	 * @param string $modified_gmt WordPress `post_modified_gmt` value.
-	 * @param string $title        Post title.
-	 * @param string $content      Raw post content.
-	 * @param string $status       Post status.
+	 * `$meta_fingerprint` is what makes the token cover a meta-only write.
+	 * Without it the token is blind to `update-seo` and to Custom/Service
+	 * Schema writes, all of which store post meta and touch none of the four
+	 * fields above — so the token came back unchanged after a successful write
+	 * and could not detect a concurrent one. It defaults to empty so the
+	 * domain stays constructible without a meta source, but every adapter in
+	 * this plugin supplies it through `PostVersionTokenFactory`.
+	 *
+	 * @param string $modified_gmt     WordPress `post_modified_gmt` value.
+	 * @param string $title            Post title.
+	 * @param string $content          Raw post content.
+	 * @param string $status           Post status.
+	 * @param string $meta_fingerprint Digest of the post's meta.
 	 * @return self
 	 */
-	public static function for_content( string $modified_gmt, string $title, string $content, string $status ): self {
-		$hash = substr( hash( 'sha256', $content . '|' . $title . '|' . $status ), 0, 16 );
+	public static function for_content(
+		string $modified_gmt,
+		string $title,
+		string $content,
+		string $status,
+		string $meta_fingerprint = ''
+	): self {
+		$hash = substr(
+			hash( 'sha256', $content . '|' . $title . '|' . $status . '|' . $meta_fingerprint ),
+			0,
+			16
+		);
 
 		return new self( $hash, $modified_gmt );
 	}

@@ -16,8 +16,8 @@ use IsuDev\WPContentBridge\Application\Mutation\MutationWriteFailed;
 use IsuDev\WPContentBridge\Application\Status\GetStatusTransitions;
 use IsuDev\WPContentBridge\Application\Status\StatusTransitionManager;
 use IsuDev\WPContentBridge\Application\Status\TransitionContentStatus;
-use IsuDev\WPContentBridge\Domain\Mutation\VersionToken;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\Installer;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\PostVersionTokenFactory;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressAuditLog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentAccessSettingsRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentMutationRepository;
@@ -976,7 +976,7 @@ final class WPCB_Status_Workflow_Verification {
 		$post = get_post( $post_id );
 		$this->assert_true( $post instanceof WP_Post, 'Fixture post could not be re-read.' );
 
-		return VersionToken::for_content( $post->post_modified_gmt, $post->post_title, $post->post_content, $post->post_status )->to_string();
+		return PostVersionTokenFactory::for_post( $post )->to_string();
 	}
 
 	/**

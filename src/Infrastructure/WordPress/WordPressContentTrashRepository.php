@@ -147,6 +147,6 @@ final class WordPressContentTrashRepository implements ContentTrashRepository {
 	 * @return VersionToken
 	 */
 	private function version_for( WP_Post $post ): VersionToken {
-		return VersionToken::for_content( $post->post_modified_gmt, $post->post_title, $post->post_content, $post->post_status );
+		return PostVersionTokenFactory::for_post( $post );
 	}
 }

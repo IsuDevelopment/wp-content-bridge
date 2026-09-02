@@ -18,15 +18,15 @@ use IsuDev\WPContentBridge\Application\Mutation\SeoFieldUnsupported;
 use IsuDev\WPContentBridge\Application\Mutation\SeoImageUnavailable;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateSeo;
 use IsuDev\WPContentBridge\Domain\ContentAccess\ContentOperation;
-use IsuDev\WPContentBridge\Domain\Mutation\VersionToken;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\Installer;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\PostVersionTokenFactory;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressAuditLog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentAccessSettingsRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentMutationRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentTypeCatalog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoImageRepository;
-use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastSeoWriter;
 use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastSeoProvider;
+use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastSeoWriter;
 
 // phpcs:disable Squiz.Commenting.FunctionCommentThrowTag.Missing -- assertion helpers intentionally fail the runtime harness fast.
 // phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- exception messages are CLI diagnostics, not rendered HTML.
@@ -107,6 +107,7 @@ final class WPCB_Seo_Write_Verification {
 		try {
 			$this->verify_authorization_matrix();
 			$this->verify_stale_version_conflict();
+			$this->verify_meta_only_write_moves_the_token();
 			$this->verify_unsupported_field_rejected();
 			$this->verify_write_and_reread_parity();
 			$this->verify_advanced_robots_and_social_images();
@@ -218,12 +219,7 @@ final class WPCB_Seo_Write_Verification {
 	private function current_token( int $post_id ): string {
 		$post = get_post( $post_id );
 
-		return VersionToken::for_content(
-			$post->post_modified_gmt,
-			$post->post_title,
-			$post->post_content,
-			$post->post_status
-		)->to_string();
+		return PostVersionTokenFactory::for_post( $post )->to_string();
 	}
 
 	/**
@@ -480,6 +476,60 @@ final class WPCB_Seo_Write_Verification {
 	}
 
 	/**
+	 * A successful SEO write must move the version token.
+	 *
+	 * Regression guard for a defect that shipped from the first write release
+	 * until 0.8.5: the token hashed only `post_modified_gmt`, the title, the
+	 * content and the status, and an SEO write touches none of them because
+	 * Yoast stores its fields in post meta. The token therefore came back
+	 * **identical after a successful write**, so two callers could each read
+	 * the same token, each write, and the second would silently overwrite the
+	 * first with no conflict raised — the one thing the token exists to stop.
+	 *
+	 * @return void
+	 */
+	private function verify_meta_only_write_moves_the_token(): void {
+		$post_id = $this->fixture_post();
+		$before  = $this->current_token( $post_id );
+
+		$result = $this->use_case()->execute(
+			array(
+				'post_id'       => $post_id,
+				'version_token' => $before,
+				'seo_title'     => $this->token . ' token movement probe',
+			),
+			1
+		);
+
+		$returned = $result->version->to_string();
+
+		$this->assert_true(
+			$before !== $returned,
+			'A meta-only SEO write returned the same version token it was given, so a concurrent write could not be detected.'
+		);
+		$this->assert_true(
+			$this->current_token( $post_id ) === $returned,
+			'The token returned by the write does not match the post\'s current token, so a caller cannot chain writes.'
+		);
+
+		// And the old token must now be refused, which is the property that
+		// makes the movement useful rather than cosmetic.
+		try {
+			$this->use_case()->execute(
+				array(
+					'post_id'       => $post_id,
+					'version_token' => $before,
+					'seo_title'     => $this->token . ' second write with a stale token',
+				),
+				1
+			);
+			$this->failures[] = 'A second SEO write reusing the pre-write token was accepted.';
+		} catch ( MutationConflict ) {
+			$ignored = true;
+		}
+	}
+
+	/**
 	 * Premium synonyms and related keyphrases round-trip through Yoast's
 	 * positional JSON without losing retained scores or synonyms.
 	 *
@@ -492,10 +542,13 @@ final class WPCB_Seo_Write_Verification {
 		}
 
 		$post_id = $this->fixture_post();
-		$token   = $this->current_token( $post_id );
 		update_post_meta( $post_id, '_yoast_wpseo_focuskw', 'primary phrase' );
 		update_post_meta( $post_id, '_yoast_wpseo_focuskeywords', '[{"keyword":"retained phrase","score":87},{"keyword":"removed phrase","score":55}]' );
 		update_post_meta( $post_id, '_yoast_wpseo_keywordsynonyms', '["old primary","retained synonym","removed synonym"]' );
+		// The token is taken *after* the fixture meta writes: they are setup,
+		// not a concurrent change. Since 0.8.5 the token covers post meta, so
+		// taking it first would make this fixture look like a stale write.
+		$token = $this->current_token( $post_id );
 
 		$result = $this->use_case()->execute(
 			array(
