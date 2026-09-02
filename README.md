@@ -444,7 +444,13 @@ only Schema Extended's public contract, enforces the Update SEO policy,
 audit, and never logs JSON source. After a successful update, call
 `get-url-seo` with the same `post_id` to inspect the complete, context-resolved
 Yoast graph; preview intentionally reports `context_resolved: false` because it
-does not execute a speculative front-end render.
+does not execute a speculative front-end render. That flag is not a failure
+signal and can accompany `valid: true`.
+
+`get-custom-schema` also returns a `target` object with the post's title, slug,
+permalink, status, dates, and authorized featured-image identity - the fields a
+JSON-LD document is built from - so authoring a document for one page does not
+require a separate content read.
 
 ### `wp-content-bridge/trash-content`
 

@@ -182,6 +182,53 @@ one of them was taking its token *before* writing fixture meta.
 Full inventory 22/22 PHP verifiers green after the change; static gate 575
 tests / 1,374 assertions.
 
+## `get-custom-schema` now answers a schema edit in one call — 2026-09-02
+
+Acted on the round-trip half of the section below, which is the half that holds
+regardless of where the 504s come from. `get-custom-schema` output gained a
+`target` object: `title`, `slug`, `url`, `status`, `published_at`,
+`modified_at`, and authorized featured-image identity. Those are exactly the
+fields a JSON-LD document is built from (`name`, `url`, `datePublished`,
+`dateModified`, `image`), and their absence is why the production session spent
+four calls hunting for a permalink — ending in a web search and a public HTTP
+request — before it could write anything.
+
+Measured after the change, same site: **14.3 ms cold, 0.2 ms warm, 815 bytes
+total** for the whole read, schema source and validation included. The read that
+replaces four calls is not a heavier read.
+
+Three design points worth not re-deciding:
+
+- **Its own port, not a method on `ContentMutationRepository`.** That interface
+  has eleven test doubles, all of which would have grown a method they never
+  exercise, and a schema read has no business depending on the content
+  pipeline. `SchemaTargetReader` has one implementation and one fake.
+- **No excerpt.** `get_the_excerpt()` renders the post's blocks when no manual
+  excerpt exists. That is the expensive read on this path, and this projection
+  exists to stay cheap.
+- **No merged Yoast graph.** It requires the loopback front-end fetch that
+  `get-url-seo` performs — the one read measured genuinely slow (1,756 ms).
+  `get-url-seo` remains the way to inspect the resolved graph after a write.
+
+Also folded featured-media projection into
+`Infrastructure/WordPress/FeaturedMediaProjection.php`. Two adapters now expose
+featured-image identity; had their authorization checks drifted apart, one would
+leak an attachment the caller cannot read while the other hid it.
+
+The stored schema's node ids/types needed no work: the provider contract already
+returns them as `custom_schema.validation.nodes`. Recorded because the plan
+item above implied otherwise.
+
+`validation.context_resolved` is unchanged but its description now says what it
+means — always false here, source-level validation only, **not** a failure
+signal, and it can accompany `valid: true`. That pairing was point 10 of the
+production report. The field stays in the contract because it is in the output
+schema's `required` list, so removing it would break callers validating against
+the schema.
+
+Still not measured, and still the actual blocker on the 11 minutes: the
+`wp eval` vs MCP-endpoint split on the production install.
+
 ## Reported MCP slowness is not this plugin's read path — measured 2026-09-02
 
 An 11-minute schema session on production was traced by its operator to four

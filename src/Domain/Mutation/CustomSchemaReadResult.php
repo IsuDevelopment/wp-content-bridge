@@ -21,12 +21,14 @@ final readonly class CustomSchemaReadResult {
 	 * @param string               $post_type     Target post type.
 	 * @param VersionToken         $version       Current optimistic-concurrency token.
 	 * @param array<string, mixed> $custom_schema Provider-sanitized configuration.
+	 * @param SchemaTarget         $target        Post identity a schema document is built from.
 	 */
 	public function __construct(
 		public int $post_id,
 		public string $post_type,
 		public VersionToken $version,
 		public array $custom_schema,
+		public SchemaTarget $target,
 	) {}
 
 	/**
@@ -41,6 +43,7 @@ final readonly class CustomSchemaReadResult {
 			'post_type'      => $this->post_type,
 			'version_token'  => $this->version->to_string(),
 			'custom_schema'  => $this->custom_schema,
+			'target'         => $this->target->to_array(),
 			'provenance'     => array(
 				'source'    => 'wordpress-custom-schema',
 				'untrusted' => true,

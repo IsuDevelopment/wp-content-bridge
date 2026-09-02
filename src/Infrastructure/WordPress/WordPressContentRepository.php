@@ -345,22 +345,7 @@ final class WordPressContentRepository implements ContentRepository {
 	 * @return array{id: int, url: string, alt_text: string}|null
 	 */
 	private function featured_media( WP_Post $post ): ?array {
-		$attachment_id = get_post_thumbnail_id( $post );
-		if ( false === $attachment_id || $attachment_id < 1 || ! current_user_can( 'read_post', $attachment_id ) ) {
-			return null;
-		}
-
-		$url = wp_get_attachment_url( $attachment_id );
-		if ( ! is_string( $url ) || '' === $url ) {
-			return null;
-		}
-		$alt = get_post_meta( $attachment_id, '_wp_attachment_image_alt', true );
-
-		return array(
-			'id'       => $attachment_id,
-			'url'      => $url,
-			'alt_text' => is_string( $alt ) ? $alt : '',
-		);
+		return FeaturedMediaProjection::for_post( $post );
 	}
 
 	/**

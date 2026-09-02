@@ -1603,14 +1603,48 @@ final class AbilitySchemas {
 	public static function get_custom_schema_output(): array {
 		return array(
 			'type'                 => 'object',
-			'required'             => array( 'schema_version', 'post_id', 'post_type', 'version_token', 'custom_schema', 'provenance' ),
+			'required'             => array( 'schema_version', 'post_id', 'post_type', 'version_token', 'custom_schema', 'target', 'provenance' ),
 			'properties'           => array(
 				'schema_version' => array( 'type' => 'string' ),
 				'post_id'        => array( 'type' => 'integer' ),
 				'post_type'      => array( 'type' => 'string' ),
 				'version_token'  => array( 'type' => 'string' ),
 				'custom_schema'  => self::custom_schema_configuration(),
+				'target'         => self::schema_target(),
 				'provenance'     => self::provenance(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the schema-authoring identity contract.
+	 *
+	 * Carries the post fields a JSON-LD document is normally built from, so a
+	 * schema edit does not need a separate content read to find them.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function schema_target(): array {
+		return array(
+			'description'          => 'Identity of the post the schema describes: the source of name, url, datePublished, dateModified and image.',
+			'type'                 => 'object',
+			'required'             => array( 'title', 'slug', 'url', 'status', 'published_at', 'modified_at', 'featured_image_id', 'featured_image_url' ),
+			'properties'           => array(
+				'title'              => array( 'type' => 'string' ),
+				'slug'               => array( 'type' => 'string' ),
+				'url'                => array(
+					'description' => 'Canonical permalink, or null when WordPress cannot resolve one for this status.',
+					'type'        => array( 'string', 'null' ),
+				),
+				'status'             => array( 'type' => 'string' ),
+				'published_at'       => array(
+					'description' => 'ISO-8601 UTC publication time, or null when never published.',
+					'type'        => array( 'string', 'null' ),
+				),
+				'modified_at'        => array( 'type' => 'string' ),
+				'featured_image_id'  => array( 'type' => array( 'integer', 'null' ) ),
+				'featured_image_url' => array( 'type' => array( 'string', 'null' ) ),
 			),
 			'additionalProperties' => false,
 		);
@@ -2010,7 +2044,7 @@ final class AbilitySchemas {
 					'properties'           => array(
 						'valid'            => array( 'type' => 'boolean' ),
 						'context_resolved' => array(
-							'description' => 'False for source validation; use get-url-seo after saving to inspect the resolved complete graph.',
+							'description' => 'Always false here, and not a failure signal: this is source-level validation, which does not resolve the surrounding Yoast graph. Read get-url-seo after saving to inspect the resolved complete graph.',
 							'type'        => 'boolean',
 						),
 						'nodes'            => array(

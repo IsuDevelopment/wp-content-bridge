@@ -613,7 +613,22 @@ current content `version_token`, editable `source`, `enabled`, normalized
 validation nodes and diagnostics, `save_allowed`, `render_eligible`, and
 provider provenance. Structural source validation does not resolve page
 placeholders or execute a speculative Yoast render, so
-`validation.context_resolved` is false.
+`validation.context_resolved` is false. That is not a failure signal, and it
+can accompany `valid: true`.
+
+Output also carries `target`: the post's `title`, `slug`, `url`, `status`,
+`published_at`, `modified_at`, and authorized featured-image identity. These are
+the fields a JSON-LD document is normally built from (`name`, `url`,
+`datePublished`, `dateModified`, `image`), and returning them here is what makes
+a single-page schema edit one call instead of a schema read plus a content read.
+The permalink is `null` when WordPress cannot resolve one for the post's current
+status, so a caller must not treat it as always present.
+
+`target` deliberately omits the excerpt. Generating one renders the post's
+blocks when no manual excerpt exists, which is the expensive read on this path,
+and this projection exists to stay cheap. The merged Yoast graph is deliberately
+omitted too: it requires the loopback front-end fetch that `get-url-seo`
+performs, which is the one measured slow read in this plugin.
 
 Annotations: `readonly: true`, `destructive: false`, `idempotent: true`.
 

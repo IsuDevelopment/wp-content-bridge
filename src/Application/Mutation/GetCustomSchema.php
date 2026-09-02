@@ -28,11 +28,13 @@ final readonly class GetCustomSchema {
 	 * @param ContentAccessManager      $access     Per-post-type SEO policy.
 	 * @param ContentMutationRepository $repository Post identity/version lookup port.
 	 * @param CustomSchemaReader        $reader     Provider-neutral read port.
+	 * @param SchemaTargetReader        $target     Post identity projection port.
 	 */
 	public function __construct(
 		private ContentAccessManager $access,
 		private ContentMutationRepository $repository,
 		private CustomSchemaReader $reader,
+		private SchemaTargetReader $target,
 	) {}
 
 	/**
@@ -52,7 +54,8 @@ final readonly class GetCustomSchema {
 		$post_id   = $input['post_id'];
 		$post_type = $this->repository->post_type( $post_id );
 		$version   = $this->repository->current_version( $post_id );
-		if ( null === $post_type || null === $version ) {
+		$target    = $this->target->read( $post_id );
+		if ( null === $post_type || null === $version || null === $target ) {
 			throw new ContentUnavailable( 'Content is unavailable.' );
 		}
 
@@ -63,6 +66,6 @@ final readonly class GetCustomSchema {
 			throw new CustomSchemaUnavailable( 'Custom Schema is unavailable.' );
 		}
 
-		return new CustomSchemaReadResult( $post_id, $post_type, $version, $this->reader->read( $post_id ) );
+		return new CustomSchemaReadResult( $post_id, $post_type, $version, $this->reader->read( $post_id ), $target );
 	}
 }

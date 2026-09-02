@@ -105,6 +105,7 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressLlmsSourceSelector;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressMediaRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressPostCacheInvalidator;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSchemaTargetReader;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressRenderedSchemaReader;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoImageRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSiteClock;
@@ -327,7 +328,7 @@ final class Plugin {
 			$custom_schema_provider = new SchemaExtendedCustomSchemaProvider();
 			if ( $custom_schema_provider->is_available() ) {
 				( new CustomSchemaAbilities(
-					new GetCustomSchema( $manager, $mutation_repository, $custom_schema_provider ),
+					new GetCustomSchema( $manager, $mutation_repository, $custom_schema_provider, new WordPressSchemaTargetReader() ),
 					new PreviewCustomSchema( $manager, $mutation_repository, $custom_schema_provider ),
 					new UpdateCustomSchema( $manager, $mutation_repository, $custom_schema_provider, $audit_log )
 				) )->register_hooks();

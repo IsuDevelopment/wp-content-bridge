@@ -391,6 +391,17 @@ Files:
   `wp_insert_post`/`wp_update_post`, revisions, and `result_for()` replay
   lookup; the only place `post_status` is written, and it is never
   `publish`/`future`/`pending`. Also implements `ContentSnapshotRepository`.
+- `src/Infrastructure/WordPress/WordPressSchemaTargetReader.php` — the identity
+  projection `get-custom-schema` returns as `target` (title, slug, permalink,
+  status, dates, authorized featured image). It exists as its own narrow port
+  rather than a method on `ContentMutationRepository` so a schema read does not
+  gain the content pipeline as a dependency, and so eleven existing test
+  doubles do not have to grow a method they never exercise. It deliberately
+  omits the excerpt: generating one renders blocks, which is the expensive read.
+- `src/Infrastructure/WordPress/FeaturedMediaProjection.php` — the single place
+  a featured attachment is projected for output. Two adapters expose that
+  identity, and if their authorization checks diverged, one would leak an
+  attachment the caller cannot read while the other hid it.
 - `src/Infrastructure/WordPress/WordPressSeoImageRepository.php` — requires an
   existing image attachment plus native `read_post`, then resolves its public
   URL without accepting caller-controlled URLs or filesystem paths.
