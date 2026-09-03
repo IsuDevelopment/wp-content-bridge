@@ -98,6 +98,11 @@ final class AbilityError {
 		// 500 — the plugin or WordPress failed.
 		'wpcb_internal_error'                  => 500,
 		'wpcb_write_failed'                    => 500,
+		// A statistics backend that is present, vouched for and permitted and
+		// still failed. Deliberately 500 rather than 501: 501 is this
+		// install's honest "cannot", and a provider that collects nothing is
+		// already reported as an `unavailable` *result*, not as an error.
+		'wpcb_statistics_unreadable'           => 500,
 	);
 
 	/**

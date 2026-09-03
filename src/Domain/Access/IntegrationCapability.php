@@ -24,4 +24,13 @@ enum IntegrationCapability: string {
 	case MANAGE_LLMS      = 'wpcb_manage_llms';
 	case MANAGE_REDIRECTS = 'wpcb_manage_redirects';
 	case UPLOAD_MEDIA     = 'wpcb_upload_media';
+
+	/**
+	 * Reading aggregate site error statistics is separate authority from
+	 * managing redirects (ADR 0030 s5). Redirection's own permission model
+	 * already separates the two, so honouring the separation costs nothing
+	 * and makes the useful grant expressible: diagnose which redirect is
+	 * missing, without authority to change routing.
+	 */
+	case READ_ERROR_STATISTICS = 'wpcb_read_error_statistics';
 }

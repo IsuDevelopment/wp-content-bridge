@@ -20,6 +20,12 @@
 - [Test plan](plan/TEST_PLAN.md)
 - [Release plan](plan/RELEASE_PLAN.md)
 
+## Operations
+
+- [Runtime verification inventory](setup/VERIFICATION.md)
+- [Measuring the production 504s](setup/PRODUCTION_504_MEASUREMENT.md)
+- [MCP Adapter setup](setup/MCP_ADAPTER.md)
+
 ## Verification
 
 - [Abilities verification](verification/ABILITIES_VERIFICATION.md)

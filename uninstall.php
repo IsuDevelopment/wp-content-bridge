@@ -82,6 +82,8 @@ $wpcb_capabilities = array(
 	'wpcb_delete_content',
 	'wpcb_manage_llms',
 	'wpcb_manage_redirects',
+	'wpcb_upload_media',
+	'wpcb_read_error_statistics',
 );
 
 $wpcb_roles = wp_roles();

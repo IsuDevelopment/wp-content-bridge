@@ -13,6 +13,7 @@ use IsuDev\WPContentBridge\Adapter\Admin\ContentAccessSettingsPage;
 use IsuDev\WPContentBridge\Adapter\Abilities\CreateRedirectAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\DeleteRedirectAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\UpdateRedirectAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\ErrorStatisticsAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\SearchRedirectsAbilities;
 use IsuDev\WPContentBridge\Application\Redirect\CreateRedirect;
 use IsuDev\WPContentBridge\Application\Redirect\DeleteRedirect;
@@ -21,6 +22,10 @@ use IsuDev\WPContentBridge\Application\Redirect\RedirectCandidateGuard;
 use IsuDev\WPContentBridge\Application\Redirect\RedirectProviderRegistry;
 use IsuDev\WPContentBridge\Application\Redirect\SearchRedirects;
 use IsuDev\WPContentBridge\Application\Redirect\UpdateRedirect;
+use IsuDev\WPContentBridge\Application\Statistics\ErrorStatisticsProviderRegistry;
+use IsuDev\WPContentBridge\Application\Statistics\GetNotFoundStatistics;
+use IsuDev\WPContentBridge\Application\Statistics\NullErrorStatisticsProvider;
+use IsuDev\WPContentBridge\Infrastructure\Redirection\RedirectionErrorStatisticsProvider;
 use IsuDev\WPContentBridge\Infrastructure\Redirection\RedirectionProvider;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressPublishedPermalinkLookup;
 use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastPremiumRedirectProvider;
@@ -118,6 +123,7 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressFeaturedImageReposi
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressMediaUploader;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressPermalinkRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSlugNormalizer;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressUrlCacheInvalidator;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSchemaTargetReader;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressRenderedSchemaReader;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoImageRepository;
@@ -189,13 +195,40 @@ final class Plugin {
 			? array_values( array_filter( $providers, static fn ( mixed $provider ): bool => $provider instanceof SeoProvider ) )
 			: array();
 		$seo_providers = new SeoProviderRegistry( $providers, new NullSeoProvider() );
+
+		/*
+		 * Redirects (Slice 5, ADR 0026). The registry is constructed here,
+		 * above and outside the `wpcb_redirects_enabled` block that registers
+		 * the redirect abilities, because `get-diagnostics` reports provider
+		 * detection whether or not the feature is switched on (ADR 0026 s4).
+		 * An operator whose redirect abilities are missing needs to tell "the
+		 * switch is off" from "neither plugin is installed", and a registry
+		 * built inside the switch could only ever answer the first.
+		 *
+		 * Both adapters are constructed unconditionally and report themselves
+		 * unavailable when their plugin is absent, so "no provider" stays
+		 * distinguishable from "no redirects". Registry order is a stable
+		 * *reporting* order, not a preference: it never selects a write
+		 * target, because a write names its provider.
+		 */
+		$redirects_enabled  = (bool) get_option( Installer::REDIRECTS_ENABLED_OPTION );
+		$redirect_providers = new RedirectProviderRegistry(
+			array(
+				new YoastPremiumRedirectProvider( home_url( '/' ) ),
+				new RedirectionProvider( home_url( '/' ) ),
+			),
+			new NullRedirectProvider()
+		);
+
 		( new ContentAbilities(
 			$search,
 			new GetContent( $manager, $content_repository ),
 			new GetBlockTree( $manager, new WordPressBlockTreeRepository() ),
 			new GetEditorialContext( $manager, $search, new WordPressEditorialContextRepository(), $seo_providers ),
 			$manager,
-			$seo_providers
+			$seo_providers,
+			$redirect_providers,
+			$redirects_enabled
 		) )->register_hooks();
 		( new SeoAbilities(
 			new GetSeo( $seo_providers, new WordPressSeoTargetAccess( $manager, $content_repository ) ),
@@ -408,7 +441,8 @@ final class Plugin {
 					$mutation_repository,
 					new WordPressPermalinkRepository(),
 					new WordPressSlugNormalizer(),
-					$audit_log
+					$audit_log,
+					new WordPressUrlCacheInvalidator()
 				)
 			) )->register_hooks();
 
@@ -444,22 +478,11 @@ final class Plugin {
 		}
 
 		/*
-		 * Redirects (Slice 5, ADR 0026 as amended 2026-09-01). The registry
-		 * order below is a stable *reporting* order, not a preference: it
-		 * never selects a write target, because a write names its provider.
-		 * Both adapters are constructed unconditionally and report themselves
-		 * unavailable when their plugin is absent, so "no provider" stays
-		 * distinguishable from "no redirects".
+		 * Redirect abilities (Slice 5, ADR 0026 as amended 2026-09-01). The
+		 * registry itself is built further up, because diagnostics report it
+		 * with this switch off; only the abilities are gated here.
 		 */
-		if ( get_option( Installer::REDIRECTS_ENABLED_OPTION ) ) {
-			$redirect_providers = new RedirectProviderRegistry(
-				array(
-					new YoastPremiumRedirectProvider( home_url( '/' ) ),
-					new RedirectionProvider( home_url( '/' ) ),
-				),
-				new NullRedirectProvider()
-			);
-
+		if ( $redirects_enabled ) {
 			( new SearchRedirectsAbilities( new SearchRedirects( $redirect_providers ) ) )->register_hooks();
 
 			/*
@@ -489,6 +512,30 @@ final class Plugin {
 					new DeleteRedirect( $redirect_providers, $redirect_audit )
 				) )->register_hooks();
 			}
+		}
+
+		/*
+		 * Site error statistics (ADR 0030). A port of its own, with its own
+		 * registry and its own capability, because statistics availability
+		 * does not follow redirect availability: Yoast Premium serves
+		 * redirects and collects no 404 data at all, and hanging this off the
+		 * redirect port would force such a site to answer "no 404s" - which
+		 * reads as "no problems".
+		 *
+		 * Only the Redirection adapter is registered, because it is the only
+		 * backend that collects the data. When it is absent the registry's
+		 * null object answers `unavailable`, which is the honest state and is
+		 * never an empty count list.
+		 */
+		if ( get_option( Installer::ERROR_STATISTICS_ENABLED_OPTION ) ) {
+			( new ErrorStatisticsAbilities(
+				new GetNotFoundStatistics(
+					new ErrorStatisticsProviderRegistry(
+						array( new RedirectionErrorStatisticsProvider() ),
+						new NullErrorStatisticsProvider()
+					)
+				)
+			) )->register_hooks();
 		}
 
 		/*

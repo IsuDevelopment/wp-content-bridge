@@ -91,6 +91,10 @@ final class WPCB_Abilities_Runtime_Verification {
 		'wp-content-bridge/create-redirect',
 		'wp-content-bridge/update-redirect',
 		'wp-content-bridge/delete-redirect',
+		// Feature-gated by `wpcb_error_statistics_enabled` (ADR 0030). A
+		// separate port from redirects, so it can appear with the redirect
+		// abilities absent and the other way round.
+		'wp-content-bridge/get-404-statistics',
 	);
 
 	/**

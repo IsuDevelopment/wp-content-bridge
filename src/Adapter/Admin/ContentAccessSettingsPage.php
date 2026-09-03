@@ -244,6 +244,17 @@ final readonly class ContentAccessSettingsPage {
 
 		register_setting(
 			self::OPTION_GROUP,
+			Installer::ERROR_STATISTICS_ENABLED_OPTION,
+			array(
+				'type'              => 'boolean',
+				'default'           => false,
+				'sanitize_callback' => array( self::class, 'sanitize_checkbox' ),
+				'show_in_rest'      => false,
+			)
+		);
+
+		register_setting(
+			self::OPTION_GROUP,
 			Installer::LLMS_ENABLED_OPTION,
 			array(
 				'type'              => 'boolean',
@@ -556,6 +567,23 @@ final readonly class ContentAccessSettingsPage {
 					</tbody>
 				</table>
 				<p id="wpcb-redirects-enabled-help" class="description"><?php echo esc_html__( 'Requires the Manage redirects capability, plus an active redirect provider (Redirection, or Yoast SEO Premium) and that provider\'s own permission. Reading is available with this switch alone; creating additionally requires the content-writes master switch. A site running both plugins has two live redirect engines, so every result names which provider holds a path.', 'wp-content-bridge' ); ?></p>
+
+				<h2><?php echo esc_html__( 'Site error statistics', 'wp-content-bridge' ); ?></h2>
+				<table class="widefat striped" aria-describedby="wpcb-error-statistics-enabled-help">
+					<tbody>
+						<tr>
+							<th scope="row"><?php echo esc_html__( '404 statistics ability', 'wp-content-bridge' ); ?></th>
+							<td>
+								<input type="hidden" name="<?php echo esc_attr( Installer::ERROR_STATISTICS_ENABLED_OPTION ); ?>" value="0">
+								<label>
+									<input type="checkbox" name="<?php echo esc_attr( Installer::ERROR_STATISTICS_ENABLED_OPTION ); ?>" value="1" <?php checked( (bool) get_option( Installer::ERROR_STATISTICS_ENABLED_OPTION ) ); ?>>
+									<?php echo esc_html__( 'Enable reading aggregate counts of the paths that returned 404 (off by default).', 'wp-content-bridge' ); ?>
+								</label>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+				<p id="wpcb-error-statistics-enabled-help" class="description"><?php echo esc_html__( 'Answers which redirect is missing, which creating a redirect cannot. Requires the separate Read error statistics capability, not Manage redirects, so diagnosing can be granted without authority to change routing. Only the Redirection plugin collects this data; Yoast SEO Premium collects none, and that is reported as unavailable rather than as zero 404s. Results carry the requested path and a hit count only, never a visitor IP, user agent, referrer, or request data, and the retention window each count covers. Because the log is read directly, Redirection\'s own permission for its 404 log still applies: by default that means Administrator, and a site widens it through Redirection\'s own redirection_capability_check filter. Nothing here enables, prunes, or resets any log.', 'wp-content-bridge' ); ?></p>
 
 				<h2><?php echo esc_html__( 'llms.txt publication', 'wp-content-bridge' ); ?></h2>
 				<table class="widefat striped" aria-describedby="wpcb-llms-enabled-help">
@@ -1265,6 +1293,8 @@ final readonly class ContentAccessSettingsPage {
 			IntegrationCapability::DELETE_CONTENT->value   => esc_html__( 'Move authorized content to trash', 'wp-content-bridge' ),
 			IntegrationCapability::MANAGE_LLMS->value      => esc_html__( 'Read, preview, update, and regenerate llms.txt configuration and publication', 'wp-content-bridge' ),
 			IntegrationCapability::MANAGE_REDIRECTS->value => esc_html__( 'Read redirects across providers and create them in a named provider', 'wp-content-bridge' ),
+			IntegrationCapability::UPLOAD_MEDIA->value     => esc_html__( 'Import one image from a remote URL into the media library', 'wp-content-bridge' ),
+			IntegrationCapability::READ_ERROR_STATISTICS->value => esc_html__( 'Read aggregate 404 statistics (paths and counts only, no visitor data)', 'wp-content-bridge' ),
 		);
 	}
 

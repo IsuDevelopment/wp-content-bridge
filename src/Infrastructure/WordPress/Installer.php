@@ -15,14 +15,15 @@ namespace IsuDev\WPContentBridge\Infrastructure\WordPress;
 final class Installer {
 
 	/**
-	 * Bumped to 13 for media uploads (ADR 0031), and to 12 before that for the
-	 * redirect feature. `maybe_upgrade()` re-runs `activate()` on a version
+	 * Bumped to 14 for the error-statistics capability (ADR 0030), to 13 for
+	 * media uploads (ADR 0031), and to 12 before that for the redirect
+	 * feature. `maybe_upgrade()` re-runs `activate()` on a version
 	 * increase, which is the only thing that grants a newly added capability
 	 * to administrators on an install that is already active. Without the bump
 	 * the capability would exist in code and on no role, so every check on it
 	 * would be false for everyone.
 	 */
-	private const SCHEMA_VERSION = 13;
+	private const SCHEMA_VERSION = 14;
 	private const VERSION_OPTION = 'wpcb_schema_version';
 
 	public const WRITES_ENABLED_OPTION        = 'wpcb_writes_enabled';
@@ -34,6 +35,17 @@ final class Installer {
 	public const MEDIA_WRITES_ENABLED_OPTION  = 'wpcb_media_writes_enabled';
 	public const MEDIA_UPLOADS_ENABLED_OPTION = 'wpcb_media_uploads_enabled';
 	public const INTEGRATION_USER_OPTION      = 'wpcb_integration_user_id';
+
+	/**
+	 * Non-autoloaded error-statistics flag, off by default (ADR 0030).
+	 *
+	 * Gates `get-404-statistics`. It is a read, and reads elsewhere in this
+	 * plugin are ungated - but this one reads a third-party plugin's traffic
+	 * log rather than this site's own content, so whether an agent may see it
+	 * at all stays an explicit operator decision, like media and pattern
+	 * reads. It never enables logging in any provider.
+	 */
+	public const ERROR_STATISTICS_ENABLED_OPTION = 'wpcb_error_statistics_enabled';
 
 	/**
 	 * Non-autoloaded MCP projection flag (ADR 0025). Gates whether the plugin
@@ -145,6 +157,7 @@ final class Installer {
 		add_option( self::REDIRECTS_ENABLED_OPTION, false, '', false );
 		add_option( self::MEDIA_WRITES_ENABLED_OPTION, false, '', false );
 		add_option( self::MEDIA_UPLOADS_ENABLED_OPTION, false, '', false );
+		add_option( self::ERROR_STATISTICS_ENABLED_OPTION, false, '', false );
 		add_option( self::LLMS_ENABLED_OPTION, false, '', false );
 		add_option( self::MCP_SERVER_ENABLED_OPTION, true, '', false );
 		add_option( self::INVOCATION_TELEMETRY_ENABLED_OPTION, false, '', false );
@@ -224,6 +237,7 @@ final class Installer {
 			'wpcb_manage_llms',
 			'wpcb_manage_redirects',
 			'wpcb_upload_media',
+			'wpcb_read_error_statistics',
 		) as $capability ) {
 			$administrator->add_cap( $capability );
 		}

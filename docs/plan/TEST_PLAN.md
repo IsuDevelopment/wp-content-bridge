@@ -316,11 +316,14 @@ The full static/unit baseline after adding this matrix is 234 tests / 596
 assertions with PHPCS and maximum-level PHPStan clean. The final provider-active
 WordPress runtime checks remain pending.
 
-## Redirect provider fixtures (planned, ADR 0026)
+## Redirect provider fixtures (ADR 0026)
 
-Nothing below is active yet — no Ability, capability, or MCP entry exists for
-Slice 5. Recorded here so the obligation is not lost before implementation
-reaches it.
+**Superseded in large part by `tests/Integration/redirects-verification.php`,
+which shipped with 0.9.0 and covers the lifecycle in every available engine
+against real Redirection 5.9.0 and Yoast Premium 28.0 (see
+`docs/setup/VERIFICATION.md`).** The list below is kept for the obligations it
+still records that the verifier does not cover — the last bullet in
+particular.
 
 - **Done manually, needs a permanent fixture:** Redirection's REST payload
   shapes were reconciled against a live 5.9.0 install on 2026-08-14 by
@@ -343,6 +346,38 @@ reaches it.
   needs a runtime assertion that WPCB's capability is granted only for the
   duration of one call and never leaks into an unrelated Redirection request
   in the same process.
+
+## Error-statistics fixtures (ADR 0030)
+
+`tests/Integration/error-statistics-verification.php` is the fixture. It is
+read-only against the log: no 404 row is written, no Redirection setting is
+changed, nothing is pruned.
+
+It asserts whichever branch the site is actually in rather than requiring one,
+because all three are real states: `unavailable` (and that it came from the
+null provider rather than an empty list), `disabled` (and that it names the
+setting responsible), or `measured`. On a measured site it additionally
+asserts:
+
+- every count carries **no key beyond `path` and `hits`** — the standing guard
+  on ADR 0030 s3, and the one assertion that must never be relaxed;
+- counts are positive and ordered highest first, since a caller asking for the
+  top N of a log it cannot page through gets the wrong N otherwise;
+- `since` is actually applied — a one-second window must not return the whole
+  log, which is exactly what comparing the boundary in the wrong timezone
+  would produce, and is the failure mode a unit test cannot reach;
+- a range older than retention reports `truncated` with an `effective_since`
+  that differs from the request.
+
+Still open, and needing the reference site: **it has never been run.** The
+statistics port must not be described as verified until
+`docs/setup/VERIFICATION.md` records a run. Redirection remains installed there
+for exactly this purpose.
+
+Not covered by any fixture, and deliberately: a second statistics provider.
+None exists — Yoast Premium 28.0 and Free 28.4 collect no 404 or hit data at
+all, verified from source — so the multi-provider path is exercised by unit
+tests against fakes only.
 
 ## Security tests
 

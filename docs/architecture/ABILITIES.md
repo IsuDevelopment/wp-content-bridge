@@ -186,6 +186,15 @@ Purpose: report safe compatibility status for support and client setup.
 
 It reports versions and availability, not secrets, database details, paths, usernames, or raw configuration.
 
+`redirects` reports the redirect port's provider detection (ADR 0026 s4) as
+`enabled` plus a `providers` list, and it is reported **whether or not
+`wpcb_redirects_enabled` is on**. The two facts are separate because the
+operator symptom is the same either way — the redirect abilities are missing —
+while the fix is not: switch the feature on, or install a provider. Each entry
+carries its own `detected` flag, so a configured-but-absent backend is visible
+rather than omitted. Statistics availability is deliberately not reported
+here; it does not follow redirect availability (ADR 0030 s1).
+
 Annotations: read-only, non-destructive, idempotent.
 
 ## Media read abilities
@@ -692,6 +701,20 @@ its own for post types whose permalink structure includes the slug, but that
 does not cover every rewrite, so the old URL is handed back rather than assumed
 to be someone else's problem.
 
+`permalink.cache` reports the old-URL invalidation ADR 0032 added. The
+post-scoped invalidation every write inherits (ADR 0012) reaches the object,
+not a page-cache entry for the **old** URL, which is keyed by a URL no longer
+associated with the post — and that entry serves a *stale* page rather than
+none, so the rename appears not to have taken effect. The write therefore
+notifies a bounded set — exactly the old and new URL — through public
+single-URL purge hooks that are dispatched only when something is listening,
+plus this plugin's own `wp_content_bridge_purge_urls` action.
+
+It reports `notified` and `delegated`, never a confirmed purge: dispatching a
+hook proves a listener ran, not that a cached page was dropped. **Do not read a
+successful rename as a cold old URL while `delegated` is true** — that value
+says the actual purge depends on site-level glue this plugin cannot see.
+
 It cannot change the site's permalink *structure*. That is a site-wide rewrite
 setting that would alter every URL at once, which is not a per-object edit.
 
@@ -991,14 +1014,15 @@ from the local ownership workflow.
 
 ## Redirect abilities
 
-Two abilities, both requiring `wpcb_manage_redirects` and the
-`wpcb_redirects_enabled` switch. The write additionally requires the
-`wpcb_writes_enabled` master switch, and the selected backend's own authority:
+Four abilities — one read and three writes — all requiring
+`wpcb_manage_redirects` and the `wpcb_redirects_enabled` switch. The writes
+additionally require the `wpcb_writes_enabled` master switch, and the selected
+backend's own authority:
 Redirection through its scoped permission filters, Yoast SEO Premium through
 its native `wpseo_manage_redirects` — which the Yoast adapter has to check
 itself, because Yoast's redirect manager checks no capability at all.
 
-**The premise these two are shaped by:** a site can run Redirection *and*
+**The premise these are shaped by:** a site can run Redirection *and*
 Yoast Premium at the same time, and many do. When it does, **both engines
 serve redirects** — Yoast's handler is gated on `! is_admin()` and
 Redirection's module hooks the front end too — and whichever attaches first
@@ -1110,6 +1134,55 @@ underneath it. Removing a rule that is not there is an error, not a quiet
 success: success would tell a caller the path is clear when another engine may
 still hold it. Both adapters confirm removal by re-reading the provider rather
 than trusting its "rows touched" answer, so `deleted` is only ever `true`.
+
+
+## Site error statistics ability
+
+### `wp-content-bridge/get-404-statistics`
+
+Purpose: answer *which* redirect is missing, which creating a redirect cannot.
+Requires the dedicated `wpcb_read_error_statistics` capability — deliberately
+not `wpcb_manage_redirects` — and the off-by-default
+`wpcb_error_statistics_enabled` switch (ADR 0030).
+
+Input: optional `since` (ISO 8601, UTC when it carries no offset) and `limit`
+(1-100, default 20). A `since` in the future is refused rather than answered
+with an empty measurement.
+
+Output: `availability`, the echoed `requested` query, and one `sources` entry
+per statistics provider. Each entry carries the provider's identity, its own
+`availability`, the `window` the counts cover, `disabled_by`, `detail`, and
+`paths`.
+
+Four states, and they never collapse into a zero:
+
+- `measured` — the log is on; the result is the observation, including a
+  legitimately empty one.
+- `disabled` — a provider is present but its logging is off. `disabled_by`
+  names the setting, so the operator knows what to change.
+- `forbidden` — the provider is present and collecting, but its own permission
+  model refuses this principal. Distinct from `unavailable`, which would send
+  someone to install a plugin that is already installed.
+- `unavailable` — nothing on this site collects the data. This is the honest
+  answer on a Yoast-only site, since Yoast SEO Premium collects no 404 or
+  redirect-hit data at all.
+
+**Aggregate only, by construction.** An entry carries the requested path and a
+hit count and nothing else. Visitor IP, user agent, referrer, and request data
+are never read into the plugin, never stored, never returned, and never
+projected — and there is no parameter that could include them, because an
+option is a thing an agent can be talked into setting.
+
+**Retention is the outer bound of any question.** `window.retention_days` is
+the provider's own pruning setting; when a requested `since` reaches past it,
+`truncated` is true and `effective_since` reports the boundary actually used.
+Reported silently, a monitoring caller would read the pruned rows as 404s that
+stopped happening.
+
+Nothing here enables logging, changes a provider setting, or prunes or resets
+a log, even though both known backends can.
+
+Annotations: read-only, non-destructive, idempotent.
 
 ## Status transition abilities
 
@@ -1231,10 +1304,16 @@ retried ordinary refusals as transient and monitoring read them as an outage.
 | 400 | The request is wrong: malformed input, an unusable reference inside the input, or an address that does not resolve within the addressed object | `wpcb_invalid_input`, `wpcb_invalid_selector`, `wpcb_invalid_blocks`, `wpcb_invalid_custom_schema`, `wpcb_block_mismatch`, `wpcb_block_path_not_found`, `wpcb_seo_field_unsupported`, `wpcb_seo_image_unavailable`, `wpcb_redirect_source_rejected` |
 | 403 | The principal is not permitted | `wpcb_forbidden` |
 | 404 | The addressed object does not exist **or is not visible to this principal** | `wpcb_content_unavailable`, `wpcb_media_unavailable`, `wpcb_pattern_unavailable` |
-| 409 | Stored state conflicts with the request; re-read and retry | `wpcb_conflict`, `wpcb_invalid_state`, `wpcb_redirect_rule_not_representable` |
+| 409 | Stored state conflicts with the request; re-read and retry | `wpcb_conflict`, `wpcb_invalid_state`, `wpcb_redirect_rule_not_representable`, `wpcb_permalink_unavailable` |
 | 413 | A declared payload bound would be exceeded | `wpcb_content_too_large`, `wpcb_pattern_content_too_large` |
+| 422 | The request was understood and refused on its content | `wpcb_media_upload_failed` |
 | 501 | This install cannot implement the operation because an optional provider or a WordPress feature it needs is absent. Deliberately not 503: nothing is overloaded and retrying will not help | `wpcb_service_schema_unavailable`, `wpcb_custom_schema_unavailable`, `wpcb_seo_data_unavailable`, `wpcb_trash_unavailable`, `wpcb_redirect_provider_unavailable` |
-| 500 | The plugin or WordPress failed | `wpcb_internal_error`, `wpcb_write_failed` |
+| 500 | The plugin or WordPress failed | `wpcb_internal_error`, `wpcb_write_failed`, `wpcb_statistics_unreadable` |
+
+`wpcb_statistics_unreadable` is deliberately 500 rather than 501: a provider
+that collects nothing is already an `unavailable` *result* of a successful
+read (ADR 0030 s2), so reaching this code means a present, permitted backend
+failed while answering.
 
 A denial caught by `permission_callback` never reaches this map — WordPress
 answers those `403 rest_ability_cannot_execute` itself.

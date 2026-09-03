@@ -26,6 +26,7 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentTypeCatalog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressMediaRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressPermalinkRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSlugNormalizer;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressUrlCacheInvalidator;
 
 // phpcs:disable Squiz.Commenting.FunctionCommentThrowTag.Missing -- assertion helpers intentionally fail the runtime harness fast.
 // phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON is emitted to CLI only.
@@ -369,6 +370,28 @@ final class WPCB_Media_Metadata_Permalink_Verification {
 			'The slug did not persist to storage.'
 		);
 		$this->assert_true( array( 'slug' ) === $result->mutation->changed_fields, 'The mutation reported unexpected fields.' );
+
+		/*
+		 * ADR 0032. The old URL keeps its own page-cache entry, keyed by URL,
+		 * that post-scoped invalidation cannot reach - so the write reports
+		 * the bounded set it addressed and whether the actual purge was left
+		 * to site-level glue. A run that reported `delegated: false` without a
+		 * cache plugin bound would mean the plugin was claiming a purge it did
+		 * not perform.
+		 */
+		$cache = $document['permalink']['cache'];
+		$this->assert_true(
+			array( $document['permalink']['previous_url'], $document['permalink']['url'] ) === $cache['urls'],
+			'The write did not address exactly the old and new URL.'
+		);
+		$this->assert_true(
+			in_array( 'wp-content-bridge', $cache['notified'], true ),
+			'The write did not emit the delegated purge action.'
+		);
+		$this->assert_true(
+			has_action( 'litespeed_purge_url' ) ? true : true === $cache['delegated'],
+			'The write reported a bound cache channel that is not listening.'
+		);
 	}
 
 	/**
@@ -563,7 +586,8 @@ final class WPCB_Media_Metadata_Permalink_Verification {
 			new WordPressContentMutationRepository(),
 			new WordPressPermalinkRepository(),
 			new WordPressSlugNormalizer(),
-			new WPCB_Featured_Image_Discarding_Audit_Log()
+			new WPCB_Featured_Image_Discarding_Audit_Log(),
+			new WordPressUrlCacheInvalidator()
 		);
 	}
 

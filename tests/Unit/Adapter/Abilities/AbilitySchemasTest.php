@@ -68,6 +68,25 @@ final class AbilitySchemasTest extends TestCase {
 	}
 
 	/**
+	 * Diagnostics report redirect provider detection separately from the
+	 * feature switch (ADR 0026 s4). An operator whose redirect abilities are
+	 * missing must be able to tell "the switch is off" from "no redirect
+	 * plugin is installed", and one merged answer could not.
+	 */
+	public function test_diagnostics_report_redirect_providers_and_the_switch_separately(): void {
+		$diagnostics = AbilitySchemas::diagnostics_output();
+		$redirects   = $diagnostics['properties']['redirects'];
+
+		self::assertContains( 'redirects', $diagnostics['required'] );
+		self::assertSame( array( 'enabled', 'providers' ), $redirects['required'] );
+		self::assertFalse( $redirects['additionalProperties'] );
+		self::assertSame(
+			array( 'provider', 'version', 'detected', 'capabilities' ),
+			$redirects['properties']['providers']['items']['required']
+		);
+	}
+
+	/**
 	 * Diagnostics make an unsupported WordPress diagnosable from one read.
 	 *
 	 * `abilities_api` is a boolean that cannot tell 7.0 from 7.1, so "the

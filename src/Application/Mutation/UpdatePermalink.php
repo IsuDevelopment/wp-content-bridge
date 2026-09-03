@@ -33,6 +33,7 @@ final readonly class UpdatePermalink {
 	 * @param PermalinkRepository       $permalinks Slug read/write port.
 	 * @param SlugNormalizer            $slugs      Slug normalization port.
 	 * @param AuditLog                  $audit      Append-only audit sink.
+	 * @param UrlCacheInvalidator       $urls       URL-scoped cache invalidation port (ADR 0032).
 	 */
 	public function __construct(
 		private ContentAccessManager $access,
@@ -40,6 +41,7 @@ final readonly class UpdatePermalink {
 		private PermalinkRepository $permalinks,
 		private SlugNormalizer $slugs,
 		private AuditLog $audit,
+		private UrlCacheInvalidator $urls,
 	) {}
 
 	/**
@@ -110,7 +112,20 @@ final readonly class UpdatePermalink {
 				$before['slug'] === $after['slug'] ? array() : $update->changed_fields(),
 				false
 			);
-			$result   = new PermalinkMutationResult( $mutation, $before, $after );
+
+			/*
+			 * ADR 0032: the old URL is invalidated here, by the write that
+			 * knows it, rather than on `wpcb_mutation` - that event is
+			 * redacted to changed field names, and putting URLs on it would
+			 * make the audit record a carrier of content values. Skipped
+			 * entirely when the URL did not move, so a no-op rename does not
+			 * dispatch a purge.
+			 */
+			$channels = $before['url'] === $after['url']
+				? array()
+				: $this->urls->purge( array( $before['url'], $after['url'] ) );
+
+			$result = new PermalinkMutationResult( $mutation, $before, $after, $channels );
 		} catch ( Throwable $error ) {
 			[ $outcome, $code ] = $this->classify( $error );
 			$this->audit->record(

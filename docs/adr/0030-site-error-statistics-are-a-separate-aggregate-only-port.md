@@ -2,9 +2,44 @@
 
 ## Status
 
-Proposed (2026-09-01). Prerequisite for any statistics or monitoring Ability in
-Slice 5. Depends on ADR 0026 (redirect port), which was amended the same day
-after its Yoast findings were corrected from plugin source.
+Accepted (2026-09-03), implemented in the same change. Prerequisite for any
+statistics or monitoring Ability in Slice 5. Depends on ADR 0026 (redirect
+port), accepted the same day, which was amended on 2026-09-01 after its Yoast
+findings were corrected from plugin source.
+
+Implemented as `Domain/Statistics/`, `Application/Statistics/`,
+`Infrastructure/Redirection/RedirectionErrorStatisticsProvider`, and the
+`wp-content-bridge/get-404-statistics` Ability behind the
+`wpcb_read_error_statistics` capability and the off-by-default
+`wpcb_error_statistics_enabled` switch. Two things about the built version are
+worth recording here, because both are decisions this ADR did not make:
+
+- **A fourth state, `forbidden`, joined the three in decision 2.** Decision 4
+  requires the adapter to enforce the provider's own capability itself, since
+  a direct table read never reaches the provider's check - and a denial then
+  needed an answer. Reporting it as `unavailable` would send an operator to
+  install a plugin that is already installed, which is the same
+  indistinguishable-states defect the three states exist to prevent. The
+  adapter *queries* Redirection's documented `redirection_capability_check`
+  filter rather than registering it: registering it, the way the redirect
+  adapter legitimately does around a call into Redirection's own code, would
+  mean this plugin answering its own permission question. The consequence is
+  that on a site which has not configured that filter the effective
+  requirement is Redirection's default, so a non-administrator integration
+  principal is refused - visibly, and fixable in Redirection's own vocabulary.
+- **An off-by-default feature switch was added**, which this ADR does not
+  require. Reads elsewhere in this plugin are ungated, but this one reads a
+  third-party plugin's traffic log rather than the site's own content, so
+  whether an agent may see it at all stays an explicit operator decision, as
+  it already is for media and pattern reads. The switch never enables logging
+  in any provider.
+
+Decision 6 is moot as built and was not implemented: the aggregation is this
+plugin's own `GROUP BY`, not Redirection's undeclared `groupBy` REST
+parameter, so there is no silently-ignored primitive to probe. Its underlying
+requirement is still enforced - a row that comes back without a positive count
+fails the read instead of being reported as an observation, and per-hit rows
+are never aggregated client-side.
 
 ## Context
 

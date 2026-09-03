@@ -752,7 +752,7 @@ final class AbilitySchemas {
 	public static function diagnostics_output(): array {
 		return array(
 			'type'                 => 'object',
-			'required'             => array( 'schema_version', 'plugin_version', 'wordpress_version', 'minimum_wordpress_version', 'abilities_api', 'abilities_api_features', 'mcp_adapter', 'mcp_projection', 'max_content_representation_bytes', 'seo_provider', 'readable_post_types' ),
+			'required'             => array( 'schema_version', 'plugin_version', 'wordpress_version', 'minimum_wordpress_version', 'abilities_api', 'abilities_api_features', 'mcp_adapter', 'mcp_projection', 'max_content_representation_bytes', 'seo_provider', 'redirects', 'readable_post_types' ),
 			'properties'           => array(
 				'schema_version'                   => array( 'type' => 'string' ),
 				'plugin_version'                   => array( 'type' => 'string' ),
@@ -800,6 +800,24 @@ final class AbilitySchemas {
 					'minimum' => 1,
 				),
 				'seo_provider'                     => self::provider_status(),
+				'redirects'                        => array(
+					'description'          => 'Redirect provider detection (ADR 0026 s4). Reported whether or not the redirect abilities are switched on, so "the switch is off" can be told from "no redirect plugin is installed".',
+					'type'                 => 'object',
+					'required'             => array( 'enabled', 'providers' ),
+					'properties'           => array(
+						'enabled'   => array(
+							'description' => 'Whether the redirect abilities are registered. False means they are absent by configuration, whatever the providers below report.',
+							'type'        => 'boolean',
+						),
+						'providers' => array(
+							'description' => 'Every configured redirect adapter, each with its own detected flag, in a stable reporting order that is not a preference. Statistics are not reported here: they are a separate port whose availability does not follow redirect availability (ADR 0030 s1).',
+							'type'        => 'array',
+							'maxItems'    => 10,
+							'items'       => self::redirect_provider_status(),
+						),
+					),
+					'additionalProperties' => false,
+				),
 				'readable_post_types'              => self::string_array( 100 ),
 			),
 			'additionalProperties' => false,
@@ -1787,12 +1805,36 @@ final class AbilitySchemas {
 		$output['properties']['permalink'] = array(
 			'description'          => 'The slug and URL on both sides of the change. The previous URL is what a redirect should be created from.',
 			'type'                 => 'object',
-			'required'             => array( 'previous_slug', 'previous_url', 'slug', 'url' ),
+			'required'             => array( 'previous_slug', 'previous_url', 'slug', 'url', 'cache' ),
 			'properties'           => array(
 				'previous_slug' => array( 'type' => 'string' ),
 				'previous_url'  => array( 'type' => 'string' ),
 				'slug'          => array( 'type' => 'string' ),
 				'url'           => array( 'type' => 'string' ),
+				'cache'         => array(
+					'description'          => 'Cache invalidation for the old and new URL (ADR 0032). A page-cache entry for the old URL is keyed by URL, so the post-scoped invalidation every write inherits cannot reach it, and it would keep serving the old page. Reports what was notified, never that a purge was confirmed.',
+					'type'                 => 'object',
+					'required'             => array( 'urls', 'notified', 'delegated' ),
+					'properties'           => array(
+						'urls'      => array(
+							'description' => 'The bounded set addressed: the old and new URL, and nothing else. Links elsewhere are what a redirect is for.',
+							'type'        => 'array',
+							'maxItems'    => 2,
+							'items'       => array( 'type' => 'string' ),
+						),
+						'notified'  => array(
+							'description' => 'Cache channels notified. Empty when the URL did not move.',
+							'type'        => 'array',
+							'maxItems'    => 10,
+							'items'       => array( 'type' => 'string' ),
+						),
+						'delegated' => array(
+							'description' => 'True when no cache channel beyond this plugin\'s own wp_content_bridge_purge_urls action was available, so whether the old URL is actually cold depends on site-level glue this plugin cannot see. Do not read a successful rename as a cold old URL while this is true.',
+							'type'        => 'boolean',
+						),
+					),
+					'additionalProperties' => false,
+				),
 			),
 			'additionalProperties' => false,
 		);
@@ -3357,6 +3399,148 @@ final class AbilitySchemas {
 					'description' => 'Normalized operations this provider supports.',
 					'type'        => 'array',
 					'items'       => array( 'type' => 'string' ),
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the get-404-statistics input schema.
+	 *
+	 * `since` is the whole reason this read is pollable (ADR 0030 s4). There
+	 * is deliberately no parameter that could widen the projection to
+	 * per-visitor fields: an option is a thing an agent can be talked into
+	 * setting, so the option does not exist (s3).
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function not_found_statistics_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array(),
+			'properties'           => array(
+				'since' => array(
+					'description' => 'Inclusive ISO 8601 lower bound, interpreted as UTC when it carries no offset. Omit for everything the provider still retains. A range older than the provider\'s retention is truncated, and the result says so.',
+					'type'        => array( 'string', 'null' ),
+					'minLength'   => 4,
+					'maxLength'   => 40,
+				),
+				'limit' => array(
+					'description' => 'Maximum paths per provider, highest count first.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 100,
+					'default'     => 20,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the get-404-statistics result schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function not_found_statistics_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'schema_version', 'availability', 'requested', 'sources' ),
+			'properties'           => array(
+				'schema_version' => array( 'type' => 'string' ),
+				'availability'   => array(
+					'description' => 'Overall state across providers: measured (an observation, possibly legitimately empty), disabled (a provider is present but its logging is off), forbidden (present, but the provider\'s own permission model refuses this principal), or unavailable (nothing on this site collects it). These never collapse into a zero.',
+					'type'        => 'string',
+					'enum'        => array( 'measured', 'disabled', 'forbidden', 'unavailable' ),
+				),
+				'requested'      => array(
+					'description'          => 'The query as it was applied, echoed so a caller polling on a schedule can see the boundary it actually asked for.',
+					'type'                 => 'object',
+					'required'             => array( 'since', 'limit' ),
+					'properties'           => array(
+						'since' => array( 'type' => array( 'string', 'null' ) ),
+						'limit' => array( 'type' => 'integer' ),
+					),
+					'additionalProperties' => false,
+				),
+				'sources'        => array(
+					'description' => 'One entry per statistics provider, never merged into a single list: each backend has its own retention window and logging switch, so a combined top-N would order counts that cover different periods.',
+					'type'        => 'array',
+					'maxItems'    => 10,
+					'items'       => self::not_found_statistics_source(),
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns one provider's statistics result schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function not_found_statistics_source(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'provider', 'availability', 'window', 'disabled_by', 'detail', 'paths' ),
+			'properties'           => array(
+				'provider'     => array(
+					'type'                 => 'object',
+					'required'             => array( 'provider', 'version', 'detected', 'collects' ),
+					'properties'           => array(
+						'provider' => array( 'type' => 'string' ),
+						'version'  => array( 'type' => array( 'string', 'null' ) ),
+						'detected' => array( 'type' => 'boolean' ),
+						'collects' => array(
+							'description' => 'Statistic kinds this provider can answer. Empty when it is installed but collects nothing readable, so "the plugin is here" never implies "the counts are here".',
+							'type'        => 'array',
+							'maxItems'    => 20,
+							'items'       => array( 'type' => 'string' ),
+						),
+					),
+					'additionalProperties' => false,
+				),
+				'availability' => array(
+					'type' => 'string',
+					'enum' => array( 'measured', 'disabled', 'forbidden', 'unavailable' ),
+				),
+				'window'       => array(
+					'description'          => 'What the counts are counts of. retention_days is the provider\'s own pruning setting and is the outer bound of any question; truncated is true when it cut the requested range short, which reported silently would look like 404s that stopped happening.',
+					'type'                 => 'object',
+					'required'             => array( 'retention_days', 'requested_since', 'effective_since', 'truncated' ),
+					'properties'           => array(
+						'retention_days'  => array( 'type' => array( 'integer', 'null' ) ),
+						'requested_since' => array( 'type' => array( 'string', 'null' ) ),
+						'effective_since' => array( 'type' => array( 'string', 'null' ) ),
+						'truncated'       => array( 'type' => 'boolean' ),
+					),
+					'additionalProperties' => false,
+				),
+				'disabled_by'  => array(
+					'description' => 'Provider setting responsible for a disabled result, so the operator knows which switch to change. Null in every other state.',
+					'type'        => array( 'string', 'null' ),
+				),
+				'detail'       => array(
+					'description' => 'Safe explanation of a non-measured result. Null when measured.',
+					'type'        => array( 'string', 'null' ),
+				),
+				'paths'        => array(
+					'description' => 'Aggregated counts, highest first. Present only for a measured result, and carrying the requested path and a hit count only - never an IP, user agent, referrer, or request data (ADR 0030 s3).',
+					'type'        => 'array',
+					'maxItems'    => 100,
+					'items'       => array(
+						'type'                 => 'object',
+						'required'             => array( 'path', 'hits' ),
+						'properties'           => array(
+							'path' => array( 'type' => 'string' ),
+							'hits' => array(
+								'type'    => 'integer',
+								'minimum' => 1,
+							),
+						),
+						'additionalProperties' => false,
+					),
 				),
 			),
 			'additionalProperties' => false,

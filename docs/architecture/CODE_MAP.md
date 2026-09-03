@@ -408,6 +408,16 @@ Files:
   report success, handing back a URL the caller never requested. Passing the
   post's own ID excludes itself, so re-submitting the current slug is not a
   false collision.
+- `src/Application/Mutation/UrlCacheInvalidator.php` and
+  `src/Infrastructure/WordPress/WordPressUrlCacheInvalidator.php` — URL-scoped
+  invalidation (ADR 0032), called by `UpdatePermalink` rather than from the
+  `wpcb_mutation` path: that event is redacted to changed field names, and
+  putting URLs on it would make the audit record a carrier of content values.
+  The adapter dispatches only public, documented, single-URL purge hooks, and
+  only when `has_action()` says something is listening, plus this plugin's own
+  `wp_content_bridge_purge_urls`. It never reads a cache plugin's options,
+  calls its classes, purges the site, or makes an HTTP request. The result
+  reports which channels were notified and never a confirmed purge.
 - `src/Infrastructure/WordPress/WordPressSlugNormalizer.php` — defers entirely
   to `sanitize_title()`, filters included, and reports `null` when nothing
   usable remains. It is a port rather than a domain helper because slug
@@ -798,7 +808,11 @@ exactly one the caller names.
   fires. `select( $slug )` returns the named provider or refuses;
   `available()` returns all of them; `statuses()` reports every configured
   provider plus the null fallback, so "no provider" stays distinguishable from
-  "no redirects".
+  "no redirects". The registry is built in `Plugin::boot()` **above** the
+  `wpcb_redirects_enabled` block, because `get-diagnostics` reports provider
+  detection with the feature switched off (ADR 0026 s4): otherwise "the switch
+  is off" and "neither plugin is installed" would produce the same report,
+  while needing opposite fixes.
 - `Application/Redirect/RedirectRuleLookup` — asks every available provider who
   claims a source path. Attributes a claim to the provider that **answered**,
   not to the `provider` field stamped on the returned rule, so a mis-stamping
@@ -850,10 +864,62 @@ exactly one the caller names.
 - `tests/Integration/redirects-verification.php` — the repeatable runtime
   fixture, including the `/`-shadow regression guard. Restores the feature flag
   and deletes every rule it created.
-- Not yet built: `update`/`disable` on the port, and the ADR 0030 statistics
-  port (a separate port precisely because Yoast collects no 404 data at all,
-  so hanging statistics off this one would make a Yoast-backed site report zero
-  404s — indistinguishable from a healthy site).
+- Not built on this port: `disable` as an operation distinct from `update` and
+  `delete`.
+
+## Site error statistics feature
+
+ADR 0030. One ability, `get-404-statistics`, behind the
+`wpcb_error_statistics_enabled` switch and the `wpcb_read_error_statistics`
+capability. It answers the half of the operator's redirect question that
+creating a redirect cannot: *which* redirect is missing.
+
+**A separate port from redirects, deliberately.** Statistics availability does
+not follow redirect availability — Yoast Premium serves redirects and collects
+no 404 data at all (verified from source, not inferred from missing docs), so
+hanging this off `RedirectProvider` would force a Yoast-backed site to answer
+"no 404s", which reads as "no problems". `RedirectProvider` gains no
+statistics method and the two registries are separate.
+
+- `Domain/Statistics/` — `ErrorStatisticsAvailability` (the four states:
+  `measured`, `disabled`, `forbidden`, `unavailable`, which never collapse),
+  `NotFoundCount` (path and hit count, and *nothing else* — there is no field
+  for an IP, agent, or referrer and no parameter that could add one),
+  `ErrorStatisticsWindow` (retention, requested and effective boundary, and an
+  explicit `truncated` signal), `ErrorStatisticsProviderStatus`, and
+  `NotFoundStatistics`, which refuses to carry counts unless it is `measured`
+  and refuses to be `disabled` without naming the setting responsible.
+- `Application/Statistics/` — the `ErrorStatisticsProvider` port, its registry
+  (no implicit active-provider accessor, same reasoning as redirects), the
+  null object that answers `unavailable` rather than an empty measurement,
+  `NotFoundStatisticsQuery` (bounded `since` and `limit`; a future `since` is
+  refused because it would return an empty *measured* result), and
+  `GetNotFoundStatistics`, which reports per provider and never merges two
+  backends' counts into one top-N over different retention windows.
+- `Infrastructure/Redirection/RedirectionErrorStatisticsProvider` — reads
+  `{prefix}redirection_404` in SQL, in-process. Not through Redirection's REST
+  API, because the aggregation there rests on an undeclared `groupBy`
+  parameter in an API its author calls unstable, and the log routes accept no
+  date filter while the table's `created` column is indexed. Two costs, both
+  handled: it probes the table and the exact columns it reads and reports
+  unavailable rather than issuing a query it cannot vouch for; and, since a
+  direct read bypasses Redirection's own permission check, it *queries*
+  Redirection's documented `redirection_capability_check` filter and requires
+  the capability that filter names — never registering the filter, which would
+  mean this plugin answering its own permission question.
+- `Adapter/Abilities/ErrorStatisticsAbilities` — the ability. Its capability is
+  not `wpcb_manage_redirects`: Redirection separates 404 reading from redirect
+  management in its own model, so the useful grant — diagnose without
+  authority to change routing — stays expressible.
+- `tests/Integration/error-statistics-verification.php` — the runtime fixture.
+  Read-only against the log; it asserts the three branches on real data, that
+  counts carry no key beyond `path` and `hits`, that `since` is actually
+  applied (a one-second window must not return the whole log, which is what a
+  timezone mistake would produce), and that a range older than retention
+  reports `truncated`.
+- Not built, and out of scope by ADR 0030: any write, prune, or reset; any
+  long-term history beyond the provider's own retention; scheduling,
+  thresholds, or notifications.
 
 ## Specification routes
 

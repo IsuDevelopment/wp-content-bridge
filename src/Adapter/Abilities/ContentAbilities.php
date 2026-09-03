@@ -18,6 +18,7 @@ use IsuDev\WPContentBridge\Application\Content\GetContent;
 use IsuDev\WPContentBridge\Application\Content\SearchContent;
 use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessManager;
 use IsuDev\WPContentBridge\Application\Editorial\GetEditorialContext;
+use IsuDev\WPContentBridge\Application\Redirect\RedirectProviderRegistry;
 use IsuDev\WPContentBridge\Application\Seo\SeoProviderRegistry;
 use IsuDev\WPContentBridge\Domain\Content\ContentQuery;
 use IsuDev\WPContentBridge\Domain\ContentAccess\ContentOperation;
@@ -37,12 +38,14 @@ final readonly class ContentAbilities {
 	/**
 	 * Creates the Abilities projection.
 	 *
-	 * @param SearchContent        $search Search use case.
-	 * @param GetContent           $get    Detail use case.
-	 * @param GetBlockTree         $get_block_tree Block-tree use case.
-	 * @param GetEditorialContext  $editorial Editorial context use case.
-	 * @param ContentAccessManager $access Shared policy.
-	 * @param SeoProviderRegistry  $seo_providers SEO provider selection.
+	 * @param SearchContent            $search Search use case.
+	 * @param GetContent               $get    Detail use case.
+	 * @param GetBlockTree             $get_block_tree Block-tree use case.
+	 * @param GetEditorialContext      $editorial Editorial context use case.
+	 * @param ContentAccessManager     $access Shared policy.
+	 * @param SeoProviderRegistry      $seo_providers SEO provider selection.
+	 * @param RedirectProviderRegistry $redirect_providers Redirect provider detection, for diagnostics only.
+	 * @param bool                     $redirects_enabled Whether the redirect abilities are switched on.
 	 */
 	public function __construct(
 		private SearchContent $search,
@@ -51,6 +54,8 @@ final readonly class ContentAbilities {
 		private GetEditorialContext $editorial,
 		private ContentAccessManager $access,
 		private SeoProviderRegistry $seo_providers,
+		private RedirectProviderRegistry $redirect_providers,
+		private bool $redirects_enabled,
 	) {
 	}
 
@@ -295,7 +300,7 @@ final readonly class ContentAbilities {
 		}
 
 		return array(
-			'schema_version'                   => '1.1',
+			'schema_version'                   => '1.2',
 			'plugin_version'                   => defined( 'WPCB_VERSION' ) ? WPCB_VERSION : 'unknown',
 			'wordpress_version'                => get_bloginfo( 'version' ),
 			'minimum_wordpress_version'        => self::minimum_wordpress_version(),
@@ -305,7 +310,38 @@ final readonly class ContentAbilities {
 			'mcp_projection'                   => McpServerProvider::projection_status(),
 			'max_content_representation_bytes' => GetContent::MAX_REPRESENTATION_BYTES,
 			'seo_provider'                     => $this->seo_providers->active()->status()->to_array(),
+			'redirects'                        => $this->redirect_status(),
 			'readable_post_types'              => $readable,
+		);
+	}
+
+	/**
+	 * Reports redirect provider detection, which ADR 0026 s4 requires
+	 * diagnostics to carry.
+	 *
+	 * `enabled` and `providers` are separate on purpose. An operator whose
+	 * redirect abilities are absent has two very different problems - the
+	 * switch is off, or neither backend is installed - and one combined
+	 * answer would not tell them apart. That is also why this is reported
+	 * with the feature off: the registry is built outside the switch (see
+	 * `Plugin::boot()`) precisely so the second question stays answerable.
+	 *
+	 * `providers` reports every *configured* adapter with its own `detected`
+	 * flag, not only the available ones, so "Yoast Premium is not installed
+	 * here" is visible rather than absent. Statistics are deliberately not
+	 * reported here: they are a separate port with its own availability, and
+	 * statistics availability does not follow redirect availability
+	 * (ADR 0030 s1).
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function redirect_status(): array {
+		return array(
+			'enabled'   => $this->redirects_enabled,
+			'providers' => array_map(
+				static fn ( $status ): array => $status->to_array(),
+				$this->redirect_providers->statuses()
+			),
 		);
 	}
 

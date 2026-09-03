@@ -28,6 +28,7 @@
                 <element value="wpcb_manage_llms" />
                 <element value="wpcb_manage_redirects" />
                 <element value="wpcb_upload_media" />
+                <element value="wpcb_read_error_statistics" />
                 <element value="wpseo_manage_redirects" />
             </property>
         </properties>

@@ -132,6 +132,37 @@ belong at the authenticated projection boundary.
 
 Mitigations: log IDs, action, actor, result, hashes and changed field names; do not log full content, credentials, raw request headers, Application Passwords, or connector keys.
 
+### Visitor traffic data in third-party logs
+
+New with the error-statistics port (ADR 0030). The 404 log this port reads is
+Redirection's, and its rows are personal data: IP, user agent, referrer, and
+with `log_header` enabled the request headers.
+
+Mitigations, all structural rather than configurable:
+
+- The projected surface is the requested path and a hit count. Nothing else is
+  selected in SQL, so no per-visitor field is read into the plugin, stored,
+  returned, or projected through MCP. There is deliberately **no parameter**
+  that could include them: an option is a thing an agent can be talked into
+  setting.
+- No client-side aggregation from per-hit rows is permitted anywhere, because
+  that would mean reading the very fields above in order to count them.
+- The port is read-only by construction: nothing deletes, prunes, resets, or
+  re-enables a log or a counter, so this plugin can neither destroy the site's
+  evidence nor start collecting on the operator's behalf.
+- Its own capability (`wpcb_read_error_statistics`) and its own off-by-default
+  switch (`wpcb_error_statistics_enabled`), separate from redirect authority,
+  so "diagnose" and "change routing" are grantable independently.
+- Because a direct table read bypasses Redirection's own permission check, the
+  adapter performs that check itself by querying Redirection's documented
+  `redirection_capability_check` filter and requiring the capability it names.
+  It never registers that filter for this read - doing so would mean this
+  plugin answering its own permission question.
+
+Consequence worth stating: because no visitor field ever enters the plugin, no
+retention, redaction, or export obligation attaches to it. That is a property
+of the code, not of a setting.
+
 ### Stolen or over-privileged connector credentials
 
 Mitigations: bind credentials to a WordPress user, intersect scope with current

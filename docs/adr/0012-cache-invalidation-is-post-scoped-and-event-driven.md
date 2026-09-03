@@ -2,6 +2,9 @@
 
 - Status: Accepted
 - Date: 2026-07-21
+- Narrowed by ADR 0032 (2026-09-03), which adds a URL-scoped path for the
+  **old** URL after a slug change. Post-scoped invalidation cannot reach an
+  entry keyed by a URL the post no longer has; nothing below changes.
 
 ## Context
 
