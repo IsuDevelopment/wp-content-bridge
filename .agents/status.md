@@ -1,8 +1,23 @@
 # Project status
 
-**Released version: 0.8.4.** Static quality is green at 513 tests / 1,269
-assertions. Runtime verification is defined in `docs/setup/VERIFICATION.md`
-and stands at 24 of 24 green on WordPress 7.1.
+**Released version: 0.10.0.** Static quality is green at 646 tests / 1,553
+assertions, PHPCS and maximum-level PHPStan clean.
+
+**0.10.0 shipped without a runtime inventory run, deliberately and on the
+operator's call.** The inventory is 26 verifiers, of which 25 were last run
+green at 0.9.0; `error-statistics-verification.php` has never been executed, so
+the ADR 0030 statistics port is *unverified at runtime* until
+`docs/setup/VERIFICATION.md` records a row. The feature is off by default,
+which bounds the exposure but does not substitute for the run.
+
+**0.8.4 and 0.9.0 had never actually been released** — both were committed,
+neither was tagged, and fifteen commits sat unpushed. Tagged and published on
+2026-09-03 in version order (0.8.4 first, so the updater's "latest" landed on
+the right one), then 0.10.0 on top. Every release before this one stopped at
+`v0.8.3`.
+
+(This header read 0.8.4 until 2026-09-03, three releases after it stopped being
+true; the numbers above are the ones the gate actually printed.)
 
 `0.8.4` is the WordPress 7.1 adoption release (ADRs 0027-0029, plan
 `docs/plan/WP_7_1_ABILITIES_ADOPTION_PLAN.md`). **Two changes are visible to
@@ -206,26 +221,27 @@ the wrong minimum is worse than one saying nothing.
 
 ### Open items carried past 0.9.0, in the order they matter
 
-1. **The 504 measurement on the production install.** Still the only unexplained
-   thing the operator actually feels. `ability-timing-probe.php` is built and
-   safe to run there; it needs one run plus the same calls through that
-   install's MCP endpoint. Everything measured locally says the read path is
-   not the cause.
-2. **Statistics port (ADR 0030).** Redirects currently answer half the
-   operator's question - creating a redirect - and not the half that matters
-   more: *which* redirect is missing, which needs the 404 history. Aggregate
-   only, no per-request personal data.
-3. **ADR 0026 to `Accepted`.** Still `Proposed` although the code is built and
-   verified against two live engines.
-4. **`get-diagnostics` does not report redirect providers**, which ADR 0026 s4
-   requires.
-5. **Old-URL page cache after a slug change.** Invalidation runs through
-   `wpcb_mutation` → `clean_post_cache( post_id )`, so the new writes inherit
-   it, but a page-cache entry for the **old** URL is keyed by URL rather than
-   post ID and can survive. The roadmap asks for "old+new bounded cache
-   invalidation". Recorded rather than quietly patched: the fix is
-   cache-plugin-specific and needs a decision about how far to reach into
-   third-party caches.
+**Four of the five below were closed on 2026-09-03; see the section directly
+after this one.** Only item 1 is still open, and it is open because it cannot
+be done from here.
+
+1. **The 504 measurement on the production install. Still open, still the only
+   unexplained thing the operator actually feels.** It needs shell access to
+   that install, which this machine does not have. What was done instead:
+   `docs/setup/PRODUCTION_504_MEASUREMENT.md` turns it into one runbook —
+   preconditions, the exact commands, the four MCP shapes to compare, a table
+   to fill, and how to read each of the three outcomes. The probe
+   (`ability-timing-probe.php`) was already built and is safe there: it reads
+   only. Everything measured locally still says the read path is not the cause.
+2. ~~Statistics port (ADR 0030).~~ **Done 2026-09-03**, ADR accepted and
+   implemented. Not yet verified on the reference site.
+3. ~~ADR 0026 to `Accepted`.~~ **Done 2026-09-03**, with both questions its
+   2026-09-01 amendment reopened closed in the Status section.
+4. ~~`get-diagnostics` does not report redirect providers.~~ **Done
+   2026-09-03**: `redirects.enabled` and `redirects.providers`, reported with
+   the feature switch off as well as on.
+5. ~~Old-URL page cache after a slug change.~~ **Decided and implemented
+   2026-09-03** as ADR 0032: URL-scoped, delegated, and reported.
 
 ### Reference environment still not restored
 
@@ -234,6 +250,128 @@ site; it was inactive with no tables before this work. It stays until the
 statistics port is done, because that work needs its 404 log. Then:
 `wp redirection database remove` and deactivate. Both media flags and the
 redirect flag are `0` as found; `wpcb_upload_media` is granted.
+
+## Four of the five open items closed — 2026-09-03
+
+Unreleased; targets `0.10.0`. Static gate green: PHPCS clean, maximum-level
+PHPStan clean, 646 tests / 1,553 assertions. **Nothing here has been run on a
+WordPress install**, and the statistics port in particular must not be called
+verified until `docs/setup/VERIFICATION.md` records a run — the inventory is
+now 26 verifiers of which 25 have been run.
+
+### ADR 0026 accepted, after the code it governs
+
+Accepted deliberately late: its 2026-09-01 amendment reopened two questions,
+and both are now closed by observation rather than by argument.
+
+- **Decision 1's runtime preference is withdrawn, not upheld.** "Yoast Premium
+  first, Redirection second" only made sense while a provider was selected
+  implicitly; decision 4's amendment removed implicit selection, so there is no
+  order left to prefer. Its build-order half is simply spent — both adapters
+  exist.
+- **Decision 3 stands, on different grounds.** Its stated reason ("no
+  documented API exists") is void: Premium does ship a redirect REST API. The
+  in-process manager remains the path anyway, because the REST route wraps the
+  same manager behind a second permission model this plugin would then have to
+  satisfy *and* scope — the coupling decision 2 exists to avoid for
+  Redirection.
+
+Both are recorded in the ADR's Status and marked inline at the decisions
+themselves, so a reader of decision 1 cannot miss that it no longer applies.
+
+### `get-diagnostics` reports redirect providers
+
+`redirects.enabled` plus `redirects.providers`, each provider carrying its own
+`detected` flag. Diagnostics schema version 1.1 → 1.2.
+
+**The load-bearing part is that it reports with the feature switch off.** An
+operator whose redirect abilities are missing has two very different problems —
+the switch is off, or neither backend is installed — and they need opposite
+fixes. To make the second answerable, the registry moved in `Plugin::boot()` to
+*above* the `wpcb_redirects_enabled` block; only the abilities are gated now.
+That is the whole reason for the move, and the comment there says so.
+
+### Statistics port (ADR 0030), accepted and built
+
+The half of the operator's redirect question that creating a redirect cannot
+answer: *which* redirect is missing. `get-404-statistics`, behind its own
+capability `wpcb_read_error_statistics` and its own off-by-default switch
+`wpcb_error_statistics_enabled`. Schema version 13 → 14, so an already-active
+install actually gets the capability granted.
+
+Decisions worth keeping:
+
+- **A fourth state joined the ADR's three.** `measured` / `disabled` /
+  `unavailable` gained `forbidden`, because decision 4 requires the adapter to
+  enforce the provider's own capability itself — and a denial needed an answer
+  that was not "nothing collects this here", which would send an operator to
+  install a plugin that is already installed.
+- **The provider capability is *queried*, never registered.** The adapter
+  resolves what Redirection's documented `redirection_capability_check` filter
+  maps `redirection_cap_404_manage` to, and requires that. Registering the
+  filter — which the redirect adapter legitimately does around calls into
+  Redirection's *own* code — would here mean this plugin answering its own
+  permission question. Consequence, stated rather than hidden: on a site that
+  has not configured that filter the requirement is Redirection's default, so a
+  non-administrator integration principal is refused visibly, and widening it
+  is the site's decision in Redirection's own vocabulary.
+- **Aggregate-only is structural, not a default.** The SELECT names `url` and
+  `COUNT(*)`. No parameter exists that could add `ip`, `agent`, `referrer`, or
+  `request_data`, because an option is a thing an agent can be talked into
+  setting. Consequence: no retention, redaction, or export obligation attaches
+  to this plugin, as a property of the code.
+- **A count of zero fails the read.** A grouped row exists because it was hit,
+  so a zero means the query did not group — which must never be reported as
+  counts (ADR 0030 s6). The ADR's `groupBy` probe itself is moot as built: the
+  aggregation is this plugin's own SQL, not Redirection's undeclared REST
+  parameter.
+- **Results are per provider, never merged.** Two backends have different
+  retention windows, so a combined top-N would order counts covering different
+  periods — a number that looks authoritative and is not.
+- **An off-by-default switch was added, which the ADR does not require.** Reads
+  elsewhere here are ungated, but this one reads a third-party plugin's traffic
+  log rather than the site's own content.
+
+Also fixed while registering the capability: `wpcb_upload_media` (0.9.0) was
+missing from `uninstall.php` and from the settings screen's capability labels,
+so it was ungrantable through the UI and survived uninstall. Both now list it.
+
+**The unit tests cannot reach the two things most likely to be wrong** — the
+timezone convention of Redirection's `created` column, and the schema probe —
+so `tests/Integration/error-statistics-verification.php` exists and asserts
+them on real data, including that a one-second window does not return the whole
+log, which is exactly what a timezone mistake produces.
+
+### Old-URL cache after a slug change, decided as ADR 0032
+
+Decided rather than patched, because the question was how far this plugin may
+reach into third-party caches.
+
+- **URL-scoped, and called by the write that knows the old URL** — not from the
+  `wpcb_mutation` path, because that event is redacted to changed *field names*
+  and putting URLs on it would make the audit record a carrier of content
+  values. That redaction is a security property; widening it to solve a cache
+  problem is the wrong trade.
+- **Reach is public single-URL hooks dispatched only when something listens**,
+  plus this plugin's own `wp_content_bridge_purge_urls`. Never a cache
+  plugin's options or classes, never an HTTP request of its own, and never a
+  site-wide flush — which on a large site would turn an agent renaming one page
+  into an outage of the cache tier.
+- **The set is exactly old and new.** Anything wider is a guess at the site's
+  template graph, and unbounded; links elsewhere are what `create-redirect` is
+  for.
+- **Reported, and never as confirmed.** `permalink.cache` carries `urls`,
+  `notified`, and `delegated`. Dispatching a hook proves a listener ran, not
+  that a cached page was dropped, so `delegated: true` says plainly that
+  whether the old URL is cold depends on site glue this plugin cannot see.
+
+### The 504 measurement, still the one open item
+
+It needs shell on the production install. `docs/setup/PRODUCTION_504_MEASUREMENT.md`
+now carries the whole procedure and the reference numbers to compare against,
+so the person with that access runs one command and fills one table. It was
+written rather than the item being left as a sentence because everything except
+the access is already known, and re-deriving it later is the actual cost.
 
 ## `update-media` and `update-permalink` shipped, plus two defects they exposed — 2026-09-03
 

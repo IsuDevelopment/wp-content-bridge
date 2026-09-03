@@ -81,7 +81,8 @@ for v in abilities-runtime-verification \
          status-matrix-bulk-verification \
          rest-input-coercion-verification \
          invocation-telemetry-verification \
-         redirects-verification; do
+         redirects-verification \
+         error-statistics-verification; do
   wp eval "require \"$IT/$v.php\";" >/dev/null 2>&1 \
     && echo "PASS $v" || echo "FAIL $v"
 done
@@ -180,6 +181,7 @@ given machine can run the check at all:
 | `status-matrix-bulk-verification.php` | core | The settings matrix bulk toggles: one whole-matrix, one per ordered pair, one per content type; both axis attributes on every governed cell; that **no toggle carries a form field name**, so the submitted matrix is byte-for-byte what 0.7.0 submitted; that every toggle ships inside a hidden wrapper and so does nothing without JavaScript; the preset and legacy-adoption confirmation prompts; that both always-visible llms.txt workflow actions render; that the assets enqueue on the settings screen and on no other, at the current plugin version, with the hook suffix resolved the way `add_options_page()` resolves it rather than hard-coded; and that the content-access matrix above gained no bulk attributes |
 | `rest-input-coercion-verification.php` | core | WordPress 7.1 coerces run-endpoint input to the declared schema. Pins that coercion stays at the REST boundary (a direct `execute()` still refuses a string `post_id`), that every schema bound survives it, that `type: array` fields accept the comma-separated form and resolve identically to the array form, that `type: string` fields are never split, that nested objects get no coercion, and that a capability-less principal is still refused on a perfectly coercible request. Also pins the error-status contract: a domain rejection answers 400/404 with its public error code, not 500. Requires 7.1 and refuses to run below it. |
 | `redirects-verification.php` | core | The redirect abilities (Slice 5, ADR 0026 as amended). Covers the full lifecycle in **every** available engine — create, update (status and target, re-read to prove it persisted), delete, and that deleting an absent rule is an error rather than a quiet success. Proves a create lands in the **named** provider and reads back as held by it; that a duplicate is refused with the holding provider named; that naming an unavailable provider is refused and **not** substituted into the available one; that reserved paths — including this plugin's own `/llms.txt` — are refused; and that the live-content shadow guard covers the site root and every public post-type archive. That last assertion is a regression guard: a manual probe created a redirect **on `/`** successfully, because `url_to_postid()` answers `0` for the site root. Turns the feature flag on, restores it exactly as found, deletes every rule it created through the provider's own write path, and uses a discarding audit sink so a run never appends to the site's audit record. Skips cleanly when no provider is active, and **skips the two-engine assertions honestly** when only one engine is active rather than pretending to have tested them. With two engines it additionally proves cross-engine collision (naming the holder), cross-engine trailing-slash equivalence in both directions, and a loop that hops between engines. Cleanup purges by shared name prefix and re-reads through a *fresh* provider object: an earlier version deleted only the sources it expected and confirmed removal from the object it had just mutated, so a passing run left two rules behind. |
+| `error-statistics-verification.php` | core | The aggregate 404 read (ADR 0030). Read-only against the log: it writes no 404 row, changes no Redirection setting, and prunes nothing; the one thing it writes is this plugin's own flag, restored as found. Asserts whichever of the three branches the site is actually in — `unavailable` coming from the null provider rather than an empty list, `disabled` naming the setting responsible, or `measured` — and on a measured site additionally that every count carries **no key beyond `path` and `hits`** (the standing guard on the personal-data decision), that counts are positive and ordered highest first, that `since` is actually applied (a one-second window must not return the whole log, which is exactly what comparing the boundary in the wrong timezone would produce), and that a range older than retention reports `truncated` with an `effective_since` that differs from the request. |
 | `invocation-telemetry-verification.php` | core | The off-by-default invocation-telemetry diagnostic (ADR 0029). Proves no listener is attached and nothing is written while the flag is off; that a `permission_callback` denial — invisible everywhere else — produces exactly one `attempted` entry attributed to the right principal; that a success upgrades that entry in place instead of duplicating it; that read invocations add **no** `wpcb_audit` rows, so read traffic cannot evict mutation history; that the ring buffer discards rather than grows; and that a stored entry carries exactly its five declared fields, never ability input. Restores both options in a `finally`. |
 | `http-url-runtime-verification.sh` | http | URL-target resolution through a real HTTP request context, public head parity |
 | `mcp-smoke-verification.sh` | mcp | `initialize` → `tools/list` → `tools/call` over Streamable HTTP as the least-privilege bridge principal |
@@ -212,6 +214,19 @@ so this is a recorded gap rather than a live exposure — see `.agents/status.md
 driven by the shell verifiers, not verifiers themselves.
 
 ## Last full run
+
+**0.10.0 shipped unverified, on the operator's explicit call.** The inventory
+is 26 PHP verifiers and 25 of them have been run — none of them at 0.10.0.
+This line is the record required below; it is not a passing row, and the
+missing row is the point. `error-statistics-verification.php` landed with the ADR 0030
+statistics port and has never been executed, because the three things it
+exists to check — the schema probe, the direct table read, and the timezone
+convention of Redirection's `created` column — need the reference site, which
+still has Redirection installed for exactly this purpose. Nothing about the
+statistics port may be described as verified until a dated row below says so.
+The same run also still owes coverage of `get-diagnostics`' new redirect
+reporting and `update-permalink`'s old-URL invalidation, both of which touch
+paths the whole inventory exercises.
 
 **2026-09-02 — 25 of 25 green on WordPress 7.1**, re-run after the redirect
 lifecycle (update and delete) landed, with **Redirection 5.9.0 temporarily

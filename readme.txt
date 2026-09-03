@@ -4,7 +4,7 @@ Tags: abilities, mcp, ai, content, seo, yoast
 Requires at least: 7.1
 Tested up to: 7.1
 Requires PHP: 8.2
-Stable tag: 0.9.0
+Stable tag: 0.10.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -22,6 +22,8 @@ Media writes cover assigning or removing a featured image, editing an attachment
 
 Permalink changes report the previous and the new URL, and refuse a slug that is already taken instead of quietly altering it. Redirects are read across, and written to, either Yoast SEO Premium's Redirect Manager or the Redirection plugin through one provider-neutral port; a site running both has two live engines, so every result names which one holds a path and collision and loop checks span both.
 
+Aggregate 404 statistics answer the other half of that question — which redirect is missing — from the Redirection plugin's own log, behind a separate off-by-default switch and its own capability. They report the requested path and a hit count only: no visitor IP, user agent, referrer, or request data ever enters the plugin, and there is no option that could include them.
+
 Install the official WordPress MCP Adapter and every enabled ability is served as an MCP tool at `/wp-json/wpcb-mcp/mcp` — the tool set is discovered from the ability registry on each request, so there is no list to configure or maintain. The Adapter itself is optional and never bundled, and MCP transport, authentication, and OAuth remain external to this plugin.
 
 Packaged installs can update from the plugin's GitHub release ZIP through Plugin Update Checker. Source checkouts containing `.git` do not self-update. Composer-managed or deployment-managed sites can define `WPCB_DISABLE_SELF_UPDATES` or use the `wp_content_bridge_self_updates_enabled` filter.
@@ -37,6 +39,17 @@ Deleting the plugin removes its options, its dedicated `wpcb_*` capabilities fro
 The `{prefix}wpcb_audit` table is deliberately left in place. It records who changed what through the bridge — field names only, never values — as a rolling window of the most recent 5,000 mutation attempts. Destroying that record silently on delete is not the plugin's call to make. Remove the table deliberately if you want it gone.
 
 == Changelog ==
+
+= 0.10.0 =
+* **New: `get-404-statistics`** answers which redirect is *missing*, which creating a redirect cannot. It reports the paths that returned 404 and how often, read from the Redirection plugin's own log, behind the new off-by-default `404 statistics ability` switch and the new `wpcb_read_error_statistics` capability.
+* **Aggregate only, by construction.** A result carries the requested path and a hit count and nothing else. Visitor IP, user agent, referrer, and request data are never read into the plugin, never stored, never returned, and never projected to an MCP client — and no parameter exists that could include them, so no retention or redaction obligation attaches to this plugin.
+* **"Nothing collects this", "the log is switched off", "you may not read it", and "no 404s happened" are four different answers and stay four different answers.** Yoast SEO Premium collects no 404 data at all, so a Yoast-only site reports the data as unavailable rather than reporting zero — which would read as a healthy site. A disabled log names the Redirection setting responsible. Every result also reports the retention window it covers, and says so explicitly when retention cut a requested range short, because pruned rows would otherwise look like 404s that stopped happening.
+* Reading statistics is deliberately **not** `wpcb_manage_redirects`. Redirection separates the two in its own permission model, so "diagnose the site without authority to change its routing" is a grant you can actually express. Because the log is read directly, Redirection's own permission for it still applies — by default that means Administrator, widened through Redirection's own filter if a site wants an integration principal to read it. Nothing here enables, prunes, or resets any log.
+* **`get-diagnostics` now reports redirect providers**, as `redirects.enabled` plus a `redirects.providers` list with a `detected` flag each — and it reports them whether or not the redirect abilities are switched on. Missing redirect abilities have two very different causes, the switch being off and no provider being installed, and they need opposite fixes. Diagnostics schema version moves to 1.2; the addition is backward-compatible.
+* **`update-permalink` now invalidates the old URL's cache and reports what it did.** A page-cache entry for the old URL is keyed by URL, so the post-scoped invalidation every write already performs cannot reach it, and it keeps serving the old page — the rename appears not to have taken effect. The write now notifies a bounded set, exactly the old and new URL, through public single-URL purge hooks and a new `wp_content_bridge_purge_urls` action for sites to bind. The result reports which channels were notified and flags `delegated` when the actual purge depends on site-level glue; it never claims a purge it cannot observe.
+* **Fixed: `wpcb_upload_media`, added in 0.9.0, could not be granted through the settings screen and survived uninstall.** It was missing from the capability list the screen renders and from the uninstall cleanup. Both now include it.
+* The database schema version moves to 14, so **an active install grants the new capability only when the plugin is reactivated** — until then the statistics ability refuses, which is the correct failure direction.
+* Adds `tests/Integration/error-statistics-verification.php`, a read-only runtime fixture for the statistics port. It writes no log row, changes no Redirection setting, and prunes nothing.
 
 = 0.9.0 =
 * **Action required if you chain writes: use the `version_token` a write returns, not the one you first read.** The token was blind to most of what a write changes. It hashed only `post_modified_gmt`, the title, the content and the status, so an SEO write, a Custom or Service Schema write, a featured-image change, an attachment edit, and a slug change all left it **byte-identical after succeeding**. Two agents could read the same token, both write, and the second would silently overwrite the first with no conflict raised — the one thing the token exists to prevent. It now covers the post's meta and its other mutable columns. Nothing changes for a caller that already re-read before each write; a caller that reused a stale token was relying on a defect and now gets the `409` it should always have had.
