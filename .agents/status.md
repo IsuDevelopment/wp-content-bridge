@@ -182,6 +182,59 @@ one of them was taking its token *before* writing fixture meta.
 Full inventory 22/22 PHP verifiers green after the change; static gate 575
 tests / 1,374 assertions.
 
+## 0.9.0 released — 2026-09-03
+
+Cut because eleven commits with three behaviour changes had accumulated on
+`feat/slice-5-redirects` while `main` still said 0.8.4. That gap was the largest
+standing risk in the project - larger than any missing feature - because a
+problem on a client install could not be attributed to one half or the other.
+
+Minor, not patch: the surface went from 32 abilities to 35 and gained a new
+object type to write (attachments).
+
+**The release note leads with the version-token change**, because it is the only
+thing that can break an existing client. A caller that reused a token across
+chained writes now gets the `409` it should always have had. That caller was
+relying on a defect: the token was blind to meta-only writes, to featured-image
+and attachment edits, and to slug changes, so the second of two concurrent
+writes silently won. Framed as "action required" rather than buried, since
+"nothing changes if you already re-read" is only true for correct callers.
+
+Also corrected `docs/plan/RELEASE_PLAN.md`, which still claimed minimum
+WordPress 7.0 after ADR 0027 raised it to 7.1 in 0.8.4. A release plan stating
+the wrong minimum is worse than one saying nothing.
+
+### Open items carried past 0.9.0, in the order they matter
+
+1. **The 504 measurement on the production install.** Still the only unexplained
+   thing the operator actually feels. `ability-timing-probe.php` is built and
+   safe to run there; it needs one run plus the same calls through that
+   install's MCP endpoint. Everything measured locally says the read path is
+   not the cause.
+2. **Statistics port (ADR 0030).** Redirects currently answer half the
+   operator's question - creating a redirect - and not the half that matters
+   more: *which* redirect is missing, which needs the 404 history. Aggregate
+   only, no per-request personal data.
+3. **ADR 0026 to `Accepted`.** Still `Proposed` although the code is built and
+   verified against two live engines.
+4. **`get-diagnostics` does not report redirect providers**, which ADR 0026 s4
+   requires.
+5. **Old-URL page cache after a slug change.** Invalidation runs through
+   `wpcb_mutation` → `clean_post_cache( post_id )`, so the new writes inherit
+   it, but a page-cache entry for the **old** URL is keyed by URL rather than
+   post ID and can survive. The roadmap asks for "old+new bounded cache
+   invalidation". Recorded rather than quietly patched: the fix is
+   cache-plugin-specific and needs a decision about how far to reach into
+   third-party caches.
+
+### Reference environment still not restored
+
+Redirection remains **active with its database installed** on the reference
+site; it was inactive with no tables before this work. It stays until the
+statistics port is done, because that work needs its 404 log. Then:
+`wp redirection database remove` and deactivate. Both media flags and the
+redirect flag are `0` as found; `wpcb_upload_media` is granted.
+
 ## `update-media` and `update-permalink` shipped, plus two defects they exposed — 2026-09-03
 
 The last two items standing between this plugin and dropping the other

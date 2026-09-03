@@ -36,7 +36,7 @@
 
 ## Compatibility policy
 
-- Minimum WordPress 7.0 and PHP 8.2.
+- Minimum WordPress 7.1 and PHP 8.2 (ADR 0027; raised from 7.0 in 0.8.4).
 - Test the latest patch of supported WordPress branches.
 - Publish a Yoast compatibility table based on verified versions, not broad untested claims.
 - Pin external adapter versions in test environments; runtime integration remains feature-detected.
