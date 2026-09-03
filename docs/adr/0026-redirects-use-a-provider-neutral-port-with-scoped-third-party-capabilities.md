@@ -2,10 +2,46 @@
 
 ## Status
 
-Proposed (2026-08-14). This is the Phase 5A research/ADR deliverable required by
-Slice 5 of `docs/plan/EDITORIAL_OPERATIONS_ROADMAP.md` before any permalink or
-redirect Ability is implemented. It must be accepted, and any open question
-below resolved, before Phase 5A's candidate Abilities are built.
+Accepted (2026-09-03), amended in place twice before acceptance (2026-08-14
+runtime reconciliation, 2026-09-01 source reconciliation — both below).
+Originally the Phase 5A research/ADR deliverable required by Slice 5 of
+`docs/plan/EDITORIAL_OPERATIONS_ROADMAP.md` before any permalink or redirect
+Ability is implemented.
+
+**Accepted after the code it governs was built and verified against two live
+engines, not before.** Acceptance was deliberately withheld while the two
+questions the 2026-09-01 amendment reopened were still open; both are now
+closed by observation rather than by argument, and the answers are recorded
+here:
+
+- **Decision 1's build order is spent, and its runtime half is superseded by
+  decision 4.** Redirection was built and verified first, Yoast Premium
+  second (`Infrastructure\Yoast\YoastPremiumRedirectProvider`, against
+  Premium 28.0); both adapters now exist, so the ordering question no longer
+  decides anything. The "Yoast Premium first, Redirection second, never both"
+  *runtime preference* in decision 1 is **withdrawn**: decision 4's amendment
+  removed implicit provider selection entirely, so there is no preference
+  order left to hold. A write names its provider; a read spans all of them.
+- **Decision 3 stands as written, for a reason that changed.** Yoast Premium
+  does ship a redirect REST API, so the original justification ("no
+  documented API exists") is void — but the in-process manager remains the
+  path this plugin uses, because the REST route wraps the same manager behind
+  a second permission model this plugin would then have to satisfy *and*
+  scope, exactly the coupling decision 2 exists to avoid for Redirection. The
+  compatibility gate decision 3 asked for is implemented as
+  `YoastPremiumRedirectProvider::is_available()`, which probes
+  `WPSEO_PREMIUM_VERSION` plus every class and method the adapter calls, and
+  the pinned runtime fixture is `tests/Integration/redirects-verification.php`
+  at Premium 28.0. Because the manager performs no capability check of its
+  own, the adapter asserts native `wpseo_manage_redirects` itself.
+
+Statistics remain out of scope here, as the 2026-09-01 amendment required:
+they are ADR 0030's separate port.
+
+What acceptance does **not** cover, because it was never built: `disable` as a
+distinct operation (the port has `update` and `delete` instead), and the
+`covered_by_core` `redirect_disposition` value, whose `_wp_old_slug`
+precondition is still the open item recorded under Consequences.
 
 **Runtime-reconciled 2026-08-14** against a live Redirection 5.9.0 install on
 Kormas Local (the environment `docs/setup/VERIFICATION.md` designates for this
@@ -174,6 +210,11 @@ than once).
 
 ### 1. Runtime provider preference is unchanged; build order is reversed
 
+**Withdrawn in part on acceptance (2026-09-03), see Status.** The runtime
+preference below no longer applies: decision 4's amendment removed implicit
+provider selection, so a write names its provider and there is no order to
+prefer. The build order it decided is spent — both adapters are built.
+
 The roadmap's product reasoning for preferring Yoast Premium when present — a
 site that already pays for it gets one redirect UI, not two — is independent
 of API stability and this ADR does not overturn it. **Runtime selection stays
@@ -211,6 +252,12 @@ permission check from separately demanding `manage_options` from the acting
 principal.
 
 ### 3. Yoast Premium is called through its internal classes behind a version fixture
+
+**Upheld on acceptance (2026-09-03) on different grounds, see Status:** a REST
+API does exist, but using it would mean satisfying and scoping a second
+permission model, which is the coupling decision 2 exists to avoid. The
+fixture asked for below is `tests/Integration/redirects-verification.php`,
+pinned at Premium 28.0.
 
 Because no documented API exists, the adapter guards every call with
 `class_exists()`/`method_exists()` on `WPSEO_Redirect`,
