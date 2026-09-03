@@ -18,16 +18,16 @@ use IsuDev\WPContentBridge\Application\Mutation\UpdateContent;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateSeo;
 use IsuDev\WPContentBridge\Application\Seo\NullSeoProvider;
 use IsuDev\WPContentBridge\Application\Seo\SeoProviderRegistry;
-use IsuDev\WPContentBridge\Domain\Mutation\VersionToken;
-use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoImageRepository;
-use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastSeoWriter;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\Installer;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\PhpBlockMarkupValidator;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\PostVersionTokenFactory;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressAuditLog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentAccessSettingsRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentMutationRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentTypeCatalog;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoImageRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressTransientIdempotencyStore;
+use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastSeoWriter;
 
 // phpcs:disable Squiz.Commenting.FunctionCommentThrowTag.Missing -- assertion helpers intentionally fail the runtime harness fast.
 // phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- exception messages are CLI diagnostics, not rendered HTML.
@@ -516,12 +516,10 @@ final class WPCB_Mutation_Verification {
 		$this->assert_true( $this->update_ability->check_permissions( array( 'post_id' => $posts['author_b'] ) ), 'Administrator was denied update permission on a foreign post.' );
 
 		// Policy gate: caps satisfied, but the type's write policy is off.
-		$version = VersionToken::for_content(
-			(string) get_post( $posts['author_a'] )->post_modified_gmt,
-			(string) get_post( $posts['author_a'] )->post_title,
-			(string) get_post( $posts['author_a'] )->post_content,
-			(string) get_post( $posts['author_a'] )->post_status
-		)->to_string();
+		$policy_target = get_post( $posts['author_a'] );
+		$version       = $policy_target instanceof WP_Post
+			? PostVersionTokenFactory::for_post( $policy_target )->to_string()
+			: '';
 
 		$this->disable_fixture_write_policies();
 		$denied_create = $this->create_ability->execute(
@@ -630,7 +628,7 @@ final class WPCB_Mutation_Verification {
 		if ( ! $post instanceof WP_Post ) {
 			throw new RuntimeException( 'The update-target fixture post could not be read.' );
 		}
-		$token0 = VersionToken::for_content( $post->post_modified_gmt, $post->post_title, $post->post_content, $post->post_status )->to_string();
+		$token0 = PostVersionTokenFactory::for_post( $post )->to_string();
 
 		$revisions_before = count( wp_get_post_revisions( $post_id ) );
 
@@ -679,7 +677,7 @@ final class WPCB_Mutation_Verification {
 		if ( ! $post instanceof WP_Post ) {
 			throw new RuntimeException( 'The conflict-target fixture post could not be read.' );
 		}
-		$stale_token = VersionToken::for_content( $post->post_modified_gmt, $post->post_title, $post->post_content, $post->post_status )->to_string();
+		$stale_token = PostVersionTokenFactory::for_post( $post )->to_string();
 
 		$out_of_band_title   = $this->token . ' out-of-band title';
 		$out_of_band_content = '<!-- wp:paragraph --><p>' . $this->token . ' out-of-band content</p><!-- /wp:paragraph -->';

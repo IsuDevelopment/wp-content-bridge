@@ -56,42 +56,48 @@ final class AbilityError {
 	 */
 	private const STATUSES = array(
 		// 400 — the request is wrong.
-		'wpcb_invalid_input'                 => 400,
-		'wpcb_invalid_selector'              => 400,
-		'wpcb_invalid_blocks'                => 400,
-		'wpcb_invalid_custom_schema'         => 400,
-		'wpcb_block_mismatch'                => 400,
-		'wpcb_block_path_not_found'          => 400,
-		'wpcb_seo_field_unsupported'         => 400,
-		'wpcb_seo_image_unavailable'         => 400,
-		'wpcb_redirect_source_rejected'      => 400,
+		'wpcb_invalid_input'                   => 400,
+		'wpcb_invalid_selector'                => 400,
+		'wpcb_invalid_blocks'                  => 400,
+		'wpcb_invalid_custom_schema'           => 400,
+		'wpcb_block_mismatch'                  => 400,
+		'wpcb_block_path_not_found'            => 400,
+		'wpcb_seo_field_unsupported'           => 400,
+		'wpcb_seo_image_unavailable'           => 400,
+		'wpcb_redirect_source_rejected'        => 400,
 
 		// 403 — the principal is not permitted.
-		'wpcb_forbidden'                     => 403,
+		'wpcb_forbidden'                       => 403,
 
 		// 404 — the addressed object does not exist or is not visible.
-		'wpcb_content_unavailable'           => 404,
-		'wpcb_media_unavailable'             => 404,
-		'wpcb_pattern_unavailable'           => 404,
+		'wpcb_content_unavailable'             => 404,
+		'wpcb_media_unavailable'               => 404,
+		'wpcb_media_upload_failed'             => 422,
+		'wpcb_permalink_unavailable'           => 409,
+		'wpcb_pattern_unavailable'             => 404,
 
 		// 409 — stored state conflicts with the request.
-		'wpcb_conflict'                      => 409,
-		'wpcb_invalid_state'                 => 409,
+		'wpcb_conflict'                        => 409,
+		'wpcb_invalid_state'                   => 409,
+		// A provider holds a rule for this path that the neutral contract
+		// cannot express, so the request conflicts with stored state. It is
+		// deliberately not a 404: the path is taken, not missing.
+		'wpcb_redirect_rule_not_representable' => 409,
 
 		// 413 — a declared payload bound would be exceeded.
-		'wpcb_content_too_large'             => 413,
-		'wpcb_pattern_content_too_large'     => 413,
+		'wpcb_content_too_large'               => 413,
+		'wpcb_pattern_content_too_large'       => 413,
 
 		// 501 — this install cannot implement the operation.
-		'wpcb_service_schema_unavailable'    => 501,
-		'wpcb_custom_schema_unavailable'     => 501,
-		'wpcb_seo_data_unavailable'          => 501,
-		'wpcb_trash_unavailable'             => 501,
-		'wpcb_redirect_provider_unavailable' => 501,
+		'wpcb_service_schema_unavailable'      => 501,
+		'wpcb_custom_schema_unavailable'       => 501,
+		'wpcb_seo_data_unavailable'            => 501,
+		'wpcb_trash_unavailable'               => 501,
+		'wpcb_redirect_provider_unavailable'   => 501,
 
 		// 500 — the plugin or WordPress failed.
-		'wpcb_internal_error'                => 500,
-		'wpcb_write_failed'                  => 500,
+		'wpcb_internal_error'                  => 500,
+		'wpcb_write_failed'                    => 500,
 	);
 
 	/**

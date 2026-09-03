@@ -60,4 +60,29 @@ final readonly class NullRedirectProvider implements RedirectProvider {
 
 		throw new RedirectProviderUnavailable( 'No redirect provider is active.' );
 	}
+
+	/**
+	 * An update against no provider is always rejected.
+	 *
+	 * @param RedirectSourcePath $source      Source path.
+	 * @param RedirectRule       $replacement Desired end state.
+	 * @throws RedirectProviderUnavailable Always.
+	 */
+	public function update( RedirectSourcePath $source, RedirectRule $replacement ): never {
+		unset( $source, $replacement );
+
+		throw new RedirectProviderUnavailable( 'No redirect provider is active.' );
+	}
+
+	/**
+	 * A removal against no provider is always rejected.
+	 *
+	 * @param RedirectSourcePath $source Source path.
+	 * @throws RedirectProviderUnavailable Always.
+	 */
+	public function delete( RedirectSourcePath $source ): never {
+		unset( $source );
+
+		throw new RedirectProviderUnavailable( 'No redirect provider is active.' );
+	}
 }

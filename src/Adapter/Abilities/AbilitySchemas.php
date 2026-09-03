@@ -432,10 +432,14 @@ final class AbilitySchemas {
 	public static function media_by_id_output(): array {
 		return array(
 			'type'                 => 'object',
-			'required'             => array( 'schema_version', 'item', 'provenance' ),
+			'required'             => array( 'schema_version', 'item', 'version_token', 'provenance' ),
 			'properties'           => array(
 				'schema_version' => array( 'type' => 'string' ),
 				'item'           => self::media_item(),
+				'version_token'  => array(
+					'description' => 'Optimistic-concurrency token to submit with update-media. This is the only read that issues one for an attachment.',
+					'type'        => 'string',
+				),
 				'provenance'     => self::provenance(),
 			),
 			'additionalProperties' => false,
@@ -1603,14 +1607,48 @@ final class AbilitySchemas {
 	public static function get_custom_schema_output(): array {
 		return array(
 			'type'                 => 'object',
-			'required'             => array( 'schema_version', 'post_id', 'post_type', 'version_token', 'custom_schema', 'provenance' ),
+			'required'             => array( 'schema_version', 'post_id', 'post_type', 'version_token', 'custom_schema', 'target', 'provenance' ),
 			'properties'           => array(
 				'schema_version' => array( 'type' => 'string' ),
 				'post_id'        => array( 'type' => 'integer' ),
 				'post_type'      => array( 'type' => 'string' ),
 				'version_token'  => array( 'type' => 'string' ),
 				'custom_schema'  => self::custom_schema_configuration(),
+				'target'         => self::schema_target(),
 				'provenance'     => self::provenance(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the schema-authoring identity contract.
+	 *
+	 * Carries the post fields a JSON-LD document is normally built from, so a
+	 * schema edit does not need a separate content read to find them.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function schema_target(): array {
+		return array(
+			'description'          => 'Identity of the post the schema describes: the source of name, url, datePublished, dateModified and image.',
+			'type'                 => 'object',
+			'required'             => array( 'title', 'slug', 'url', 'status', 'published_at', 'modified_at', 'featured_image_id', 'featured_image_url' ),
+			'properties'           => array(
+				'title'              => array( 'type' => 'string' ),
+				'slug'               => array( 'type' => 'string' ),
+				'url'                => array(
+					'description' => 'Canonical permalink, or null when WordPress cannot resolve one for this status.',
+					'type'        => array( 'string', 'null' ),
+				),
+				'status'             => array( 'type' => 'string' ),
+				'published_at'       => array(
+					'description' => 'ISO-8601 UTC publication time, or null when never published.',
+					'type'        => array( 'string', 'null' ),
+				),
+				'modified_at'        => array( 'type' => 'string' ),
+				'featured_image_id'  => array( 'type' => array( 'integer', 'null' ) ),
+				'featured_image_url' => array( 'type' => array( 'string', 'null' ) ),
 			),
 			'additionalProperties' => false,
 		);
@@ -1703,6 +1741,257 @@ final class AbilitySchemas {
 	 */
 	public static function trash_content_output(): array {
 		return self::mutation_output();
+	}
+
+	/**
+	 * Returns the permalink write input contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_permalink_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'post_id', 'version_token', 'slug' ),
+			'properties'           => array(
+				'post_id'       => array(
+					'description' => 'Target post ID.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+				),
+				'version_token' => array(
+					'description' => 'Optimistic-concurrency token from get-content.',
+					'type'        => 'string',
+					'minLength'   => 18,
+					'maxLength'   => 191,
+				),
+				'slug'          => array(
+					'description' => 'Requested slug. It is normalized the way WordPress normalizes slugs, and refused if normalization leaves nothing usable or if the result is already taken for this content type.',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 200,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the permalink write result contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_permalink_output(): array {
+		$output = self::mutation_output();
+
+		$output['required'][]              = 'permalink';
+		$output['properties']['permalink'] = array(
+			'description'          => 'The slug and URL on both sides of the change. The previous URL is what a redirect should be created from.',
+			'type'                 => 'object',
+			'required'             => array( 'previous_slug', 'previous_url', 'slug', 'url' ),
+			'properties'           => array(
+				'previous_slug' => array( 'type' => 'string' ),
+				'previous_url'  => array( 'type' => 'string' ),
+				'slug'          => array( 'type' => 'string' ),
+				'url'           => array( 'type' => 'string' ),
+			),
+			'additionalProperties' => false,
+		);
+
+		return $output;
+	}
+
+	/**
+	 * Returns the attachment-metadata write input contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_media_input(): array {
+		/*
+		 * Not nullable. Clearing a field is an empty string; null would be a
+		 * second way to say the same thing, and the domain rejects it rather
+		 * than guess which the caller meant.
+		 */
+		$text = array(
+			'type'      => 'string',
+			'maxLength' => 5000,
+		);
+
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'attachment_id', 'version_token' ),
+			'properties'           => array(
+				'attachment_id' => array(
+					'description' => 'Target attachment ID.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+				),
+				'version_token' => array(
+					'description' => 'Optimistic-concurrency token from get-media-by-id.',
+					'type'        => 'string',
+					'minLength'   => 18,
+					'maxLength'   => 191,
+				),
+				'title'         => array(
+					'description' => 'Attachment title.',
+					'type'        => 'string',
+					'maxLength'   => 500,
+				),
+				'alt_text'      => array(
+					'description' => 'Alternative text. An empty string clears it, which is correct only for decorative images.',
+					'type'        => 'string',
+					'maxLength'   => 5000,
+				),
+				'caption'       => $text,
+				'description'   => $text,
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the attachment-metadata write result contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_media_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'schema_version', 'media', 'version_token', 'changed_fields', 'provenance' ),
+			'properties'           => array(
+				'schema_version' => array( 'type' => 'string' ),
+				'media'          => self::media_item(),
+				'version_token'  => array(
+					'description' => 'Token after the write. A chained edit must use this, not the one it submitted.',
+					'type'        => 'string',
+				),
+				'changed_fields' => array(
+					'type'     => 'array',
+					'maxItems' => 4,
+					'items'    => array(
+						'type' => 'string',
+						'enum' => array( 'title', 'alt_text', 'caption', 'description' ),
+					),
+				),
+				'provenance'     => self::provenance(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the media import input contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function create_media_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'source_url', 'idempotency_key' ),
+			'properties'           => array(
+				'source_url'      => array(
+					'description' => 'HTTPS or HTTP URL of the image to import. The site fetches it, so the host must be publicly reachable: private, loopback, link-local, and cloud-metadata addresses are refused, as is any redirect to one.',
+					'type'        => 'string',
+					'format'      => 'uri',
+					'minLength'   => 8,
+					'maxLength'   => 2048,
+				),
+				'idempotency_key' => array(
+					'description' => 'Caller-chosen retry key, scoped to the acting principal. Required: a repeated call with the same key returns the attachment the first call created, performing no fetch and no second import.',
+					'type'        => 'string',
+					'minLength'   => 8,
+					'maxLength'   => 191,
+				),
+				'title'           => array(
+					'description' => 'Optional attachment title. Defaults to the stored filename.',
+					'type'        => array( 'string', 'null' ),
+					'maxLength'   => 500,
+				),
+				'alt_text'        => array(
+					'description' => 'Optional alternative text.',
+					'type'        => array( 'string', 'null' ),
+					'maxLength'   => 500,
+				),
+				'caption'         => array(
+					'description' => 'Optional caption.',
+					'type'        => array( 'string', 'null' ),
+					'maxLength'   => 500,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the media import result contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function create_media_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'schema_version', 'media', 'created', 'provenance' ),
+			'properties'           => array(
+				'schema_version' => array( 'type' => 'string' ),
+				'media'          => self::media_item(),
+				'created'        => array(
+					'description' => 'False when an idempotency key replayed an earlier import rather than performing a new one.',
+					'type'        => 'boolean',
+				),
+				'provenance'     => self::provenance(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the featured-image write input contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_featured_image_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'post_id', 'version_token', 'attachment_id' ),
+			'properties'           => array(
+				'post_id'       => array(
+					'description' => 'Target post ID.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+				),
+				'version_token' => array(
+					'description' => 'Optimistic-concurrency token from get-content.',
+					'type'        => 'string',
+					'minLength'   => 18,
+					'maxLength'   => 191,
+				),
+				'attachment_id' => array(
+					'description' => 'Existing image attachment to assign, or null to remove the current featured image. Required and nullable on purpose: removing an image and leaving it alone are different intents, and an omitted key cannot express the first.',
+					'type'        => array( 'integer', 'null' ),
+					'minimum'     => 1,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the featured-image write result schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_featured_image_output(): array {
+		$output = self::mutation_output();
+
+		$output['required'][]                   = 'featured_image';
+		$output['properties']['featured_image'] = array(
+			'description' => 'The attachment in effect after the write, re-read from storage, or null when none is assigned.',
+			'oneOf'       => array(
+				self::media_item(),
+				array( 'type' => 'null' ),
+			),
+		);
+
+		return $output;
 	}
 
 	/**
@@ -2010,7 +2299,7 @@ final class AbilitySchemas {
 					'properties'           => array(
 						'valid'            => array( 'type' => 'boolean' ),
 						'context_resolved' => array(
-							'description' => 'False for source validation; use get-url-seo after saving to inspect the resolved complete graph.',
+							'description' => 'Always false here, and not a failure signal: this is source-level validation, which does not resolve the surrounding Yoast graph. Read get-url-seo after saving to inspect the resolved complete graph.',
 							'type'        => 'boolean',
 						),
 						'nodes'            => array(
@@ -3036,6 +3325,310 @@ final class AbilitySchemas {
 					'enum' => array( 'yoast_llms_txt_enabled', 'physical_artifact_present', 'bridge_route_unroutable', null ),
 				),
 				'administrator_action'         => array( 'type' => 'string' ),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the redirect-provider status schema, reported by every redirect
+	 * result so a caller can always tell which backend answered.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function redirect_provider_status(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'provider', 'version', 'detected', 'capabilities' ),
+			'properties'           => array(
+				'provider'     => array(
+					'description' => 'Stable provider slug, or "none" when no provider is active.',
+					'type'        => 'string',
+				),
+				'version'      => array(
+					'description' => 'Provider plugin version, or null when it could not be read.',
+					'type'        => array( 'string', 'null' ),
+				),
+				'detected'     => array(
+					'description' => 'Whether a compatible provider is active.',
+					'type'        => 'boolean',
+				),
+				'capabilities' => array(
+					'description' => 'Normalized operations this provider supports.',
+					'type'        => 'array',
+					'items'       => array( 'type' => 'string' ),
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the provider-neutral redirect rule schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function redirect_rule(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'id', 'source', 'status', 'target', 'enabled', 'provider' ),
+			'properties'           => array(
+				'id'       => array(
+					'description' => 'Provider-assigned identity, or null when the provider assigns none.',
+					'type'        => array( 'string', 'null' ),
+				),
+				'source'   => array(
+					'description' => 'Exact site-relative source path.',
+					'type'        => 'string',
+				),
+				'status'   => array(
+					'description' => 'HTTP status this rule answers.',
+					'type'        => 'integer',
+					'enum'        => array( 301, 302, 410 ),
+				),
+				'target'   => array(
+					'description' => 'Site-relative destination; null for a 410 Gone rule.',
+					'type'        => array( 'string', 'null' ),
+				),
+				'enabled'  => array(
+					'description' => 'Whether the rule is active in its provider.',
+					'type'        => 'boolean',
+				),
+				'provider' => self::redirect_provider_status(),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the search-redirects input schema.
+	 *
+	 * There is deliberately no provider parameter: a read spans every
+	 * available provider, because a site running two redirect plugins has two
+	 * live engines and asking only one misreports it (ADR 0026 s4, amended).
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function search_redirects_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'source' ),
+			'properties'           => array(
+				'source' => array(
+					'description' => 'Exact site-relative source path to look up, for example "/old-page".',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 2048,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the search-redirects result schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function search_redirects_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'source', 'claims', 'held_by', 'held_by_multiple', 'configured_providers' ),
+			'properties'           => array(
+				'source'               => array(
+					'description' => 'The source path that was looked up.',
+					'type'        => 'string',
+				),
+				'claims'               => array(
+					'description' => 'One entry per available provider, in registry order.',
+					'type'        => 'array',
+					'items'       => array(
+						'type'                 => 'object',
+						'required'             => array( 'provider', 'state', 'rule', 'reason' ),
+						'properties'           => array(
+							'provider' => self::redirect_provider_status(),
+							'state'    => array(
+								'description' => 'claimed: a readable rule exists. free: this provider holds nothing. not_representable: a rule exists that this contract cannot express, so the path is taken. unavailable: the provider could not answer, which is also not "free".',
+								'type'        => 'string',
+								'enum'        => array( 'claimed', 'free', 'not_representable', 'unavailable' ),
+							),
+							'rule'     => self::nullable_object( self::redirect_rule() ),
+							'reason'   => array(
+								'description' => 'Why the state is neither claimed nor free.',
+								'type'        => array( 'string', 'null' ),
+							),
+						),
+						'additionalProperties' => false,
+					),
+				),
+				'held_by'              => array(
+					'description' => 'Provider slugs that hold this path in any form a write must respect.',
+					'type'        => 'array',
+					'items'       => array( 'type' => 'string' ),
+				),
+				'held_by_multiple'     => array(
+					'description' => 'True when more than one engine holds this path. Both then serve redirects and whichever hooks first wins, which neither plugin\'s own screen shows.',
+					'type'        => 'boolean',
+				),
+				'configured_providers' => array(
+					'description' => 'Every configured provider, available or not, so "no provider" stays distinguishable from "no redirects".',
+					'type'        => 'array',
+					'items'       => self::redirect_provider_status(),
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the create-redirect input schema.
+	 *
+	 * `provider` is required and never inferred: on a two-plugin site the
+	 * choice decides which engine's rule actually fires.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function create_redirect_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'provider', 'source' ),
+			'properties'           => array(
+				'provider' => array(
+					'description' => 'Provider slug to write into, from search-redirects "configured_providers".',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 64,
+				),
+				'source'   => array(
+					'description' => 'Exact site-relative source path that no longer resolves to live content.',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 2048,
+				),
+				'target'   => array(
+					'description' => 'Site-relative destination on this site. Required unless status is 410, and rejected when it is.',
+					'type'        => 'string',
+					'maxLength'   => 2048,
+				),
+				'status'   => array(
+					'description' => 'HTTP status to answer. Defaults to 301.',
+					'type'        => 'integer',
+					'enum'        => array( 301, 302, 410 ),
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the create-redirect result schema: the rule as the provider
+	 * stored it, not as the caller asked for it.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function create_redirect_output(): array {
+		return self::redirect_rule();
+	}
+
+	/**
+	 * Returns the update-redirect input schema.
+	 *
+	 * The source is the identity and cannot be changed here: moving a rule to
+	 * a different source needs the full candidate guard an update skips, so it
+	 * is a delete plus a create.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_redirect_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'provider', 'source' ),
+			'properties'           => array(
+				'provider' => array(
+					'description' => 'Provider slug holding the rule, from search-redirects.',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 64,
+				),
+				'source'   => array(
+					'description' => 'Exact site-relative source path of the existing rule. Not changed by this ability.',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 2048,
+				),
+				'target'   => array(
+					'description' => 'New site-relative destination. Required unless status is 410, and rejected when it is.',
+					'type'        => 'string',
+					'maxLength'   => 2048,
+				),
+				'status'   => array(
+					'description' => 'New HTTP status. Defaults to 301.',
+					'type'        => 'integer',
+					'enum'        => array( 301, 302, 410 ),
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the update-redirect result schema: the rule as the provider
+	 * stored it after the change.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_redirect_output(): array {
+		return self::redirect_rule();
+	}
+
+	/**
+	 * Returns the delete-redirect input schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function delete_redirect_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'provider', 'source' ),
+			'properties'           => array(
+				'provider' => array(
+					'description' => 'Provider slug holding the rule, from search-redirects.',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 64,
+				),
+				'source'   => array(
+					'description' => 'Exact site-relative source path of the rule to remove.',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 2048,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the delete-redirect result schema. `deleted` is only ever true:
+	 * the adapters confirm removal by reading back, so a failure is an error,
+	 * never a result with `deleted` false.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function delete_redirect_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'deleted', 'source', 'provider' ),
+			'properties'           => array(
+				'deleted'  => array(
+					'description' => 'Always true. Removal is confirmed by re-reading the provider, so an unremoved rule is an error rather than a false result.',
+					'type'        => 'boolean',
+				),
+				'source'   => array(
+					'description' => 'The source path whose rule was removed.',
+					'type'        => 'string',
+				),
+				'provider' => self::redirect_provider_status(),
 			),
 			'additionalProperties' => false,
 		);

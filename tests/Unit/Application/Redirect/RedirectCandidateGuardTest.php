@@ -12,12 +12,15 @@ namespace IsuDev\WPContentBridge\Tests\Unit\Application\Redirect;
 use IsuDev\WPContentBridge\Application\Redirect\PublishedPermalinkLookup;
 use IsuDev\WPContentBridge\Application\Redirect\RedirectCandidateGuard;
 use IsuDev\WPContentBridge\Application\Redirect\RedirectProvider;
+use IsuDev\WPContentBridge\Application\Redirect\RedirectRuleLookup;
 use IsuDev\WPContentBridge\Application\Redirect\RedirectSourceRejected;
 use IsuDev\WPContentBridge\Domain\Redirect\RedirectProviderStatus;
 use IsuDev\WPContentBridge\Domain\Redirect\RedirectRule;
 use IsuDev\WPContentBridge\Domain\Redirect\RedirectSourcePath;
 use IsuDev\WPContentBridge\Domain\Redirect\RedirectStatusCode;
 use IsuDev\WPContentBridge\Domain\Redirect\RedirectTargetUrl;
+use IsuDev\WPContentBridge\Tests\Support\FixedPublishedPermalinkLookup;
+use IsuDev\WPContentBridge\Tests\Support\RecordingRedirectProvider;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -39,7 +42,7 @@ final class RedirectCandidateGuardTest extends TestCase {
 
 		( new RedirectCandidateGuard() )->assert_creatable(
 			$this->rule( '/old-page', '/new-page' ),
-			$this->provider(),
+			$this->lookup(),
 			$this->permalinks( false )
 		);
 	}
@@ -51,10 +54,23 @@ final class RedirectCandidateGuardTest extends TestCase {
 	 */
 	public static function provide_reserved_prefixes(): array {
 		return array(
-			'rest api' => array( '/wp-json/wp/v2/posts' ),
-			'admin'    => array( '/wp-admin/edit.php' ),
-			'content'  => array( '/wp-content/uploads/x.jpg' ),
-			'feed'     => array( '/feed/rss2' ),
+			'rest api'      => array( '/wp-json/wp/v2/posts' ),
+			'admin'         => array( '/wp-admin/edit.php' ),
+			'content'       => array( '/wp-content/uploads/x.jpg' ),
+			'includes'      => array( '/wp-includes/js/x.js' ),
+			'feed'          => array( '/feed/rss2' ),
+			'login'         => array( '/wp-login.php' ),
+			'cron'          => array( '/wp-cron.php' ),
+			'signup'        => array( '/wp-signup.php' ),
+			'activate'      => array( '/wp-activate.php' ),
+			'xmlrpc'        => array( '/xmlrpc.php' ),
+			'core sitemap'  => array( '/wp-sitemap.xml' ),
+			'sitemap index' => array( '/wp-sitemap-posts-post-1.xml' ),
+			'robots'        => array( '/robots.txt' ),
+			// This plugin's own public endpoint: shadowing it would disable a
+			// feature the same plugin serves.
+			'llms'          => array( '/llms.txt' ),
+			'llms full'     => array( '/llms-full.txt' ),
 		);
 	}
 
@@ -69,7 +85,7 @@ final class RedirectCandidateGuardTest extends TestCase {
 
 		( new RedirectCandidateGuard() )->assert_creatable(
 			$this->rule( $source, '/new-page' ),
-			$this->provider(),
+			$this->lookup(),
 			$this->permalinks( false )
 		);
 	}
@@ -83,7 +99,7 @@ final class RedirectCandidateGuardTest extends TestCase {
 
 		( new RedirectCandidateGuard() )->assert_creatable(
 			$this->rule( '/old-page', '/new-page' ),
-			$this->provider(),
+			$this->lookup(),
 			$this->permalinks( true )
 		);
 	}
@@ -99,7 +115,7 @@ final class RedirectCandidateGuardTest extends TestCase {
 
 		( new RedirectCandidateGuard() )->assert_creatable(
 			$this->rule( '/old-page', '/new-page' ),
-			$this->provider( array( '/old-page' => $existing ) ),
+			$this->lookup( array( '/old-page' => $existing ) ),
 			$this->permalinks( false )
 		);
 	}
@@ -115,7 +131,7 @@ final class RedirectCandidateGuardTest extends TestCase {
 
 		( new RedirectCandidateGuard() )->assert_creatable(
 			$this->rule( '/old-page', '/b' ),
-			$this->provider( array( '/b' => $back_to_source ) ),
+			$this->lookup( array( '/b' => $back_to_source ) ),
 			$this->permalinks( false )
 		);
 	}
@@ -130,7 +146,7 @@ final class RedirectCandidateGuardTest extends TestCase {
 
 		( new RedirectCandidateGuard() )->assert_creatable(
 			$this->rule( '/a', '/b' ),
-			$this->provider(
+			$this->lookup(
 				array(
 					'/b' => $this->rule( '/b', '/c' ),
 					'/c' => $this->rule( '/c', '/d' ),
@@ -150,7 +166,7 @@ final class RedirectCandidateGuardTest extends TestCase {
 
 		( new RedirectCandidateGuard() )->assert_creatable(
 			$this->rule( '/a', '/b' ),
-			$this->provider(
+			$this->lookup(
 				array(
 					'/b' => $this->rule( '/b', '/c' ),
 				)
@@ -175,16 +191,63 @@ final class RedirectCandidateGuardTest extends TestCase {
 			$this->provider_status()
 		);
 
-		( new RedirectCandidateGuard() )->assert_creatable( $rule, $this->provider(), $this->permalinks( false ) );
+		( new RedirectCandidateGuard() )->assert_creatable( $rule, $this->lookup(), $this->permalinks( false ) );
+	}
+
+	/**
+	 * The two-plugin case ADR 0026 s5 was corrected for: the source is free in
+	 * the provider the write is addressed to, but claimed by the other active
+	 * plugin. Both engines serve redirects at runtime, so this is a collision
+	 * and the rejection names the provider that holds it.
+	 */
+	public function test_rejects_a_collision_held_only_by_another_provider(): void {
+		$held_elsewhere = new RedirectRuleLookup(
+			array(
+				$this->provider( array(), 'redirection' ),
+				$this->provider( array( '/old-page' => $this->rule( '/old-page', '/elsewhere' ) ), 'yoast-premium' ),
+			)
+		);
+
+		$this->expectException( RedirectSourceRejected::class );
+		$this->expectExceptionMessage( 'yoast-premium' );
+
+		( new RedirectCandidateGuard() )->assert_creatable(
+			$this->rule( '/old-page', '/new-page' ),
+			$held_elsewhere,
+			$this->permalinks( false )
+		);
+	}
+
+	/**
+	 * A loop that hops between backends: the candidate sends `/old-page` to
+	 * `/b` in one plugin, and the other plugin already sends `/b` back to
+	 * `/old-page`. Neither plugin can see this on its own.
+	 */
+	public function test_rejects_a_loop_that_spans_two_providers(): void {
+		$split_chain = new RedirectRuleLookup(
+			array(
+				$this->provider( array(), 'redirection' ),
+				$this->provider( array( '/b' => $this->rule( '/b', '/old-page' ) ), 'yoast-premium' ),
+			)
+		);
+
+		$this->expectException( RedirectSourceRejected::class );
+
+		( new RedirectCandidateGuard() )->assert_creatable(
+			$this->rule( '/old-page', '/b' ),
+			$split_chain,
+			$this->permalinks( false )
+		);
 	}
 
 	/**
 	 * Returns a shared provider status fixture.
 	 *
+	 * @param string $slug Provider slug.
 	 * @return RedirectProviderStatus
 	 */
-	private function provider_status(): RedirectProviderStatus {
-		return new RedirectProviderStatus( 'redirection', '5.5.2', true, array( 'create', 'search' ) );
+	private function provider_status( string $slug = 'redirection' ): RedirectProviderStatus {
+		return new RedirectProviderStatus( $slug, '5.5.2', true, array( 'create', 'search' ) );
 	}
 
 	/**
@@ -206,93 +269,34 @@ final class RedirectCandidateGuardTest extends TestCase {
 	}
 
 	/**
-	 * Builds an always-available provider fake backed by a fixed rule map.
+	 * Builds a single-provider lookup, which is what the guard consumes on an
+	 * ordinary one-plugin site.
 	 *
 	 * @param array<string, RedirectRule> $existing Existing rules keyed by source path.
-	 * @return RedirectProvider
+	 * @return RedirectRuleLookup
 	 */
-	private function provider( array $existing = array() ): RedirectProvider {
-		$status = $this->provider_status();
-
-		return new class( $existing, $status ) implements RedirectProvider {
-
-			/**
-			 * Creates the fake.
-			 *
-			 * @param array<string, RedirectRule> $existing Existing rules keyed by source path.
-			 * @param RedirectProviderStatus      $status   Fixed provider status.
-			 */
-			public function __construct( private array $existing, private RedirectProviderStatus $status ) {
-			}
-
-			/**
-			 * Always available.
-			 *
-			 * @return bool
-			 */
-			public function is_available(): bool {
-				return true;
-			}
-
-			/**
-			 * Returns the fixed status.
-			 *
-			 * @return RedirectProviderStatus
-			 */
-			public function status(): RedirectProviderStatus {
-				return $this->status;
-			}
-
-			/**
-			 * Looks up an existing rule by exact source path.
-			 *
-			 * @param RedirectSourcePath $source Exact source path.
-			 * @return RedirectRule|null
-			 */
-			public function search( RedirectSourcePath $source ): ?RedirectRule {
-				return $this->existing[ $source->value() ] ?? null;
-			}
-
-			/**
-			 * Not exercised by any guard test; the guard never calls `create()`.
-			 *
-			 * @param RedirectRule $candidate Candidate rule.
-			 * @return RedirectRule
-			 */
-			public function create( RedirectRule $candidate ): RedirectRule {
-				return $candidate;
-			}
-		};
+	private function lookup( array $existing = array() ): RedirectRuleLookup {
+		return new RedirectRuleLookup( array( $this->provider( $existing ) ) );
 	}
 
 	/**
-	 * Builds a permalink lookup fake with a fixed answer for every path.
+	 * Builds an available provider double over a fixed rule map.
+	 *
+	 * @param array<string, RedirectRule> $existing Existing rules keyed by source path.
+	 * @param string                      $slug     Provider slug the double reports.
+	 * @return RedirectProvider
+	 */
+	private function provider( array $existing = array(), string $slug = 'redirection' ): RedirectProvider {
+		return new RecordingRedirectProvider( $slug, $existing );
+	}
+
+	/**
+	 * Builds a permalink lookup with a fixed answer for every path.
 	 *
 	 * @param bool $published Whether every lookup answers "published".
 	 * @return PublishedPermalinkLookup
 	 */
 	private function permalinks( bool $published ): PublishedPermalinkLookup {
-		return new class( $published ) implements PublishedPermalinkLookup {
-
-			/**
-			 * Creates the fake.
-			 *
-			 * @param bool $published Fixed answer for every lookup.
-			 */
-			public function __construct( private bool $published ) {
-			}
-
-			/**
-			 * Returns the fixed answer regardless of the path.
-			 *
-			 * @param string $path Unused path.
-			 * @return bool
-			 */
-			public function is_published_permalink( string $path ): bool {
-				unset( $path );
-
-				return $this->published;
-			}
-		};
+		return new FixedPublishedPermalinkLookup( $published );
 	}
 }

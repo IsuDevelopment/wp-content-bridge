@@ -26,6 +26,7 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\Installer;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressAuditLog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentAccessSettingsRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentMutationRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSchemaTargetReader;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentTypeCatalog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressRenderedSchemaReader;
 
@@ -86,6 +87,7 @@ final class WPCB_Custom_Schema_Verification {
 
 		try {
 			$this->set_up();
+			$this->verify_target_identity_is_complete();
 			$this->verify_invalid_source_is_reported_without_writing();
 			$this->verify_read_preview_write();
 			$this->verify_merged_graph();
@@ -163,6 +165,30 @@ final class WPCB_Custom_Schema_Verification {
 		);
 		$this->assert_true( ! is_wp_error( $post_id ), 'Could not create the Custom Schema fixture post.' );
 		$this->post_id = (int) $post_id;
+	}
+
+	/**
+	 * Proves the read carries the identity a schema document is built from.
+	 *
+	 * This exists because a schema edit previously had to fetch the post
+	 * separately to find its title, permalink and dates. If any of these come
+	 * back empty, the caller is pushed back into extra round trips.
+	 *
+	 * @return void
+	 */
+	private function verify_target_identity_is_complete(): void {
+		$target = $this->get_use_case()->execute( array( 'post_id' => $this->post_id ) )->target;
+
+		$this->assert_true( 'WPCB custom schema fixture' === $target->title, 'The read did not carry the post title.' );
+		$this->assert_true( '' !== $target->slug, 'The read did not carry the post slug.' );
+		$this->assert_true( is_string( $target->url ) && str_contains( (string) $target->url, $target->slug ), 'The read did not carry a usable permalink.' );
+		$this->assert_true( 'publish' === $target->status, 'The read reported a status other than the fixture status.' );
+		$this->assert_true( is_string( $target->published_at ) && '' !== $target->published_at, 'The read did not carry a publication date.' );
+		$this->assert_true( '' !== $target->modified_at, 'The read did not carry a modification date.' );
+		$this->assert_true(
+			null === $target->featured_image_id && null === $target->featured_image_url,
+			'The read invented featured-image identity for a fixture that has none.'
+		);
 	}
 
 	/**
@@ -250,7 +276,7 @@ final class WPCB_Custom_Schema_Verification {
 		$permalink = get_permalink( $this->post_id );
 		$this->assert_true( is_string( $permalink ) && '' !== $permalink, 'Could not resolve the fixture permalink.' );
 
-		$graph = ( new WordPressRenderedSchemaReader( home_url( '/' ) ) )->graph_for_url( (string) $permalink );
+		$graph = ( new WordPressRenderedSchemaReader( home_url( '/' ) ) )->graph_for_url( (string) $permalink )->nodes;
 		$this->assert_true( array() !== $graph, 'The rendered schema graph is empty; is Yoast active and the fixture public?' );
 
 		$types = array();
@@ -368,7 +394,8 @@ final class WPCB_Custom_Schema_Verification {
 		return new GetCustomSchema(
 			$this->access(),
 			new WordPressContentMutationRepository(),
-			new SchemaExtendedCustomSchemaProvider()
+			new SchemaExtendedCustomSchemaProvider(),
+			new WordPressSchemaTargetReader()
 		);
 	}
 

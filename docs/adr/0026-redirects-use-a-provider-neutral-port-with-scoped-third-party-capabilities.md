@@ -17,6 +17,33 @@ Premium adapter (not built) or the `RedirectCandidateGuard` invariants under
 real WordPress (still fake-only unit tests) — both remain open before any
 Ability ships.
 
+**Source-reconciled against Yoast SEO Premium 28.0 on 2026-09-01, and one of
+this ADR's load-bearing research findings turned out to be wrong.** The
+"Yoast SEO Premium Redirect Manager" subsection below was written from public
+documentation and a community gist. Reading the plugin actually installed on
+the designated environment
+(`content/plugins/wordpress-seo-premium`, version 28.0, alongside Yoast SEO
+Free 28.4) shows that **Yoast Premium does ship a redirect REST API** and an
+in-process service layer that is registered on every request, not only on
+admin screens. The corrected findings are in that subsection, marked. Two
+consequences for the decisions below, both still open:
+
+- Decision 1 ("build order is reversed") rested on Yoast having no callable
+  API. It has one. The build order may no longer be justified on that ground.
+- Decision 3 ("Yoast Premium is called through its internal classes behind a
+  version fixture") describes a path that is no longer the best available one;
+  the REST/service layer is preferable to the internal classes it names.
+
+**Yoast Premium collects no 404 or redirect-hit data at all** (verified by
+exhaustive search of both plugins, not by absence of documentation): the
+Google Search Console crawl-error feature is a dead stub whose own view says
+Google discontinued the API, and no table or option stores hits. Redirection
+5.9.0 does keep both a 404 log and a redirect-hit log. Any redirect
+*statistics* capability therefore cannot live behind the redirect port defined
+here — a Yoast-backed site would report zero 404s, which is indistinguishable
+from a healthy site. Statistics need a separate port with an explicit
+unavailable state, and a separate ADR.
+
 ## Context
 
 Slice 5 was reprioritized to the next release (`0.9.0+`, see the roadmap's
@@ -69,16 +96,53 @@ uniformly across two backends with different storage.
 
 ### Yoast SEO Premium Redirect Manager — researched surface
 
-- **No REST API.** Nothing under `developer.yoast.com` documents a redirect
-  REST namespace, and none was found.
-- **No documented PHP API.** The only public write path found is a
-  community gist reverse-engineering three undocumented classes:
-  `WPSEO_Redirect` (constructor: origin, target, type, format), stored via
-  `WPSEO_Redirect_Option`, activated via
-  `WPSEO_Redirect_Manager::export_redirects()`. Yoast publishes no
-  compatibility promise, changelog entry, or deprecation policy for any of
-  these three classes. Storage is a serialized array in
-  `wpseo-premium-redirects-base`.
+**Corrected 2026-09-01 from the source of Premium 28.0.** The two bullets
+struck through below were the documentation-only findings and are wrong. They
+are kept because they are the reason this ADR proposed a build order and a
+fixture-gated internal-class path, and removing them would hide why.
+
+- ~~**No REST API.** Nothing under `developer.yoast.com` documents a redirect
+  REST namespace, and none was found.~~ **Wrong.** Premium 28.0 registers
+  `yoast/v1/redirects` (POST, create), `yoast/v1/redirects/delete` (POST),
+  `yoast/v1/redirects/list` (GET, `format=plain|regex`),
+  `yoast/v1/redirects/update` (PUT) and `yoast/v1/redirects/settings`
+  (GET/PUT) in `classes/premium-redirect-endpoint.php`, all behind
+  `current_user_can( 'wpseo_manage_redirects' )`. A sixth route,
+  `yoast/v1/redirects/undo-for-object`, is gated on `edit_post`/`edit_term`
+  instead. The endpoint and its `WPSEO_Premium_Redirect_Service` are
+  instantiated on every request in `WPSEO_Premium::__construct()`, and the
+  routes attach on `rest_api_init`. Being undocumented, it carries no
+  compatibility promise — but it is a real, intended, non-admin call path,
+  which is not what this ADR assumed.
+- ~~**No documented PHP API.**~~ Undocumented, but callable and not
+  admin-gated. `WPSEO_Redirect_Manager` (`get_redirects`, `get_all_redirects`,
+  `get_redirect`, `create_redirect`, `update_redirect`, `delete_redirects`,
+  `save_redirects`, `export_redirects`), `WPSEO_Redirect_Option`,
+  `WPSEO_Redirect`, `WPSEO_Redirect_Validator` and the exporters are all
+  Composer-classmap-autoloaded, contain no `is_admin()` guard, and work from a
+  REST, cron or CLI request. Only `WPSEO_Redirect_Page` and
+  `WPSEO_Redirect_Ajax` are admin/AJAX-gated. There is also a
+  `wp yoast redirect list/create/update/delete/has/follow` CLI command set.
+- **Storage is options, and there are three of them.**
+  `wpseo-premium-redirects-base` is canonical (`autoload = false`) and holds
+  plain and regex together, distinguished by a `format` key.
+  `wpseo-premium-redirects-export-plain` and
+  `wpseo-premium-redirects-export-regex` are derived read-caches, and they are
+  what the front-end matcher actually reads. **Writing the canonical option
+  directly is therefore not enough** — the exports must be regenerated, so
+  every write must go through the manager's `save_redirects()`.
+- **The manager performs no capability check.** `current_user_can` appears
+  only in the REST permission callback, the AJAX handlers and the submenu
+  registration. Calling the manager in-process means this plugin's own layer
+  is the only authorization gate — a stronger reason to prefer the REST
+  routes, or to enforce the capability explicitly before touching the manager.
+- **`WPSEO_Redirect_Validator` makes an outbound HTTP request.** Its
+  accessible-target validation issues a live `wp_remote_head()` against the
+  redirect target. That is a side effect an ability must not incur silently.
+- **No 404 or hit data exists.** No table, no option, no counter, in Premium
+  28.0 or Free 28.4. The Search Console crawl-error screen is a stub whose own
+  copy states Google discontinued the API. Yoast cannot be a statistics
+  provider.
 - **Native capability is already granular**: `wpseo_manage_redirects` is a
   real, narrower-than-`manage_options` WordPress capability that Yoast itself
   auto-grants to the built-in Editor role and to its own "SEO editor" role.
@@ -160,10 +224,38 @@ compatibility fixture pinned to the specific Premium version(s) under test in
 undocumented internals carry no deprecation notice, so drift is silent by
 default.
 
-### 4. One provider-neutral port, ordered registry, explicit unavailability
+### 4. One provider-neutral port; the caller names the provider; reads span all of them
 
-Mirror `SeoProviderRegistry` (`src/Application/Seo/SeoProviderRegistry.php`):
-an ordered list of `RedirectProvider` adapters plus a required null object,
+**Amended 2026-09-01. The original text is below, and the part that selected a
+provider implicitly is superseded.** Two facts drove this: sites commonly run
+Redirection *and* Yoast Premium at the same time, and when they do **both
+engines serve redirects at runtime** — Yoast's `Redirect_Handler` is gated on
+`! is_admin()` and Redirection's module hooks the front end too, so whichever
+attaches first wins. An implicit "first available provider" hides that.
+
+- **Writes take a required, explicit `provider`.** There is no preference
+  order and no guessing. On a two-plugin site the caller must state where the
+  rule goes, because that choice decides whether the rule is the one that
+  actually fires.
+- **Reads span every available provider**, each returned rule labelled with
+  its provider, plus an explicit marker when the same source exists in more
+  than one. A single-provider read misreports exactly the sites this
+  amendment is about.
+- **Never dual-write still holds**: a write goes to exactly one named
+  provider, and a provider error never triggers a fallback write to the other.
+- Per-provider Abilities were considered and rejected: they would double a
+  permanent public contract surface, two near-identically named tools are a
+  known way for an agent to pick the wrong one (here meaning "wrote the rule
+  into the plugin that loses"), and the cross-provider guard below would still
+  be required, so the port would not disappear — it would only stop being the
+  Ability boundary. Provider-specific features that cannot be expressed
+  neutrally (Redirection groups and match types, Yoast's `307`/`451`) stay out
+  of the neutral surface and may later get their own explicitly named
+  Abilities when a concrete need exists.
+
+Original text, superseded in part: mirror `SeoProviderRegistry`
+(`src/Application/Seo/SeoProviderRegistry.php`): an ordered list of
+`RedirectProvider` adapters plus a required null object,
 selecting the first available provider. "Available" means the compatibility
 gate in §2/§3 passes; it is evaluated fresh per request, not cached across
 requests. `search-redirects`/`get-redirect`/`create-redirect`/
@@ -183,9 +275,14 @@ permissiveness:
   permalink trailing-slash structure (`user_trailingslashit()`) before any
   collision check, since the two plugins' own trailing-slash handling is not
   guaranteed identical.
-- **Collision:** query the *active* provider's own search for an existing
-  enabled rule on the normalized source before create; a stale-token conflict
-  on update follows the same rule as every other mutation in this plugin.
+- **Collision — corrected 2026-09-01: query _every_ available provider, not
+  the selected one.** The original wording checked only the active provider.
+  On a site running both plugins that is unsound: the guard would report no
+  collision, the rule would be written to the named provider, and the other
+  plugin's existing rule for the same source could still be the one that
+  fires. A source already claimed by *any* available provider is a collision,
+  and the rejection names which provider holds it. A stale-token conflict on
+  update follows the same rule as every other mutation in this plugin.
 - **Live-content shadow guard:** reject a source path that is the current
   canonical permalink of a still-published, non-trashed object. A redirect is
   for a URL that no longer resolves to live content, not a way to intercept
@@ -194,9 +291,11 @@ permissiveness:
 - **Reserved-prefix denylist:** reject source paths under `wp-json/`,
   `wp-admin/`, `wp-content/`, `feed/`, and any registered REST/sitemap
   rewrite prefix, so a redirect can never shadow a core or plugin endpoint.
-- **Chain/loop bound:** before create, resolve the target through the same
-  provider's existing rules (and, where applicable, `wp_old_slug_redirect()`)
-  up to 3 hops. A loop back to the source is rejected outright; a chain that
+- **Chain/loop bound — also cross-provider (corrected 2026-09-01):** before
+  create, resolve the target through the existing rules of **all** available
+  providers (and, where applicable, `wp_old_slug_redirect()`) up to 3 hops. A
+  chain can hop between backends — `/a → /b` in Yoast and `/b → /a` in
+  Redirection is a loop that neither plugin can see on its own. A loop back to the source is rejected outright; a chain that
   would still not terminate within the bound is rejected as unresolvable
   rather than silently created.
 - **HTTP status allowlist (P0):** `301`, `302`, `410` — the intersection that

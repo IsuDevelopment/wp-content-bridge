@@ -438,6 +438,19 @@ Provider decision:
 - a provider error during a write never triggers an automatic fallback write to
   the other provider.
 
+**Slice 5 gains a statistics half, 2026-09-01 (ADR 0030 proposed).** Creating a
+redirect is only half of the operator's question; the other half is *which*
+redirect is missing, which needs the site's 404 history. Reading both backends'
+source found that statistics do not follow redirect availability: Redirection
+5.9.0 keeps a 404 log, a redirect-hit log and per-redirect counters, while Yoast
+SEO Premium 28.0 collects none of it (its crawl-error screen is a stub — Google
+discontinued the API). So statistics get a **separate port** with unavailable,
+disabled and measured as three distinct results, and an **aggregate-only**
+surface: requested path, hit count, retention window, and none of the `ip`,
+`agent`, `referrer` or request-header fields the log rows also carry. The same
+pass corrected ADR 0026: Yoast Premium does have a redirect REST API, which
+reopens that ADR's build order and its fixture-gated internal-class path.
+
 **Phase 5A status: research complete, ADR proposed 2026-08-14.** See ADR 0026
 (`docs/adr/0026-redirects-use-a-provider-neutral-port-with-scoped-third-party-capabilities.md`)
 for the full findings and decisions. Summary: Redirection (John Godley) has a

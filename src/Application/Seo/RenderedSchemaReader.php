@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace IsuDev\WPContentBridge\Application\Seo;
 
+use IsuDev\WPContentBridge\Domain\Seo\RenderedGraph;
+
 /**
  * Reads a same-origin page's public JSON-LD graph.
  *
@@ -20,14 +22,17 @@ namespace IsuDev\WPContentBridge\Application\Seo;
 interface RenderedSchemaReader {
 
 	/**
-	 * Returns the public JSON-LD graph nodes rendered at a same-origin URL.
+	 * Returns the rendered graph capture outcome for a same-origin URL.
 	 *
 	 * Implementations must enforce a same-origin constraint, bound the request
-	 * and response, and never throw. An empty array means no usable graph was
-	 * captured; callers fall back to the resolved surface.
+	 * and response, and never throw. Failure is reported through the returned
+	 * outcome rather than as an empty node list, because a blocked loopback
+	 * request and a page that emits no JSON-LD are different facts that need
+	 * different responses from the operator. Callers still fall back to the
+	 * resolved surface in both cases.
 	 *
 	 * @param string $url Same-origin, already-authorized public URL.
-	 * @return list<array<string, mixed>>
+	 * @return RenderedGraph
 	 */
-	public function graph_for_url( string $url ): array;
+	public function graph_for_url( string $url ): RenderedGraph;
 }

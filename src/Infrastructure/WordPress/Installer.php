@@ -14,7 +14,15 @@ namespace IsuDev\WPContentBridge\Infrastructure\WordPress;
  */
 final class Installer {
 
-	private const SCHEMA_VERSION = 11;
+	/**
+	 * Bumped to 13 for media uploads (ADR 0031), and to 12 before that for the
+	 * redirect feature. `maybe_upgrade()` re-runs `activate()` on a version
+	 * increase, which is the only thing that grants a newly added capability
+	 * to administrators on an install that is already active. Without the bump
+	 * the capability would exist in code and on no role, so every check on it
+	 * would be false for everyone.
+	 */
+	private const SCHEMA_VERSION = 13;
 	private const VERSION_OPTION = 'wpcb_schema_version';
 
 	public const WRITES_ENABLED_OPTION        = 'wpcb_writes_enabled';
@@ -22,6 +30,9 @@ final class Installer {
 	public const MEDIA_READS_ENABLED_OPTION   = 'wpcb_media_reads_enabled';
 	public const PATTERN_READS_ENABLED_OPTION = 'wpcb_pattern_reads_enabled';
 	public const TRASH_ENABLED_OPTION         = 'wpcb_trash_enabled';
+	public const REDIRECTS_ENABLED_OPTION     = 'wpcb_redirects_enabled';
+	public const MEDIA_WRITES_ENABLED_OPTION  = 'wpcb_media_writes_enabled';
+	public const MEDIA_UPLOADS_ENABLED_OPTION = 'wpcb_media_uploads_enabled';
 	public const INTEGRATION_USER_OPTION      = 'wpcb_integration_user_id';
 
 	/**
@@ -131,6 +142,9 @@ final class Installer {
 		add_option( self::MEDIA_READS_ENABLED_OPTION, false, '', false );
 		add_option( self::PATTERN_READS_ENABLED_OPTION, false, '', false );
 		add_option( self::TRASH_ENABLED_OPTION, false, '', false );
+		add_option( self::REDIRECTS_ENABLED_OPTION, false, '', false );
+		add_option( self::MEDIA_WRITES_ENABLED_OPTION, false, '', false );
+		add_option( self::MEDIA_UPLOADS_ENABLED_OPTION, false, '', false );
 		add_option( self::LLMS_ENABLED_OPTION, false, '', false );
 		add_option( self::MCP_SERVER_ENABLED_OPTION, true, '', false );
 		add_option( self::INVOCATION_TELEMETRY_ENABLED_OPTION, false, '', false );
@@ -208,6 +222,8 @@ final class Installer {
 			'wpcb_publish_content',
 			'wpcb_delete_content',
 			'wpcb_manage_llms',
+			'wpcb_manage_redirects',
+			'wpcb_upload_media',
 		) as $capability ) {
 			$administrator->add_cap( $capability );
 		}

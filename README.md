@@ -444,7 +444,75 @@ only Schema Extended's public contract, enforces the Update SEO policy,
 audit, and never logs JSON source. After a successful update, call
 `get-url-seo` with the same `post_id` to inspect the complete, context-resolved
 Yoast graph; preview intentionally reports `context_resolved: false` because it
-does not execute a speculative front-end render.
+does not execute a speculative front-end render. That flag is not a failure
+signal and can accompany `valid: true`.
+
+`get-custom-schema` also returns a `target` object with the post's title, slug,
+permalink, status, dates, and authorized featured-image identity - the fields a
+JSON-LD document is built from - so authoring a document for one page does not
+require a separate content read.
+
+### `wp-content-bridge/update-permalink`
+
+Changes one post's slug and returns both the previous and the new URL, so a
+redirect can be created from the old one.
+
+A slug already in use is **refused**, not silently turned into `slug-2` the way
+`wp_update_post()` would — accepting that would hand back a URL the caller never
+requested. A slug made only of punctuation is refused for the same reason: an
+empty slug makes WordPress regenerate one from the title.
+
+It cannot change the site-wide permalink structure. Gated by the per-type Change
+permalink policy plus `wpcb_edit_content` and native `edit_post`.
+
+### `wp-content-bridge/update-media`
+
+Edits an existing attachment's `title`, `alt_text`, `caption`, and
+`description` — at least one required. It cannot change the file, its type, or
+its filename, and every field is confirmed against storage after the write.
+
+Submit the `version_token` that `get-media-by-id` returns. Gated by media reads,
+the content-writes master switch, `wpcb_media_writes_enabled`,
+`wpcb_edit_content`, and native `edit_post`.
+
+### `wp-content-bridge/create-media`
+
+Fetches one image from a remote URL into the media library. It does not attach
+the image to anything — placement stays with `update-featured-image`.
+
+Because the site issues an outbound request on the caller's instruction, the URL
+goes through WordPress's own `wp_safe_remote_get()` allowlist, which refuses
+loopback, private ranges, link-local and cloud-metadata addresses, embedded
+credentials, unusual ports, and any redirect to one of those. The stored file
+type is decided by the downloaded **bytes**, not the URL or extension, and only
+JPEG, PNG, GIF, WebP, and AVIF are accepted — never SVG, which is script-bearing
+XML that would be served from the site's own origin.
+
+`idempotency_key` is required: a retried call returns the attachment the first
+call created instead of importing a second copy. Every refusal returns the same
+error, so the response cannot be used to map the site's network position.
+
+It needs media reads, the content-writes master switch, its own
+`wpcb_media_uploads_enabled` flag, the `wpcb_upload_media` capability, and native
+`upload_files`. See `docs/adr/0031-media-upload-fetches-one-image-from-a-validated-remote-url.md`,
+including the SSRF gaps that are documented rather than closed.
+
+### `wp-content-bridge/update-featured-image`
+
+Assigns an existing image attachment as one post's featured image, or removes
+the current one when `attachment_id` is `null`. It never uploads, imports, or
+fetches a file: the attachment must already exist, be an image, and be readable
+by the acting principal.
+
+That last check is the point. `set_post_thumbnail()` accepts any attachment ID —
+a PDF, a private upload, or an ID that is not an attachment at all — and themes
+render the result in a public image slot, so the bridge refuses what WordPress
+would accept. An absent, non-image, and unreadable attachment all return the
+same refusal, and the version token is checked before the attachment is
+examined, so the ability cannot be used to enumerate attachment IDs.
+
+It needs media reads, the content-writes master switch, and its own
+`wpcb_media_writes_enabled` flag, plus the per-type Set featured image policy.
 
 ### `wp-content-bridge/trash-content`
 

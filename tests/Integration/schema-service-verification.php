@@ -238,7 +238,7 @@ final class WPCB_Service_Schema_Verification {
 		$permalink = get_permalink( $this->post_id );
 		$this->assert_true( is_string( $permalink ) && '' !== $permalink, 'Could not resolve the fixture permalink.' );
 
-		$graph = ( new WordPressRenderedSchemaReader( home_url( '/' ) ) )->graph_for_url( (string) $permalink );
+		$graph = ( new WordPressRenderedSchemaReader( home_url( '/' ) ) )->graph_for_url( (string) $permalink )->nodes;
 		$this->assert_true( array() !== $graph, 'The rendered schema graph is empty; is Yoast active and the fixture public?' );
 
 		$service = null;

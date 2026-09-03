@@ -146,12 +146,7 @@ final class WordPressContentRepository implements ContentRepository {
 			};
 		}
 
-		$version_token = VersionToken::for_content(
-			$post->post_modified_gmt,
-			$post->post_title,
-			$post->post_content,
-			$post->post_status
-		);
+		$version_token = PostVersionTokenFactory::for_post( $post );
 
 		return new ContentDetail(
 			$this->summary( $post ),
@@ -177,6 +172,22 @@ final class WordPressContentRepository implements ContentRepository {
 			'relevance' => '' === $query->query ? 'date' : 'relevance',
 			default     => 'date',
 		};
+		$order    = strtoupper( $query->order );
+
+		/*
+		 * `ID` is appended as a tie-break. Without it, rows sharing the primary
+		 * sort value - two posts with the same `post_modified`, which any bulk
+		 * import or programmatic creation produces - come back in whatever
+		 * order MySQL happens to pick, and two identical queries can disagree.
+		 * On a paginated read that is worse than untidy: a row can appear on
+		 * two pages or on none.
+		 */
+		$ordering = 'ID' === $order_by
+			? array( 'ID' => $order )
+			: array(
+				$order_by => $order,
+				'ID'      => $order,
+			);
 
 		$arguments = array(
 			'post_type'           => $query->post_types,
@@ -185,8 +196,7 @@ final class WordPressContentRepository implements ContentRepository {
 			'author__in'          => $query->author_ids,
 			'paged'               => $query->page,
 			'posts_per_page'      => $query->per_page,
-			'orderby'             => $order_by,
-			'order'               => strtoupper( $query->order ),
+			'orderby'             => $ordering,
 			'ignore_sticky_posts' => true,
 			'no_found_rows'       => true,
 		);
@@ -350,22 +360,7 @@ final class WordPressContentRepository implements ContentRepository {
 	 * @return array{id: int, url: string, alt_text: string}|null
 	 */
 	private function featured_media( WP_Post $post ): ?array {
-		$attachment_id = get_post_thumbnail_id( $post );
-		if ( false === $attachment_id || $attachment_id < 1 || ! current_user_can( 'read_post', $attachment_id ) ) {
-			return null;
-		}
-
-		$url = wp_get_attachment_url( $attachment_id );
-		if ( ! is_string( $url ) || '' === $url ) {
-			return null;
-		}
-		$alt = get_post_meta( $attachment_id, '_wp_attachment_image_alt', true );
-
-		return array(
-			'id'       => $attachment_id,
-			'url'      => $url,
-			'alt_text' => is_string( $alt ) ? $alt : '',
-		);
+		return FeaturedMediaProjection::for_post( $post );
 	}
 
 	/**

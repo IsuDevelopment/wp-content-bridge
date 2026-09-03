@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace IsuDev\WPContentBridge\Tests\Unit\Application\Mutation;
 
+use IsuDev\WPContentBridge\Application\Content\ContentUnavailable;
 use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessManager;
 use IsuDev\WPContentBridge\Application\ContentAccess\ContentAccessSettingsRepository;
 use IsuDev\WPContentBridge\Application\ContentAccess\ContentTypeCatalog;
@@ -20,11 +21,13 @@ use IsuDev\WPContentBridge\Application\Mutation\CustomSchemaWriter;
 use IsuDev\WPContentBridge\Application\Mutation\GetCustomSchema;
 use IsuDev\WPContentBridge\Application\Mutation\MutationConflict;
 use IsuDev\WPContentBridge\Application\Mutation\PreviewCustomSchema;
+use IsuDev\WPContentBridge\Application\Mutation\SchemaTargetReader;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateCustomSchema;
 use IsuDev\WPContentBridge\Domain\ContentAccess\ContentTypeDefinition;
 use IsuDev\WPContentBridge\Domain\Mutation\ContentUpdate;
 use IsuDev\WPContentBridge\Domain\Mutation\DraftInput;
 use IsuDev\WPContentBridge\Domain\Mutation\MutationResult;
+use IsuDev\WPContentBridge\Domain\Mutation\SchemaTarget;
 use IsuDev\WPContentBridge\Domain\Mutation\VersionToken;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
@@ -41,12 +44,16 @@ final class CustomSchemaUseCasesTest extends TestCase {
 	 */
 	public function test_reads_saved_custom_schema_configuration(): void {
 		$provider = $this->provider();
-		$result   = ( new GetCustomSchema( $this->manager(), $this->repository(), $provider ) )->execute( array( 'post_id' => 42 ) )->to_array();
+		$result   = ( new GetCustomSchema( $this->manager(), $this->repository(), $provider, $this->target() ) )->execute( array( 'post_id' => 42 ) )->to_array();
 
 		self::assertSame( self::TOKEN, $result['version_token'] );
 		self::assertSame( '{"@type":"Service"}', $result['custom_schema']['source'] );
 		self::assertTrue( $result['custom_schema']['render_eligible'] );
 		self::assertSame( 1, $provider->read_calls );
+		self::assertSame( 'Fixture page', $result['target']['title'] );
+		self::assertSame( 'https://example.test/fixture-page/', $result['target']['url'] );
+		self::assertSame( '2026-07-01T09:00:00+00:00', $result['target']['published_at'] );
+		self::assertSame( 7, $result['target']['featured_image_id'] );
 	}
 
 	/**
@@ -145,6 +152,53 @@ final class CustomSchemaUseCasesTest extends TestCase {
 		};
 
 		return new ContentAccessManager( $settings, $catalog );
+	}
+
+	/**
+	 * An unreadable target is reported as unavailable content, not as an
+	 * incomplete document: a schema write needs the identity fields.
+	 */
+	public function test_absent_target_identity_is_unavailable(): void {
+		$reader = new class() implements SchemaTargetReader {
+			/**
+			 * Reports every post as absent.
+			 *
+			 * @param int $post_id Unused post ID.
+			 */
+			public function read( int $post_id ): ?SchemaTarget {
+				return null;
+			}
+		};
+
+		$this->expectException( ContentUnavailable::class );
+		( new GetCustomSchema( $this->manager(), $this->repository(), $this->provider(), $reader ) )->execute( array( 'post_id' => 42 ) );
+	}
+
+	/**
+	 * Builds a fixed schema-target reader.
+	 */
+	private function target(): SchemaTargetReader {
+		return new class() implements SchemaTargetReader {
+			/**
+			 * Returns one fixed identity projection.
+			 *
+			 * @param int $post_id Target post ID.
+			 */
+			public function read( int $post_id ): ?SchemaTarget {
+				return 42 === $post_id
+					? new SchemaTarget(
+						'Fixture page',
+						'fixture-page',
+						'https://example.test/fixture-page/',
+						'publish',
+						'2026-07-01T09:00:00+00:00',
+						'2026-07-20T12:30:00+00:00',
+						7,
+						'https://example.test/wp-content/uploads/hero.jpg',
+					)
+					: null;
+			}
+		};
 	}
 
 	/**

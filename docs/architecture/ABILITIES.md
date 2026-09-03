@@ -613,7 +613,22 @@ current content `version_token`, editable `source`, `enabled`, normalized
 validation nodes and diagnostics, `save_allowed`, `render_eligible`, and
 provider provenance. Structural source validation does not resolve page
 placeholders or execute a speculative Yoast render, so
-`validation.context_resolved` is false.
+`validation.context_resolved` is false. That is not a failure signal, and it
+can accompany `valid: true`.
+
+Output also carries `target`: the post's `title`, `slug`, `url`, `status`,
+`published_at`, `modified_at`, and authorized featured-image identity. These are
+the fields a JSON-LD document is normally built from (`name`, `url`,
+`datePublished`, `dateModified`, `image`), and returning them here is what makes
+a single-page schema edit one call instead of a schema read plus a content read.
+The permalink is `null` when WordPress cannot resolve one for the post's current
+status, so a caller must not treat it as always present.
+
+`target` deliberately omits the excerpt. Generating one renders the post's
+blocks when no manual excerpt exists, which is the expensive read on this path,
+and this projection exists to stay cheap. The merged Yoast graph is deliberately
+omitted too: it requires the loopback front-end fetch that `get-url-seo`
+performs, which is the one measured slow read in this plugin.
 
 Annotations: `readonly: true`, `destructive: false`, `idempotent: true`.
 
@@ -650,6 +665,187 @@ provider. The authoritative complete graph is then available through the
 existing `get-url-seo` Ability, avoiding a duplicate full-graph endpoint.
 
 Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
+
+### `wp-content-bridge/update-permalink`
+
+Changes one post's slug. Input requires `post_id`, `version_token`, and `slug`.
+
+**A taken slug is refused, not uniquified.** `wp_update_post()` would silently
+store `slug-2` and report success, handing the caller a URL it never asked for.
+The repository asks `wp_unique_post_slug()` first (passing the post's own ID, so
+re-submitting the current slug is not a false collision) and answers
+`wpcb_permalink_unavailable` when the answer differs.
+
+A slug that normalizes to nothing — punctuation only — is refused as invalid
+input rather than stored. An empty `post_name` makes WordPress regenerate one
+from the title, which is again a URL nobody requested with no error to notice.
+Normalization runs through the `SlugNormalizer` port, which defers to
+`sanitize_title()` and its filters: reimplementing it in the domain would drift
+from what the database actually receives, and comparing against exactly that is
+the point.
+
+Output is the standard mutation envelope plus `permalink`, carrying
+`previous_slug`, `previous_url`, `slug`, and `url`. The previous URL is returned
+because a caller that changes a permalink usually needs it next, to create a
+redirect from it. WordPress does store a `_wp_old_slug` and resolves old URLs on
+its own for post types whose permalink structure includes the slug, but that
+does not cover every rewrite, so the old URL is handed back rather than assumed
+to be someone else's problem.
+
+It cannot change the site's permalink *structure*. That is a site-wide rewrite
+setting that would alter every URL at once, which is not a per-object edit.
+
+Gated by the per-type `update_permalink` policy plus `wpcb_edit_content` and
+native `edit_post`. No separate feature flag: it changes one field of one post,
+and its blast radius is addressed by returning the previous URL.
+
+Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
+Destructive because inbound links to the old URL break and nothing in the
+request restores the previous slug.
+
+### `wp-content-bridge/update-media`
+
+Edits the descriptive fields of one existing attachment: `title`, `alt_text`,
+`caption`, `description`. Input requires `attachment_id` and `version_token`,
+plus **at least one** field.
+
+An update naming no field is refused. Otherwise it would consume a token, pass
+every check, write nothing, and report success — which a caller reads as "the
+edit was applied". An empty string is a real value that clears the field; `null`
+is refused, because clearing already has one spelling and guessing between two
+is worse than rejecting.
+
+It cannot change the stored file, its MIME type, or its filename. That would be
+a replace rather than an edit and needs its own decision.
+
+Every requested field is confirmed against storage after the write.
+`wp_update_post()` returns the post ID on success even when a filter rewrote or
+discarded a value, and `update_post_meta()` returns `false` both for "unchanged"
+and for "short-circuited by a filter" — neither return value answers the only
+question that matters, which is what is now stored.
+
+`alt_text` is postmeta (`_wp_attachment_image_alt`), not a column, so it is
+written separately from the three that are.
+
+**`get-media-by-id` now returns a `version_token`** for exactly this: it is the
+only read that issues one for an attachment, and without it this write contract
+would be unreachable. The token is not on `MediaItem` because that type is also
+every row of a media search, where a per-row token would mean a postmeta digest
+per result nobody asked for.
+
+Gated by media reads, `wpcb_writes_enabled`, and `wpcb_media_writes_enabled` —
+the same switch as the featured image, since neither fetches anything — plus
+`wpcb_edit_content` and native `edit_post` on the attachment.
+
+Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
+Destructive because each present field replaces what was there and attachments
+carry no revisions.
+
+### `wp-content-bridge/create-media`
+
+Fetches one image from a remote URL and stores it in the media library. See
+ADR 0031. Input requires `source_url` and `idempotency_key`; `title`,
+`alt_text`, and `caption` are optional.
+
+**SSRF.** The site makes an outbound request on the caller's instruction, so the
+URL goes through `wp_safe_remote_get()`, which applies
+`wp_http_validate_url()` — and core re-applies it to every redirect target. That
+refuses loopback, `10/8`, `172.16/12`, `192.168/16`, `169.254/16` (the cloud
+metadata range), `100.64/10`, multicast, the reserved space, embedded
+credentials, and any port outside 80/443/8080. We use core's implementation
+rather than a hand-rolled filter because core's is maintained and covers more.
+
+Three residual gaps are recorded in the ADR rather than papered over: DNS
+rebinding (validation resolves, then the request resolves again — not fixable
+from userland PHP), same-host URLs skipping the IP checks by core's design, and
+IPv6 not being range-checked (in practice refused, not waved through).
+
+**File type comes from the bytes.** The URL, its extension, and the response
+`Content-Type` are untrusted hints. `wp_check_filetype_and_ext()` sniffs the
+downloaded file, and the allowlist is raster images only: JPEG, PNG, GIF, WebP,
+AVIF. **No SVG** — it is an XML document that can carry script and would be
+served from the site's own origin. The allowlist is not an input parameter, so a
+caller cannot widen it. A valid image served under the wrong extension is stored
+under the extension its bytes imply.
+
+The byte ceiling (12 MiB) is checked against the declared `Content-Length` when
+present *and* against the real body, because `Content-Length` is a claim.
+
+**`idempotency_key` is required, not optional.** A repeated call with the same
+key returns the attachment the first call created and performs no fetch. Unlike
+a duplicate draft, a duplicate upload consumes storage, regenerates every
+image size, and stays invisible until someone opens the media library — and the
+transport has been observed returning 504 *after* doing the work. The key is
+scoped per principal.
+
+**It only creates the attachment.** It does not attach it to a post, set it as a
+featured image, or insert it into content. Placement stays with
+`update-featured-image` and its own policy, capability, and version-token
+checks.
+
+Every refusal stage returns the **same** public error. Telling a caller whether
+a host resolved, answered, or answered with the wrong bytes is the
+reconnaissance an SSRF attempt is after. The audit row never records the source
+URL.
+
+Registration requires media reads, `wpcb_writes_enabled`, and the separate
+`wpcb_media_uploads_enabled` (off by default). Execution requires the new
+`wpcb_upload_media` capability **and** native `upload_files`; the plugin
+capability is deliberately not `wpcb_edit_content`, because a principal that may
+edit text is not thereby one that may put files on the server.
+
+Annotations: `readonly: false`, `destructive: false`, `idempotent: false`.
+Not destructive because creating an attachment loses nothing (ADR 0028). Not
+idempotent because the *operation* is not — annotating it otherwise would tell a
+client that blind retries are safe, which is what the key exists to prevent.
+
+Imported images keep their EXIF, including GPS where present. WordPress does not
+strip it and neither do we; that would be a separate decision.
+
+### `wp-content-bridge/update-featured-image`
+
+Assigns an existing image attachment as one post's featured image, or removes
+the current one. Input requires `post_id`, `version_token`, and `attachment_id`.
+
+`attachment_id` is **required and nullable**, not optional. Removing a featured
+image and leaving it alone are different intents, and an omitted key cannot
+express the first without risking the second on a malformed request. `null`
+means remove.
+
+It never uploads, imports, or fetches anything. The attachment must already
+exist, and the ability refuses any attachment that is not an image or that the
+acting principal cannot read. That gate exists because WordPress does not
+provide one: `set_post_thumbnail()` accepts any attachment ID — a PDF, a private
+upload, or an ID that is not an attachment at all — and themes then render the
+result in a public image slot.
+
+An absent attachment, a non-image, and an unreadable one all return the **same**
+refusal, so the response cannot be used to probe which attachment IDs exist or
+which are private. The version token is checked *before* the attachment is
+examined, for the same reason: a caller without a current token cannot probe at
+all.
+
+Registration needs three switches, not one: media reads, the content-writes
+master switch, and `wpcb_media_writes_enabled`. Enabling content writes does not
+imply consent to mutate media. Execution additionally requires
+`wpcb_edit_content`, native `edit_post` on the target, and the per-post-type
+`update_featured_image` policy.
+
+Output is the standard mutation envelope plus `featured_image`: the attachment
+in effect after the write, re-read from storage, or `null` when none is
+assigned. Both writes are confirmed by re-reading rather than by trusting the
+WordPress return value, because a filter on `update_post_metadata` can
+short-circuit a write while the call still reports success. A repeated removal
+succeeds rather than erroring, since `delete_post_thumbnail()` returns `false`
+both when nothing was assigned and when a write genuinely failed.
+
+A featured image is postmeta and the post row is untouched, so the version token
+only moves because the token covers postmeta. A chained caller must use the
+token the write returns.
+
+Annotations: `readonly: false`, `destructive: true`, `idempotent: true`.
+Destructive because an assignment replaces the previous image and a `null`
+removes one, neither recoverable from the request.
 
 ### `wp-content-bridge/trash-content`
 
@@ -793,6 +989,128 @@ not registered as another Ability: it accepts no configuration input, does not
 enable publication, and exists only to remove a circular operator prerequisite
 from the local ownership workflow.
 
+## Redirect abilities
+
+Two abilities, both requiring `wpcb_manage_redirects` and the
+`wpcb_redirects_enabled` switch. The write additionally requires the
+`wpcb_writes_enabled` master switch, and the selected backend's own authority:
+Redirection through its scoped permission filters, Yoast SEO Premium through
+its native `wpseo_manage_redirects` — which the Yoast adapter has to check
+itself, because Yoast's redirect manager checks no capability at all.
+
+**The premise these two are shaped by:** a site can run Redirection *and*
+Yoast Premium at the same time, and many do. When it does, **both engines
+serve redirects** — Yoast's handler is gated on `! is_admin()` and
+Redirection's module hooks the front end too — and whichever attaches first
+wins. So a single "active provider" is a fiction for reads and for conflict
+detection, even though a write must still land in exactly one backend.
+
+### `wp-content-bridge/search-redirects`
+
+Read. Input is one exact site-relative `source` path; there is deliberately no
+`provider` parameter, because a read spans every available provider.
+
+The result is **per provider**, not merged. Each entry carries the provider's
+identity and version plus a `state`:
+
+| State | Meaning |
+|---|---|
+| `claimed` | A readable rule exists in this provider. |
+| `free` | This provider answered, and holds nothing for this path. |
+| `not_representable` | A rule exists that this plugin's contract cannot express — a regex-format rule, an off-site target, or a status outside `301`/`302`/`410`. **The path is taken.** |
+| `unavailable` | The provider could not answer. Also **not** "free". |
+
+`held_by` lists the providers holding the path in any form a write must
+respect, and `held_by_multiple` flags the routing hazard that neither plugin's
+own screen shows. `configured_providers` lists every configured provider,
+available or not, so "no provider is installed" stays distinguishable from
+"no redirect exists".
+
+Only `claimed` and `free` are safe to act on. One provider holding an
+unreadable rule never blanks out another provider's readable answer.
+
+### `wp-content-bridge/create-redirect`
+
+Write. `provider` is **required and never inferred** — on a two-plugin site
+that choice decides which engine's rule actually fires, so guessing it would
+make the result unpredictable in exactly the case where it matters most. A
+write addressed to an unavailable provider is refused, never redirected into
+the other one.
+
+Input: `provider`, `source`, `target` (required unless `status` is `410`, and
+rejected when it is), and `status` from `301`/`302`/`410`, defaulting to `301`.
+The result is the rule **as the provider stored it**, not as the caller asked
+for it — the two differ, because Yoast stores a plain origin with both slashes
+trimmed while Redirection keeps the leading slash.
+
+Before anything is written, the provider-neutral guard clears the candidate
+against **every** available provider:
+
+- **Collision** — a source claimed by *any* available provider is refused, and
+  the rejection names which one holds it. Checking only the addressed provider
+  is unsound on a two-plugin site: the write would "succeed" while the other
+  plugin's rule keeps firing.
+- **Chain and loop bound** — the target is resolved through all providers' rules
+  up to three hops. `/a → /b` in one plugin and `/b → /a` in the other is a
+  loop neither plugin can see alone.
+- **Live-content shadow** — a source that is currently served content is
+  refused. This covers the site root and every public post-type archive
+  explicitly, because `url_to_postid()` answers `0` for the root: relying on it
+  alone let a redirect be created **on `/`**, found by a live probe before
+  release. Term archives and other rewrite-driven routes are still not
+  resolved; the reserved list and operator review are the defence there.
+- **Reserved paths** — `wp-json/`, `wp-admin/`, `wp-content/`, `wp-includes/`,
+  `feed/`, `wp-login.php`, `wp-cron.php`, `wp-signup.php`, `wp-activate.php`,
+  `xmlrpc.php`, `wp-sitemap*`, `robots.txt`, and this plugin's own `llms.txt` /
+  `llms-full.txt`.
+
+Error codes: `wpcb_invalid_input`, `wpcb_forbidden`,
+`wpcb_redirect_source_rejected`, `wpcb_redirect_rule_not_representable`,
+`wpcb_redirect_provider_unavailable`, `wpcb_write_failed`.
+
+Annotations: not `destructive` — it adds routing and loses no content or
+configuration the caller did not supply (ADR 0028) — and not `idempotent`,
+because a second identical call collides with the rule the first one created.
+
+The audit row records field **names** only (`source`, `target`, `status`,
+`provider`) with `object_type` `redirect` and no object ID, since a redirect is
+not a post.
+
+### `wp-content-bridge/update-redirect`
+
+Write. Changes the `target` and `status` of the rule answering an existing
+`source`, in the named `provider`. **The source is not changeable here**:
+moving a rule to a different source needs the full candidate guard an update
+deliberately skips, so that is a delete plus a create.
+
+The guard is narrower than on create, and the narrowing is the point.
+Collision and the live-content shadow are **not** re-checked: the rule already
+exists at that source, so the source is by definition already claimed, and
+re-running those checks would make every existing rule impossible to fix —
+which matters most for the rules that need fixing. The cross-provider
+chain/loop bound still applies to the new target.
+
+Updating a source the named provider does not hold is an error, never silently
+turned into a create.
+
+### `wp-content-bridge/delete-redirect`
+
+Write, and **`destructive`** under ADR 0028: the rule's target and status are
+configuration the caller did not supply, and removal is not reversible from
+this plugin.
+
+Removal, not disabling. Yoast Premium stores no per-rule enabled flag, so a
+rule it holds is always live and a "disable" operation could not mean the same
+thing in both backends; one operation that means the same everywhere is worth
+more than two that quietly differ.
+
+Only the named provider is touched, even when both engines hold the same path —
+a caller cleaning up one engine must not have the other's rule removed
+underneath it. Removing a rule that is not there is an error, not a quiet
+success: success would tell a caller the path is clear when another engine may
+still hold it. Both adapters confirm removal by re-reading the provider rather
+than trusting its "rows touched" answer, so `deleted` is only ever `true`.
+
 ## Status transition abilities
 
 Two abilities implement ADR 0015's semantic status workflow, shaped by ADR 0024.
@@ -913,7 +1231,7 @@ retried ordinary refusals as transient and monitoring read them as an outage.
 | 400 | The request is wrong: malformed input, an unusable reference inside the input, or an address that does not resolve within the addressed object | `wpcb_invalid_input`, `wpcb_invalid_selector`, `wpcb_invalid_blocks`, `wpcb_invalid_custom_schema`, `wpcb_block_mismatch`, `wpcb_block_path_not_found`, `wpcb_seo_field_unsupported`, `wpcb_seo_image_unavailable`, `wpcb_redirect_source_rejected` |
 | 403 | The principal is not permitted | `wpcb_forbidden` |
 | 404 | The addressed object does not exist **or is not visible to this principal** | `wpcb_content_unavailable`, `wpcb_media_unavailable`, `wpcb_pattern_unavailable` |
-| 409 | Stored state conflicts with the request; re-read and retry | `wpcb_conflict`, `wpcb_invalid_state` |
+| 409 | Stored state conflicts with the request; re-read and retry | `wpcb_conflict`, `wpcb_invalid_state`, `wpcb_redirect_rule_not_representable` |
 | 413 | A declared payload bound would be exceeded | `wpcb_content_too_large`, `wpcb_pattern_content_too_large` |
 | 501 | This install cannot implement the operation because an optional provider or a WordPress feature it needs is absent. Deliberately not 503: nothing is overloaded and retrying will not help | `wpcb_service_schema_unavailable`, `wpcb_custom_schema_unavailable`, `wpcb_seo_data_unavailable`, `wpcb_trash_unavailable`, `wpcb_redirect_provider_unavailable` |
 | 500 | The plugin or WordPress failed | `wpcb_internal_error`, `wpcb_write_failed` |

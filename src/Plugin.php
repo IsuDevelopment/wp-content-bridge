@@ -10,13 +10,31 @@ declare(strict_types=1);
 namespace IsuDev\WPContentBridge;
 
 use IsuDev\WPContentBridge\Adapter\Admin\ContentAccessSettingsPage;
+use IsuDev\WPContentBridge\Adapter\Abilities\CreateRedirectAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\DeleteRedirectAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\UpdateRedirectAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\SearchRedirectsAbilities;
+use IsuDev\WPContentBridge\Application\Redirect\CreateRedirect;
+use IsuDev\WPContentBridge\Application\Redirect\DeleteRedirect;
+use IsuDev\WPContentBridge\Application\Redirect\NullRedirectProvider;
+use IsuDev\WPContentBridge\Application\Redirect\RedirectCandidateGuard;
+use IsuDev\WPContentBridge\Application\Redirect\RedirectProviderRegistry;
+use IsuDev\WPContentBridge\Application\Redirect\SearchRedirects;
+use IsuDev\WPContentBridge\Application\Redirect\UpdateRedirect;
+use IsuDev\WPContentBridge\Infrastructure\Redirection\RedirectionProvider;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressPublishedPermalinkLookup;
+use IsuDev\WPContentBridge\Infrastructure\Yoast\YoastPremiumRedirectProvider;
 use IsuDev\WPContentBridge\Adapter\Abilities\AbilityInvocationTelemetry;
 use IsuDev\WPContentBridge\Adapter\Abilities\BlockMutationAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\ContentAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\CustomSchemaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\GetStatusTransitionsAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\LlmsAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\CreateMediaAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\FeaturedImageAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\MediaAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\PermalinkAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\UpdateMediaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\MutationAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\PatternAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\RestoreTrashedContentAbilities;
@@ -53,13 +71,17 @@ use IsuDev\WPContentBridge\Application\Mutation\UpdateBlock;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateBlockAttributes;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateContent;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateCustomSchema;
+use IsuDev\WPContentBridge\Application\Mutation\UpdatePermalink;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateSeo;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateServiceSchema;
 use IsuDev\WPContentBridge\Application\Mutation\TrashContent;
 use IsuDev\WPContentBridge\Application\Pattern\ListBlockPatterns;
 use IsuDev\WPContentBridge\Application\Pattern\PatternAccessManager;
 use IsuDev\WPContentBridge\Application\Media\GetMediaById;
+use IsuDev\WPContentBridge\Application\Media\CreateMedia;
 use IsuDev\WPContentBridge\Application\Media\MediaAccessManager;
+use IsuDev\WPContentBridge\Application\Media\UpdateFeaturedImage;
+use IsuDev\WPContentBridge\Application\Media\UpdateMedia;
 use IsuDev\WPContentBridge\Application\Media\SearchMedia;
 use IsuDev\WPContentBridge\Application\Seo\NullSeoProvider;
 use IsuDev\WPContentBridge\Application\Seo\GetSeo;
@@ -73,6 +95,7 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\LlmsRegenerationScheduler;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\LlmsTxtEndpoint;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\PhpBlockMarkupValidator;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\PhpBlockTreeSplicer;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressAttachmentMetadataRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressAuditLog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressBlockPatternAccess;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressBlockPatternCatalog;
@@ -91,6 +114,11 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressLlmsSourceSelector;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressMediaRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressPostCacheInvalidator;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressFeaturedImageRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressMediaUploader;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressPermalinkRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSlugNormalizer;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSchemaTargetReader;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressRenderedSchemaReader;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoImageRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSiteClock;
@@ -263,7 +291,7 @@ final class Plugin {
 			$media_repository = new WordPressMediaRepository();
 			( new MediaAbilities(
 				new SearchMedia( $media_access, $media_repository ),
-				new GetMediaById( $media_access, $media_repository )
+				new GetMediaById( $media_access, $media_repository, new WordPressAttachmentMetadataRepository() )
 			) )->register_hooks();
 		}
 
@@ -313,11 +341,76 @@ final class Plugin {
 			$custom_schema_provider = new SchemaExtendedCustomSchemaProvider();
 			if ( $custom_schema_provider->is_available() ) {
 				( new CustomSchemaAbilities(
-					new GetCustomSchema( $manager, $mutation_repository, $custom_schema_provider ),
+					new GetCustomSchema( $manager, $mutation_repository, $custom_schema_provider, new WordPressSchemaTargetReader() ),
 					new PreviewCustomSchema( $manager, $mutation_repository, $custom_schema_provider ),
 					new UpdateCustomSchema( $manager, $mutation_repository, $custom_schema_provider, $audit_log )
 				) )->register_hooks();
 			}
+
+			/*
+			 * Importing gets its own switch rather than sharing the
+			 * featured-image one: assigning an image the site already holds and
+			 * making the site fetch a URL an agent chose are different grants
+			 * (ADR 0031 decision 5).
+			 */
+			if ( $media_access->reads_enabled && get_option( Installer::MEDIA_UPLOADS_ENABLED_OPTION ) ) {
+				( new CreateMediaAbilities(
+					new CreateMedia(
+						$media_access,
+						new WordPressMediaUploader( new WordPressMediaRepository() ),
+						new WordPressMediaRepository(),
+						$idempotency,
+						$audit_log
+					)
+				) )->register_hooks();
+			}
+
+			if ( $media_access->reads_enabled && get_option( Installer::MEDIA_WRITES_ENABLED_OPTION ) ) {
+				( new UpdateMediaAbilities(
+					new UpdateMedia(
+						$media_access,
+						new WordPressAttachmentMetadataRepository(),
+						new WordPressMediaRepository(),
+						$audit_log
+					)
+				) )->register_hooks();
+			}
+
+			/*
+			 * Featured-image writes need three switches, not one: media reads
+			 * (the effective result re-reads the attachment), the content-writes
+			 * master switch above, and their own flag. An operator who enabled
+			 * content writes did not thereby consent to media being mutated.
+			 */
+			if ( $media_access->reads_enabled && get_option( Installer::MEDIA_WRITES_ENABLED_OPTION ) ) {
+				( new FeaturedImageAbilities(
+					new UpdateFeaturedImage(
+						$manager,
+						$media_access,
+						$mutation_repository,
+						new WordPressFeaturedImageRepository(),
+						new WordPressMediaRepository(),
+						$audit_log
+					)
+				) )->register_hooks();
+			}
+
+			/*
+			 * Gated by the per-type Change permalink policy only, not by a
+			 * separate feature flag: it changes one field of one post like any
+			 * other content write, and the blast radius it does have - old URLs
+			 * breaking - is handled by returning the previous URL so the caller
+			 * can create a redirect.
+			 */
+			( new PermalinkAbilities(
+				new UpdatePermalink(
+					$manager,
+					$mutation_repository,
+					new WordPressPermalinkRepository(),
+					new WordPressSlugNormalizer(),
+					$audit_log
+				)
+			) )->register_hooks();
 
 			if ( get_option( Installer::TRASH_ENABLED_OPTION ) ) {
 				$trash_repository = new WordPressContentTrashRepository();
@@ -348,6 +441,54 @@ final class Plugin {
 					$audit_log
 				)
 			) )->register_hooks();
+		}
+
+		/*
+		 * Redirects (Slice 5, ADR 0026 as amended 2026-09-01). The registry
+		 * order below is a stable *reporting* order, not a preference: it
+		 * never selects a write target, because a write names its provider.
+		 * Both adapters are constructed unconditionally and report themselves
+		 * unavailable when their plugin is absent, so "no provider" stays
+		 * distinguishable from "no redirects".
+		 */
+		if ( get_option( Installer::REDIRECTS_ENABLED_OPTION ) ) {
+			$redirect_providers = new RedirectProviderRegistry(
+				array(
+					new YoastPremiumRedirectProvider( home_url( '/' ) ),
+					new RedirectionProvider( home_url( '/' ) ),
+				),
+				new NullRedirectProvider()
+			);
+
+			( new SearchRedirectsAbilities( new SearchRedirects( $redirect_providers ) ) )->register_hooks();
+
+			/*
+			 * The read above is registered by the redirect flag alone, but the
+			 * write also requires `wpcb_writes_enabled`, like every other
+			 * write in this plugin. A redirect changes routing for real
+			 * visitors, so it must disappear with the master write switch
+			 * rather than merely refuse at execution time.
+			 */
+			if ( get_option( Installer::WRITES_ENABLED_OPTION ) ) {
+				$redirect_guard = new RedirectCandidateGuard();
+				$redirect_audit = new WordPressAuditLog();
+
+				( new CreateRedirectAbilities(
+					new CreateRedirect(
+						$redirect_providers,
+						$redirect_guard,
+						new WordPressPublishedPermalinkLookup(),
+						$redirect_audit,
+						home_url( '/' )
+					)
+				) )->register_hooks();
+				( new UpdateRedirectAbilities(
+					new UpdateRedirect( $redirect_providers, $redirect_guard, $redirect_audit, home_url( '/' ) )
+				) )->register_hooks();
+				( new DeleteRedirectAbilities(
+					new DeleteRedirect( $redirect_providers, $redirect_audit )
+				) )->register_hooks();
+			}
 		}
 
 		/*

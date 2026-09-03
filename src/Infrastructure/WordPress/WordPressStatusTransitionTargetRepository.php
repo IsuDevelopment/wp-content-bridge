@@ -41,7 +41,7 @@ final class WordPressStatusTransitionTargetRepository implements StatusTransitio
 			$post_id,
 			$post->post_type,
 			$post->post_status,
-			VersionToken::for_content( $post->post_modified_gmt, $post->post_title, $post->post_content, $post->post_status )
+			PostVersionTokenFactory::for_post( $post )
 		);
 	}
 

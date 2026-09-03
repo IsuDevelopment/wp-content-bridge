@@ -391,6 +391,73 @@ Files:
   `wp_insert_post`/`wp_update_post`, revisions, and `result_for()` replay
   lookup; the only place `post_status` is written, and it is never
   `publish`/`future`/`pending`. Also implements `ContentSnapshotRepository`.
+- `src/Infrastructure/WordPress/PostVersionTokenFactory.php` — the single place
+  a version token is derived, so `get-content` and every write repository
+  cannot disagree (a divergence would make every write conflict forever). It
+  hashes the post's **meta and its other mutable columns**, not just title,
+  content and status: meta-only writes (`update-seo`, Custom/Service Schema)
+  and column-only writes (slug, excerpt, parent, author, date) both left the
+  token unchanged otherwise, and `post_modified_gmt` cannot cover them because
+  it has one-second resolution. Meta is fingerprinted wholesale minus a
+  filterable volatile-key list; columns are an explicit list, because the row
+  also carries derived values (`guid`, `comment_count`) that would move the
+  token without the post's meaning changing.
+- `src/Infrastructure/WordPress/WordPressPermalinkRepository.php` — the only
+  place `post_name` is written. Asks `wp_unique_post_slug()` **before** writing
+  and refuses a collision, because `wp_update_post()` would store `slug-2` and
+  report success, handing back a URL the caller never requested. Passing the
+  post's own ID excludes itself, so re-submitting the current slug is not a
+  false collision.
+- `src/Infrastructure/WordPress/WordPressSlugNormalizer.php` — defers entirely
+  to `sanitize_title()`, filters included, and reports `null` when nothing
+  usable remains. It is a port rather than a domain helper because slug
+  normalization is WordPress behaviour, and a reimplementation would drift from
+  what the database actually receives — which is exactly what the pre-write
+  comparison depends on.
+- `src/Infrastructure/WordPress/WordPressAttachmentMetadataRepository.php` —
+  writes the four descriptive attachment fields (`alt_text` is postmeta, the
+  other three are columns) and re-reads every one of them. `wp_update_post()`
+  returns the post ID even when a filter rewrote a value, and
+  `update_post_meta()` returns false both for "unchanged" and "short-circuited",
+  so neither return value answers what is actually stored.
+- `src/Infrastructure/WordPress/WordPressMediaUploader.php` — the remote image
+  import (ADR 0031). The SSRF defence is `wp_safe_remote_get()`, chosen over a
+  hand-rolled IP filter because core's `wp_http_validate_url()` is maintained,
+  is re-applied to every redirect target, and already covers the metadata range
+  and the reserved space. The stored MIME type comes from
+  `wp_check_filetype_and_ext()` against the downloaded bytes with a raster-image
+  allowlist — never from the URL, its extension, or the response headers — and
+  SVG is excluded because it is script-bearing XML served from the site's
+  origin. The byte ceiling is checked against the real body as well as the
+  declared `Content-Length`, and the temporary file is deleted on every path.
+- `src/Infrastructure/WordPress/WordPressFeaturedImageRepository.php` — the only
+  place `_thumbnail_id` is written, and both writes are confirmed by re-reading
+  (a filter on `update_post_metadata` can short-circuit a write while the call
+  still reports success). `is_assignable_image()` is the gate WordPress does not
+  provide: `set_post_thumbnail()` accepts any attachment ID, including a PDF, a
+  private upload, or a non-attachment, and themes render the result in a public
+  image slot. `remove()` ignores `delete_post_thumbnail()`'s return value — it
+  is `false` both when nothing was assigned and when a write failed — and
+  asserts the absence instead, which also makes a retried removal idempotent.
+- `src/Infrastructure/WordPress/WordPressRenderedSchemaReader.php` — fetches the
+  site's own page over HTTP to read its rendered JSON-LD graph, bounded by a
+  5 s timeout, 3 redirects, 3 MiB, 200 nodes, and a same-origin guard, cached
+  for 10 minutes. It returns `Domain\Seo\RenderedGraph` rather than a bare node
+  list: five distinct failure causes previously collapsed into one empty array,
+  which made a blocked loopback request indistinguishable from a page that
+  emits no JSON-LD. Those need opposite responses from an operator, and a
+  blocked self-request is the common production case.
+- `src/Infrastructure/WordPress/WordPressSchemaTargetReader.php` — the identity
+  projection `get-custom-schema` returns as `target` (title, slug, permalink,
+  status, dates, authorized featured image). It exists as its own narrow port
+  rather than a method on `ContentMutationRepository` so a schema read does not
+  gain the content pipeline as a dependency, and so eleven existing test
+  doubles do not have to grow a method they never exercise. It deliberately
+  omits the excerpt: generating one renders blocks, which is the expensive read.
+- `src/Infrastructure/WordPress/FeaturedMediaProjection.php` — the single place
+  a featured attachment is projected for output. Two adapters expose that
+  identity, and if their authorization checks diverged, one would leak an
+  attachment the caller cannot read while the other hid it.
 - `src/Infrastructure/WordPress/WordPressSeoImageRepository.php` — requires an
   existing image attachment plus native `read_post`, then resolves its public
   URL without accepting caller-controlled URLs or filesystem paths.
@@ -706,11 +773,16 @@ The only feature in this plugin with an unauthenticated public surface.
   `TransitionContentStatusAbilities`.
 - Runtime evidence: `tests/Integration/status-workflow-verification.php`.
 
-## Redirect feature (foundation only — no Ability wired yet)
+## Redirect feature
 
-Roadmap Slice 5 (ADR 0026). Domain/port/registry/guard and the Redirection
-adapter's pure logic are unit-tested; nothing here is reachable from an
-Ability, a capability, or MCP discovery yet.
+Roadmap Slice 5 (ADR 0026, amended 2026-09-01). Reachable from two Abilities
+behind the `wpcb_redirects_enabled` switch and the `wpcb_manage_redirects`
+capability; the write additionally requires `wpcb_writes_enabled`.
+
+The shape follows one fact: a site can run Redirection and Yoast Premium at the
+same time, and then **both engines serve redirects** and whichever hooks first
+wins. So reads and the safety guard span every provider, while a write goes to
+exactly one the caller names.
 
 - `Domain/Redirect/` — `RedirectSourcePath` (bounded, exact, site-relative,
   non-regex source), `RedirectTargetUrl` (same-site target, normalized to a
@@ -719,17 +791,37 @@ Ability, a capability, or MCP discovery yet.
   must have no target, every other status must have one). All pure, no
   WordPress dependency.
 - `Application/Redirect/RedirectProvider` — the provider-neutral port
-  (`is_available`, `status`, `search`, `create`). `RedirectProviderRegistry`
-  selects the first available configured provider (order: Yoast Premium,
-  then Redirection) with `NullRedirectProvider` as the required fallback,
-  mirroring `SeoProviderRegistry`.
+  (`is_available`, `status`, `search`, `create`).
+  `RedirectProviderRegistry` has **no** implicit active-provider accessor: a
+  unit test asserts `active()` stays absent, because an ordered first-available
+  pick would silently choose a backend whose rule may not be the one that
+  fires. `select( $slug )` returns the named provider or refuses;
+  `available()` returns all of them; `statuses()` reports every configured
+  provider plus the null fallback, so "no provider" stays distinguishable from
+  "no redirects".
+- `Application/Redirect/RedirectRuleLookup` — asks every available provider who
+  claims a source path. Attributes a claim to the provider that **answered**,
+  not to the `provider` field stamped on the returned rule, so a mis-stamping
+  adapter cannot make a collision name the wrong plugin. A provider that
+  cannot answer propagates instead of being skipped: silence there reads as
+  "nobody claims this path", the one wrong conclusion.
 - `Application/Redirect/RedirectCandidateGuard` — the provider-neutral
   invariants every candidate must pass before any adapter's `create()` runs:
-  reserved-prefix denylist (`wp-json/`, `wp-admin/`, `wp-content/`, `feed/`),
-  the live-content shadow guard (via the `PublishedPermalinkLookup` port),
-  collision against the active provider's own `search()`, and a 3-hop
-  chain/loop bound. Shared by both future adapters so neither one's looser
-  native validation becomes the effective contract.
+  the reserved-path denylist (core endpoints, `wp-sitemap*`, `robots.txt`, and
+  this plugin's own `llms.txt`/`llms-full.txt`), the live-content shadow guard
+  (via the `PublishedPermalinkLookup` port), **cross-provider** collision, and
+  a 3-hop **cross-provider** chain/loop bound.
+- `Application/Redirect/SearchRedirects` / `CreateRedirect` — the use cases.
+  The read reports one entry per provider with a `claimed` / `free` /
+  `not_representable` / `unavailable` state, so one provider's unreadable rule
+  never blanks out another's readable answer, and neither refusal is ever
+  reported as `free`. The write audits field names only, with `object_type`
+  `redirect` and no object ID.
+- `Adapter/Abilities/SearchRedirectsAbilities` /
+  `CreateRedirectAbilities` — one class per ability, matching the
+  trash/restore pair. The read is registered by the redirect flag alone,
+  because knowing which engine holds a path is a diagnostic; the write also
+  needs the master write switch.
 - `Infrastructure/Redirection/RedirectionProvider` — calls Redirection's
   `redirection/v1` REST routes through an internal `rest_do_request()`
   dispatch, scoped to `wpcb_manage_redirects` via the `redirection_role`/
@@ -738,17 +830,30 @@ Ability, a capability, or MCP discovery yet.
   payload mapping was initially assembled from Redirection's public
   documentation and **reconciled against a live 5.9.0 install on 2026-08-14**
   by reading the plugin's actual source, which disagreed with its own docs
-  twice (see the class docblock and `.agents/status.md`). No permanent
-  `tests/Integration` fixture exists yet for it — the reconciliation pass was
-  manual and is not repeatable on its own.
+  twice (see the class docblock and `.agents/status.md`).
+- `Infrastructure/Yoast/YoastPremiumRedirectProvider` — calls Premium 28.0's
+  redirect manager in-process (classmap-autoloaded, no `is_admin()` guard).
+  It asserts Yoast's native `wpseo_manage_redirects` itself because that
+  manager checks nothing; never calls `WPSEO_Redirect_Validator`, which issues
+  a live outbound `wp_remote_head()` against the target; writes through
+  `create_redirect()` so the two derived export options the front end actually
+  reads are regenerated; and translates origins in both directions, since
+  Yoast stores a plain origin with **both** slashes trimmed. A rule it holds
+  but this contract cannot express raises `RedirectRuleNotRepresentable`,
+  never "no rule found".
 - `Infrastructure/WordPress/WordPressPublishedPermalinkLookup` — the
-  `PublishedPermalinkLookup` adapter (`url_to_postid()` + `get_post_status()`
-  ), WordPress-dependent and covered by runtime verification, not
-  `tests/Unit`.
-- Not yet built: the Yoast SEO Premium adapter (gated behind a version-pinned
-  compatibility fixture per ADR 0026 s3, since it has no documented API),
-  `update`/`disable` on the port, the candidate Abilities themselves, their
-  capability/feature flag, audit events, and the MCP profile entries.
+  `PublishedPermalinkLookup` adapter. Handles the site root and public
+  post-type archives explicitly, because `url_to_postid()` answers `0` for the
+  root: relying on it alone allowed a redirect to be created **on `/`**, found
+  by a live probe. Term archives and other rewrite-driven routes are still not
+  resolved, and the class says so.
+- `tests/Integration/redirects-verification.php` — the repeatable runtime
+  fixture, including the `/`-shadow regression guard. Restores the feature flag
+  and deletes every rule it created.
+- Not yet built: `update`/`disable` on the port, and the ADR 0030 statistics
+  port (a separate port precisely because Yoast collects no 404 data at all,
+  so hanging statistics off this one would make a Yoast-backed site report zero
+  404s — indistinguishable from a healthy site).
 
 ## Specification routes
 

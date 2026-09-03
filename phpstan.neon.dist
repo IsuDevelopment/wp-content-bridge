@@ -13,12 +13,22 @@ parameters:
   scanFiles:
     - vendor/php-stubs/wordpress-stubs/wordpress-stubs.php
     - stubs/yoast.stub.php
+    - stubs/yoast-premium.stub.php
     - stubs/schema-extended.stub.php
     - stubs/mcp-adapter.stub.php
   bootstrapFiles:
     - vendor/szepeviktor/phpstan-wordpress/bootstrap.php
   ignoreErrors:
+    # ABSPATH is a runtime constant, so every `require ABSPATH . 'wp-admin/...'`
+    # resolves to an absolute-looking path that does not exist during analysis.
+    # These are core files present on every install; the alternative is a
+    # file_exists() guard that would silently skip loading them and fail later
+    # with an undefined-function error instead.
     -
       message: '#^Path in require_once\(\) "/wp-admin/includes/upgrade\.php" is not a file or it does not exist\.$#'
       path: src/Infrastructure/WordPress/Installer.php
       count: 1
+    -
+      message: '#^Path in require_once\(\) "/wp-admin/includes/(file|media|image)\.php" is not a file or it does not exist\.$#'
+      path: src/Infrastructure/WordPress/WordPressMediaUploader.php
+      count: 3

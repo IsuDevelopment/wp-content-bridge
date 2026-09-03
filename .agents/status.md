@@ -140,6 +140,700 @@ path. Requirements and the required mitigations are in the "Future backlog —
 in-editor AI schema assist" section of `docs/plan/IMPLEMENTATION_PLAN.md`. No ADR
 yet, so nothing may be implemented from it.
 
+## Version token was blind to every meta-only write — fixed 2026-09-02
+
+Reported from a real session: a Custom Schema update returned the **same**
+`version_token` it was given. Confirmed in code and it is worse than reported.
+The token hashed `post_modified_gmt`, title, content and status only. An SEO
+write goes through Yoast's `WPSEO_Meta::set_value()` and Custom/Service Schema
+through their provider's `update_post_meta()` — **none of the four fields
+changes**, and neither write touches the post row, so `post_modified_gmt` does
+not move either. So the token came back identical after a successful write, and
+two callers could each read the same token, each write, and the second would
+silently overwrite the first with **no conflict raised**. That is the one thing
+the token exists to prevent, and it shipped from the first write release.
+
+`Infrastructure\WordPress\PostVersionTokenFactory` is now the only place a
+token is derived, and it folds in a digest of the post's meta. It replaced six
+hand-rolled derivations across five repositories — that duplication was itself
+a live hazard, since a token issued by `get-content` is compared against one
+computed by the mutation repository, so any divergence would make every write
+conflict forever.
+
+Fingerprinting **all** meta rather than an allowlist is deliberate: two of the
+three writable key sets belong to third parties (Yoast's, and the Schema
+Extended provider's, the latter reached only through an opaque integration
+API), so an allowlist would stop covering a write the day either plugin renamed
+a key. Volatile keys (`_edit_lock`, `_edit_last`, `_wp_old_slug`, …) are
+excluded and the list is filterable via
+`wp_content_bridge_version_token_meta_exclusions`, because a plugin that writes
+meta on every page view would otherwise move the token under a caller that
+changed nothing — producing conflicts an automated caller answers by retrying
+forever.
+
+**Consequence callers must know:** after a successful SEO or schema write the
+token changes, so a chain of writes must use the token returned by the previous
+one. `writes-seo-verification` now asserts exactly that — the token moves, the
+returned token matches the post's current token, and the pre-write token is
+refused afterwards. Four verifiers had encoded the defect as expected behaviour
+by computing tokens by hand with four arguments; they now use the factory, and
+one of them was taking its token *before* writing fixture meta.
+
+Full inventory 22/22 PHP verifiers green after the change; static gate 575
+tests / 1,374 assertions.
+
+## 0.9.0 released — 2026-09-03
+
+Cut because eleven commits with three behaviour changes had accumulated on
+`feat/slice-5-redirects` while `main` still said 0.8.4. That gap was the largest
+standing risk in the project - larger than any missing feature - because a
+problem on a client install could not be attributed to one half or the other.
+
+Minor, not patch: the surface went from 32 abilities to 35 and gained a new
+object type to write (attachments).
+
+**The release note leads with the version-token change**, because it is the only
+thing that can break an existing client. A caller that reused a token across
+chained writes now gets the `409` it should always have had. That caller was
+relying on a defect: the token was blind to meta-only writes, to featured-image
+and attachment edits, and to slug changes, so the second of two concurrent
+writes silently won. Framed as "action required" rather than buried, since
+"nothing changes if you already re-read" is only true for correct callers.
+
+Also corrected `docs/plan/RELEASE_PLAN.md`, which still claimed minimum
+WordPress 7.0 after ADR 0027 raised it to 7.1 in 0.8.4. A release plan stating
+the wrong minimum is worse than one saying nothing.
+
+### Open items carried past 0.9.0, in the order they matter
+
+1. **The 504 measurement on the production install.** Still the only unexplained
+   thing the operator actually feels. `ability-timing-probe.php` is built and
+   safe to run there; it needs one run plus the same calls through that
+   install's MCP endpoint. Everything measured locally says the read path is
+   not the cause.
+2. **Statistics port (ADR 0030).** Redirects currently answer half the
+   operator's question - creating a redirect - and not the half that matters
+   more: *which* redirect is missing, which needs the 404 history. Aggregate
+   only, no per-request personal data.
+3. **ADR 0026 to `Accepted`.** Still `Proposed` although the code is built and
+   verified against two live engines.
+4. **`get-diagnostics` does not report redirect providers**, which ADR 0026 s4
+   requires.
+5. **Old-URL page cache after a slug change.** Invalidation runs through
+   `wpcb_mutation` → `clean_post_cache( post_id )`, so the new writes inherit
+   it, but a page-cache entry for the **old** URL is keyed by URL rather than
+   post ID and can survive. The roadmap asks for "old+new bounded cache
+   invalidation". Recorded rather than quietly patched: the fix is
+   cache-plugin-specific and needs a decision about how far to reach into
+   third-party caches.
+
+### Reference environment still not restored
+
+Redirection remains **active with its database installed** on the reference
+site; it was inactive with no tables before this work. It stays until the
+statistics port is done, because that work needs its 404 log. Then:
+`wp redirection database remove` and deactivate. Both media flags and the
+redirect flag are `0` as found; `wpcb_upload_media` is granted.
+
+## `update-media` and `update-permalink` shipped, plus two defects they exposed — 2026-09-03
+
+The last two items standing between this plugin and dropping the other
+connector entirely.
+
+### `update-permalink`
+
+Changes one post's slug. The decision worth keeping: **a taken slug is refused,
+not uniquified.** `wp_update_post()` would store `slug-2` and report success,
+handing the caller a URL it never asked for; the repository asks
+`wp_unique_post_slug()` first (passing the post's own ID so re-submitting the
+current slug is not a false collision) and answers
+`wpcb_permalink_unavailable` when the answer differs. A punctuation-only slug is
+refused as invalid input rather than stored, because an empty `post_name` makes
+WordPress regenerate one from the title - the same "URL nobody requested, no
+error" failure by another route.
+
+Output returns `previous_url` alongside the new one, because a caller that
+changes a permalink usually needs it next to create a redirect. WordPress's own
+`_wp_old_slug` handles many cases but not every rewrite, so the old URL is
+handed back rather than assumed to be someone else's problem.
+
+**Architecture correction made mid-build:** the first version called
+`sanitize_title()` inside the domain DTO. That is a WordPress function in the
+domain layer, and the unit suite caught it immediately (`Call to undefined
+function`). Normalization now goes through a `SlugNormalizer` port. It is a port
+rather than a domain helper deliberately: slug normalization is
+`sanitize_title()` plus whatever a site has filtered onto it, and a
+reimplementation would drift from what the database actually receives - which is
+exactly what the pre-write comparison depends on.
+
+### `update-media`
+
+Edits `title`, `alt_text`, `caption`, `description` on an existing attachment.
+Cannot touch the file, its MIME type, or its filename.
+
+An update naming **no** field is refused: otherwise it would consume a token,
+pass every check, write nothing, and report success, which a caller reads as
+"applied". An empty string clears a field; `null` is refused, because clearing
+already has one spelling and guessing between two is worse than rejecting.
+
+Every field is confirmed against storage after the write. `wp_update_post()`
+returns the post ID even when a filter rewrote a value, and
+`update_post_meta()` returns `false` both for "unchanged" and for
+"short-circuited by a filter" - neither return value answers what is now
+stored.
+
+**Gap this exposed:** `get-media-by-id` returned no version token, so the write
+contract would have been **unreachable** - no read issued a token for an
+attachment. It now returns one. The token is not on `MediaItem` because that
+type is also every row of a media search, where a per-row token means a
+postmeta digest per result nobody asked for.
+
+## Two defects the runtime inventory caught on 2026-09-03
+
+Both found by `abilities-runtime-verification`'s twin-invocation determinism
+check, which hashes each read ability's output twice and requires equality.
+
+### I made ability output non-deterministic
+
+`RenderedGraph::diagnosis()` - added the day before - embedded the elapsed
+milliseconds of the loopback fetch in its message. That message reaches ability
+output through the SEO document's `warnings`, and `get-editorial-context`
+carries it. So two identical calls produced different bytes whenever the
+loopback was slow enough to matter, and the verifier failed the whole run.
+
+The transport `detail` had the same problem for a subtler reason: a cURL timeout
+message contains its own duration ("timed out after 5001 milliseconds").
+
+Both are now excluded from the sentence and remain as structured properties. A
+unit test pins it: two failures with different durations and different transport
+messages must produce identical text. **The lesson is the general one** - any
+value that varies per call must stay out of ability output, and timing
+information is the easiest one to add without noticing.
+
+### The version token did not cover `post_name`
+
+The worst of the three, and a direct sequel to the meta-only fix of 2026-09-02.
+That fix folded post **meta** into the token and stopped there, leaving the
+other mutable **columns** outside it: slug, excerpt, parent, author, date,
+password, menu order.
+
+`post_modified_gmt` does not compensate, because it has **one-second
+resolution**. A slug change landing in the same second as the previous edit
+produced a byte-identical token, so a stale token was accepted and a concurrent
+write was silently lost - the one thing the token exists to prevent.
+
+`media-metadata-permalink-verification` failed on exactly this
+(`A slug change did not move the version token`) and, crucially, **failed
+intermittently**: it passed standalone and failed inside the loop, because
+whether the write crosses a second boundary depends on machine timing. That
+shape - passes alone, fails under load - is the signature of a
+second-resolution race, not of a flaky test.
+
+`PostVersionTokenFactory` now hashes an explicit column list alongside the meta
+digest. Listed explicitly rather than hashing the whole row: the row also
+carries derived and churning values (`guid`, `comment_count`, `post_modified`
+in local time) that would move the token without the post's meaning changing.
+`VersionToken::for_content()`'s fifth argument is renamed `$state_fingerprint`
+to say what it now covers.
+
+Confirmed with three consecutive verifier runs after the fix.
+
+### `search-content` ordering had no tie-break
+
+Pre-existing, and the more consequential of the two. `WP_Query` was given
+`orderby => 'modified'` (or date/title) with **no secondary key**. MySQL gives
+no guaranteed order for rows sharing the primary sort value, and two posts with
+the same `post_modified` is what every bulk import, migration, or programmatic
+creation produces.
+
+On a single read that is untidy. **On a paginated read it is a correctness bug:
+a row can appear on two pages or on none**, because page 2 is computed from a
+different arbitrary ordering than page 1. `search-content`,
+`get-editorial-context`, and the llms.txt source selection all read through this
+one method.
+
+Fixed by appending `ID` as a final tie-break in the same direction. My own
+fixtures - several posts created inside the same second - are what surfaced it,
+which is an argument for verifiers creating realistic clusters rather than
+carefully spaced fixtures.
+
+### Environment note, recorded so it is not mistaken for a code problem
+
+This session's tooling ran under load average 68-157 caused by VS Code,
+Microsoft Defender's three scanning daemons, and `cfprefsd`. `phpcs` measured
+**51 s of CPU across 30 minutes of wall clock at 2% CPU** - pure I/O wait.
+
+Two things worth knowing from that: `timeout` does not exist on macOS by
+default, so a per-directory `timeout ... phpcs` loop reported every directory as
+failing when the command simply was not found; and **`composer test` and
+`composer check` exit 0 when their 300-second script timeout fires**, printing
+usage text instead of a failure. A timed-out check reporting success is a real
+hole in the release gate - the fix is to run `vendor/bin/phpunit` and
+`vendor/bin/phpcs` directly when the machine is loaded, or to raise
+`process-timeout`.
+
+## Media import shipped, with its SSRF surface written down — 2026-09-02
+
+`create-media` (ADR 0031). The other half of the media gap: assigning an
+existing image was not enough because the agent sometimes brings a new one in.
+
+Upload is not a bigger featured-image write, and the ADR names why: the bytes
+come from outside, fetching by URL makes the site issue an outbound request on a
+caller's instruction, and an upload is not naturally idempotent.
+
+**The SSRF decision worth not relitigating:** the fetch uses
+`wp_safe_remote_get()` rather than a hand-rolled IP filter. Core's
+`wp_http_validate_url()` is maintained, is re-applied to **every redirect
+target** by `WP_Http::validate_redirects()`, and already covers what a
+hand-rolled check gets wrong — loopback, all three private ranges, `169.254/16`
+(the cloud metadata endpoint, the highest-value target on hosted WordPress),
+CGNAT, multicast, the reserved top of the space, the TEST-NET blocks, embedded
+credentials, and any port outside 80/443/8080. Read from core to confirm this
+rather than assumed.
+
+Three residual gaps are **recorded, not closed** (ADR 0031 decision 2):
+
+- **DNS rebinding.** Validation resolves the host, then the request resolves it
+  again. Not fixable from userland PHP without pinning the resolved address into
+  the socket, which the WordPress HTTP API does not expose. Mitigated by this
+  being authenticated, capability-gated, off by default, and audited.
+- **Same-host URLs skip every IP check**, by core's design.
+- **IPv6 is not range-checked.** In practice refused rather than waved through:
+  a literal `[::1]` fails core's `strpbrk` check and an AAAA-only host fails
+  `gethostbyname()`. Verified both.
+
+**Type comes from the bytes**, never the URL, extension, or `Content-Type`.
+Raster only — JPEG, PNG, GIF, WebP, AVIF — and the allowlist is not an input
+parameter. SVG is excluded on purpose: script-bearing XML served from the site's
+own origin. The verifier proves an SVG renamed `.png` is still refused, and that
+a GIF served as `.jpg` is stored as `.gif`.
+
+**`idempotency_key` is required, not optional.** `create-draft` could afford
+optional — a duplicate draft is visible and free to delete. A duplicate upload
+consumes storage, regenerates every image size, and stays invisible until
+someone opens the media library. Given a transport observed returning 504
+*after* doing the work, an agent that cannot safely retry either duplicates or
+gives up.
+
+**It does not place the image.** No post attachment, no featured image, no
+content insertion. Combining them would be one call that both fetches remote
+bytes and publishes them into a page; separate means placement still passes
+`update-featured-image`'s policy, capability, and version-token checks.
+
+Every refusal stage returns the same public error, and the audit row never
+records the source URL — stage-specific errors are the reconnaissance an SSRF
+attempt wants.
+
+Own flag (`wpcb_media_uploads_enabled`) and own capability
+(`wpcb_upload_media`, schema version 12 → **13** so `maybe_upgrade()` grants it
+on active installs). Deliberately not `wpcb_edit_content`: a principal that may
+edit text is not thereby one that may put files on the server.
+
+Known and accepted: imported images keep their EXIF, GPS included. WordPress
+does not strip it; stripping also discards orientation and colour profile, so it
+is a separate decision.
+
+Verified by `tests/Integration/media-upload-verification.php`; inventory is now
+**24 PHP verifiers** plus 3 shell. Both media flags were set back to `0` on the
+reference site after the run.
+
+**Deliberately not built:** inline base64 bytes. An agent almost always has a
+URL, and a 1 MB image is ~1.4 MB of base64 inside a JSON tool call on a
+transport that already fails at 120 s on payloads orders of magnitude smaller.
+It is an additive optional `data` field later, not a contract change.
+
+## Featured-image writes shipped — 2026-09-02
+
+`update-featured-image` (`wp-content-bridge/update-featured-image`). Built
+because it is the one gap that actually blocks dropping the other connector:
+assigning a featured image was the capability this plugin did not have.
+
+Scope is deliberately narrow — **assign or remove an attachment that already
+exists**. No upload, no remote import, no file handling of any kind. Upload is a
+materially different problem (MIME sniffing, size bounds, and for remote URLs an
+SSRF surface) and belongs in its own slice with its own ADR, not smuggled in
+behind the same flag.
+
+The security substance is `is_assignable_image()`, which is a gate **WordPress
+does not provide**. `set_post_thumbnail()` accepts any attachment ID — a PDF, a
+private upload, or an ID that is not an attachment at all — and themes then
+render the result in a public image slot. The adapter requires an existing
+attachment, `wp_attachment_is_image()`, and native `read_post`.
+
+Three deliberate refusal decisions:
+
+- Absent, non-image, and unreadable attachments all return the **same**
+  refusal. Distinguishing them would let a caller enumerate which attachment IDs
+  exist and which are private.
+- The **version token is checked before the attachment is examined**, so a
+  caller without a current token cannot probe at all.
+- `attachment_id` is required and nullable rather than optional. Removal and
+  "leave it alone" are different intents, and an omitted key cannot express the
+  first without risking the second on a malformed request.
+
+Gated by three switches: media reads, `wpcb_writes_enabled`, and the new
+`wpcb_media_writes_enabled`. An operator who enabled content writes did not
+thereby consent to media being mutated. Plus the per-type
+`update_featured_image` policy — a new `ContentOperation` case, which the
+settings matrix picked up automatically since it is enum-driven.
+
+Both writes are confirmed by re-reading rather than by trusting the return
+value: a filter on `update_post_metadata` can short-circuit a write while the
+call still reports success. `remove()` ignores `delete_post_thumbnail()`'s
+return value entirely — it is `false` both when nothing was assigned and when a
+write genuinely failed — and asserts the absence instead, which also makes a
+retried removal idempotent.
+
+Worth noting: this write moves the version token **only because** the token now
+covers postmeta. A featured image never touches the post row. Before that fix
+this ability would have shipped with the same silent-overwrite defect.
+
+Verified by `tests/Integration/featured-image-verification.php`; inventory is
+now 23 PHP verifiers plus 3 shell. The reference site's
+`wpcb_media_writes_enabled` was set back to `0` after the run, so the flag is
+off as found — enable it in Settings › Media writes to use the ability there.
+
+## The loopback graph fetch now says why it failed — 2026-09-02
+
+`WordPressRenderedSchemaReader::graph_for_url()` answered **five different
+failure causes with the same empty array**: cross-origin rejection, a refused
+request, a non-200 response, an oversize body, and a page that genuinely emits
+no JSON-LD. The port contract endorsed this ("never throw, an empty array means
+no usable graph was captured"), so the ambiguity was by design — and wrong.
+
+Those causes need opposite responses. A blocked self-request is a host fault to
+fix; a page with no JSON-LD is a correct answer. And self-requests are exactly
+what a firewall, HTTP auth, or an edge proxy blocks, so on production the
+ambiguous case is the common one, not a corner case. An operator seeing "rendered
+Local schema was unavailable" could not tell which had happened, and the fetch is
+also the one read that can pay a full 5-second timeout.
+
+`graph_for_url()` now returns `Domain\Seo\RenderedGraph`: nodes plus a fixed
+outcome (`captured`, `cached`, `empty_graph`, `not_same_origin`,
+`request_failed`, `http_error`, `body_too_large`, `no_http_api`), elapsed ms, the
+upstream status code, and a bounded transport message. `diagnosis()` turns each
+failure into an operator-facing sentence, and `YoastSeoProvider` appends it to
+the existing SEO `warnings` channel, so no new output surface was needed.
+
+The DTO refuses a failure outcome that carries nodes, refuses an unknown
+outcome, and bounds the transport detail — a failed capture must not be able to
+present itself as data, and an upstream message must not become unbounded
+ability output.
+
+Note `cached` is a *success* even with an empty node list: a warm cache of a
+page that has no graph must not be reported as a transport failure.
+
+## `get-custom-schema` now answers a schema edit in one call — 2026-09-02
+
+Acted on the round-trip half of the section below, which is the half that holds
+regardless of where the 504s come from. `get-custom-schema` output gained a
+`target` object: `title`, `slug`, `url`, `status`, `published_at`,
+`modified_at`, and authorized featured-image identity. Those are exactly the
+fields a JSON-LD document is built from (`name`, `url`, `datePublished`,
+`dateModified`, `image`), and their absence is why the production session spent
+four calls hunting for a permalink — ending in a web search and a public HTTP
+request — before it could write anything.
+
+Measured after the change, same site: **14.3 ms cold, 0.2 ms warm, 815 bytes
+total** for the whole read, schema source and validation included. The read that
+replaces four calls is not a heavier read.
+
+Three design points worth not re-deciding:
+
+- **Its own port, not a method on `ContentMutationRepository`.** That interface
+  has eleven test doubles, all of which would have grown a method they never
+  exercise, and a schema read has no business depending on the content
+  pipeline. `SchemaTargetReader` has one implementation and one fake.
+- **No excerpt.** `get_the_excerpt()` renders the post's blocks when no manual
+  excerpt exists. That is the expensive read on this path, and this projection
+  exists to stay cheap.
+- **No merged Yoast graph.** It requires the loopback front-end fetch that
+  `get-url-seo` performs — the one read measured genuinely slow (1,756 ms).
+  `get-url-seo` remains the way to inspect the resolved graph after a write.
+
+Also folded featured-media projection into
+`Infrastructure/WordPress/FeaturedMediaProjection.php`. Two adapters now expose
+featured-image identity; had their authorization checks drifted apart, one would
+leak an attachment the caller cannot read while the other hid it.
+
+The stored schema's node ids/types needed no work: the provider contract already
+returns them as `custom_schema.validation.nodes`. Recorded because the plan
+item above implied otherwise.
+
+`validation.context_resolved` is unchanged but its description now says what it
+means — always false here, source-level validation only, **not** a failure
+signal, and it can accompany `valid: true`. That pairing was point 10 of the
+production report. The field stays in the contract because it is in the output
+schema's `required` list, so removing it would break callers validating against
+the schema.
+
+Still not measured, and still the actual blocker on the 11 minutes: the
+`wp eval` vs MCP-endpoint split on the production install.
+
+## A timing probe now exists, so the 504 split can be measured — 2026-09-02
+
+`tests/Integration/ability-timing-probe.php`. Not a verifier: it asserts
+nothing, exits zero, and only reads, which is what makes it safe to run on the
+affected production install. It times every read ability in-process and prints a
+comparable table, so the same abilities can then be requested through that
+install's MCP endpoint and compared. In-process fast plus MCP slow indicts the
+transport or the host; both slow indicts an ability, and the table says which.
+
+This is the part of the 504 diagnosis that **cannot** be done from the
+development machine, which only has the LocalWP reference site. The probe is
+what hands that measurement to whoever has shell access there.
+
+Two things it revealed about the reference install, worth recording:
+
+- `wp eval` runs as **user 0**, and nearly every ability then refuses in well
+  under a millisecond. A naive probe would have printed sub-millisecond times
+  and looked like proof of a fast install while measuring nothing. It now adopts
+  an administrator and says so.
+- Calling `wp_get_ability()` on an unregistered name triggers core's
+  `_doing_it_wrong()` notice, which buries the measurements. It checks
+  membership in `wp_get_abilities()` instead.
+
+Also: **`list-post-types` is not an ability of this plugin.** Point 6 of the
+production report ("`list-post-types` schema error") is therefore about EWPA,
+which is out of scope by instruction. The nearest surfaces here are
+`get-diagnostics` and `get-editorial-context`.
+
+Reference baseline is in `docs/setup/VERIFICATION.md`. Every read is single or
+low-double-digit milliseconds; `get-url-seo` is 24.9 ms on a target without
+Yoast Local, and only the `local_profile` path pays the loopback fetch.
+
+## Reported MCP slowness is not this plugin's read path — measured 2026-09-02
+
+An 11-minute schema session on production was traced by its operator to four
+MCP calls that each hung ~2 minutes and returned HTTP 504: full `get-content`,
+`get-content` with only `plain_text`, `search-content`, and `get-url-seo`. The
+accompanying analysis assumed the cause was inside these abilities ("MCP
+probably performs the expensive full read and filters afterwards").
+
+Measured on the reference site, per ability, with the same shapes:
+
+| Ability | Local time |
+|---|---|
+| `get-content` full (raw + rendered + plain_text, taxonomies + media + revision) | 177–326 ms |
+| `get-content` with `plain_text` only | 159–198 ms |
+| `search-content` | 89 ms |
+| `get-url-seo` | **1,756 ms** |
+
+So three of the four are two to three orders of magnitude away from a 120-second
+timeout, and no fast path or lazy representation would explain the gap. The
+only read that is genuinely slow is `get-url-seo`, and the reason is structural:
+`WordPressRenderedSchemaReader` performs an outbound `wp_remote_get()` against
+the site's own URL to read the rendered JSON-LD graph. Its timeout is 5 s with
+3 redirects, so even a hanging loopback cannot reach 120 s by itself.
+
+**Conclusion: the 504s are not explained by this plugin's PHP**, and the
+remaining suspects are the transport and the host — the miniOrange OAuth MCP
+server, PHP-FPM/gateway limits, or the production database. Not yet measured,
+and it must be measured on that install rather than inferred: the same abilities
+there, timed through `wp eval` (no MCP), then through the MCP endpoint. Until
+that split exists, optimizing the read path would be work aimed at the wrong
+layer.
+
+What *is* worth doing regardless, because it cuts the round trips the workflow
+needs rather than the cost of each: the session spent four of its calls
+gathering post identity (title, permalink, dates) that a schema write needs and
+`get-custom-schema` does not return, then fell back to a web search and a public
+HTTP request to find the permalink. Extending `get-custom-schema` with the post
+identity and the stored schema's node ids/types would collapse that to one
+call. Deliberately **not** including Yoast's merged graph there: that needs the
+loopback fetch, which is the one measured slow path.
+
+## Redirect lifecycle complete, and two engines finally verified — 2026-09-02
+
+`update-redirect` and `delete-redirect` join the two abilities below, so a
+redirect can be created, corrected and removed through the bridge. Before this
+an operator could create a rule and then had to leave the bridge to fix a typo
+in it. Both are wired behind the same switches and capability.
+
+**The two-engine case is verified for the first time.** Redirection 5.9.0 was
+temporarily activated alongside Yoast Premium 28.0 on the reference site — the
+configuration this whole design exists for, and one that had only ever been
+covered by unit tests with fakes. All three properties hold against two real
+engines: cross-engine collision (refused, naming the engine that holds the
+path), cross-engine trailing-slash equivalence **in both directions** (one
+engine trims both slashes, the other keeps the leading one, and the same
+logical path still collides), and a loop that hops between engines.
+
+**Redirection is still active on the reference site, with its database
+installed.** It was inactive with no tables before this work. Leave it until
+the ADR 0030 statistics work is done — that needs its 404 log — then restore:
+`wp redirection database remove` and `wp plugin deactivate redirection`.
+
+**The verifier itself had a defect, found by checking the site rather than
+trusting the verifier.** It confirmed cleanup by re-reading the same provider
+object it had just mutated, and only for the exact sources it expected to have
+created — so a **passing** run left two rules on the site. It now purges by
+shared name prefix and re-reads through a fresh provider object, proven clean
+from a separate request. A verifier that lies about leaving state behind is
+worse than no verifier, so this is recorded rather than quietly fixed.
+
+Design notes worth keeping:
+
+- An update runs a **narrower** guard on purpose. Collision and live-content
+  shadow are not re-checked, because the rule already exists at that source;
+  re-running them would make every rule that needs fixing unfixable. The
+  cross-provider loop bound still applies to the new target.
+- The source is not changeable by an update. Moving a rule needs the full
+  candidate guard, so it is a delete plus a create.
+- **Removal, not disabling.** Yoast stores no per-rule enabled flag, so a rule
+  it holds is always live; "disable" could not mean the same thing in both
+  backends, and one operation that means the same everywhere beats two that
+  quietly differ.
+- Delete touches only the named provider even when both engines hold the path,
+  and deleting an absent rule is an error — success would tell a caller the
+  path is clear while another engine still holds it.
+- Both adapters confirm removal by re-reading, because each provider reports
+  "rows touched" rather than whether this row is gone.
+- The four redirect abilities were added to `abilities-runtime-verification`'s
+  closed profile, which caught them as designed on the first full inventory run.
+
+## Redirect abilities shipped into the tree — 2026-09-02
+
+`search-redirects` and `create-redirect` are registered behind
+`wpcb_redirects_enabled` (write also behind `wpcb_writes_enabled`) and the new
+`wpcb_manage_redirects` capability. Verified on the live 7.1 reference site,
+which runs Yoast Premium 28.0 with Redirection inactive: both abilities
+register, the Yoast adapter is detected at 28.0, and `redirection` reports
+configured-but-absent — the "no provider" versus "no redirects" distinction
+working on real data. `tests/Integration/redirects-verification.php` is the
+repeatable fixture; the inventory is now 25/25.
+
+**A live probe found a real defect before release, and it was the important
+kind.** Creating a redirect for `/` **succeeded**. The live-content shadow
+guard relied on `url_to_postid()`, which answers `0` for the site root whether
+the front page is a static page or the blog index — so the guard read the
+busiest URL on the site as dead content. The rule was actually written to
+Yoast's store during the probe and was removed immediately (both derived export
+options confirmed empty afterwards). Fixed by handling the site root and every
+public post-type archive explicitly, re-verified live on `/` and on
+`/realizacje/`, and the verifier now asserts it. **Residual gap, stated in the
+class rather than papered over:** term archives and other rewrite-driven routes
+are still not resolved. Matching the rewrite rules does not help — with pretty
+permalinks the generic `pagename` rule matches nearly every path, so a rule
+match cannot tell a live route from a dead one; resolving each candidate
+properly means running the query WordPress itself would run.
+
+The same pass closed the capability gap recorded below: `SCHEMA_VERSION` went
+to 12, so `maybe_upgrade()` re-runs `activate()` and grants
+`wpcb_manage_redirects` on installs that are already active. Confirmed live —
+`schema=12`, administrator holds the capability. Without the bump the
+capability would have existed in code and on no role, making every check on it
+false for everyone.
+
+Reserved paths were widened while fixing the shadow guard, since the same probe
+showed how much a redirect can shadow: core endpoints (`wp-includes/`,
+`wp-login.php`, `wp-cron.php`, `wp-signup.php`, `wp-activate.php`,
+`xmlrpc.php`, `wp-sitemap*`, `robots.txt`) and **this plugin's own**
+`llms.txt`/`llms-full.txt` — a redirect over those would silently disable a
+feature the same plugin serves.
+
+Shape decisions, all from the two-plugin reality: `provider` is required on the
+write and never inferred; a write to an unavailable provider is refused rather
+than substituted; the read reports one entry per provider
+(`claimed`/`free`/`not_representable`/`unavailable`) so one plugin's unreadable
+rule never blanks out the other's readable answer, and neither refusal is ever
+reported as `free`; and `held_by_multiple` names the routing hazard neither
+plugin's own screen shows.
+
+Per-provider Abilities were considered and rejected — they would double a
+permanent public contract surface, two near-identically named tools are a known
+way for an agent to pick the wrong one (here: "wrote the rule into the plugin
+that loses"), and the cross-provider guard would still be needed, so the port
+would not disappear, only stop being the Ability boundary.
+
+Not built: `update`/`disable` on the port, and the ADR 0030 statistics port.
+
+## Yoast Premium redirect adapter built — 2026-09-02, still unwired
+
+`Infrastructure\Yoast\YoastPremiumRedirectProvider` implements the redirect
+port against Premium 28.0, unblocked by ADR 0026's amendment. It calls the
+manager in-process (classmap-autoloaded, no `is_admin()` guard) and never
+touches `WPSEO_Redirect_Page`/`_Ajax`. Four deliberate choices:
+
+- **It asserts Yoast's native `wpseo_manage_redirects` itself**, because the
+  manager checks nothing. This is *not* the bridge gate — that stays with the
+  Ability's `permission_callback`, as everywhere else in this plugin.
+- **It never calls `WPSEO_Redirect_Validator`**, which issues a live outbound
+  `wp_remote_head()` against the target. A redirect write must not silently
+  make an HTTP request to a third party.
+- **Writes go through `create_redirect()`**, which calls `save_redirects()` and
+  so regenerates the two derived export options the front-end matcher reads.
+  Writing the canonical option alone would create a rule that never fires.
+- **A rule Premium holds but this plugin cannot express** (regex format, a
+  `307`/`451` status, an off-site target) raises
+  `RedirectRuleNotRepresentable`, never "no rule found". Answering "none"
+  would let the guard create a duplicate for a path Premium already claims.
+
+Two defects were found by writing the tests rather than after: prepending a
+slash to Premium's off-site target manufactured the same-site path
+`/https://elsewhere.example/x`, which the neutral target validator then
+accepted as local; and Premium stores plain origins with **both** slashes
+trimmed (`old-page`), unlike Redirection's `/old-page`, so the neutral form
+has to be translated in both directions or every search misses its own write.
+
+**Gap, deliberately not closed here: `wpcb_manage_redirects` is not registered
+anywhere.** `RedirectionProvider` only names it inside Redirection's own
+capability filters, so nothing broke; but no role holds it, so any
+`current_user_can( 'wpcb_manage_redirects' )` is false for everyone including
+administrators. Registering it touches `IntegrationCapability`, the installer's
+grant list, `uninstall.php`, the admin surface and the phpcs allowlist — it is
+an authorization change and belongs with the Abilities increment, not as a
+drive-by inside an adapter commit.
+
+## Slice 5 research corrected from plugin source — 2026-09-01
+
+Both redirect backends were read from the source installed on the designated
+environment, because ADR 0026's Yoast findings came from documentation and a
+community gist. One of them was wrong.
+
+**Yoast SEO Premium 28.0 does have a redirect REST API** (`yoast/v1/redirects`,
+`/delete`, `/list`, `/update`, `/settings`, all behind
+`wpseo_manage_redirects`), instantiated on every request, plus a fully
+non-admin-callable manager class set and a `wp yoast redirect` CLI command set.
+ADR 0026 is amended in place with the correction and with what it changes:
+Decision 1's build order and Decision 3's fixture-gated internal-class path
+both rested on Yoast having no callable API, and both are now open. Three
+further source facts an adapter must respect: redirects live in three options,
+of which two are derived caches the front end actually reads (so every write
+must go through `save_redirects()`); the manager performs **no** capability
+check, so this plugin is the only gate when calling in-process; and
+`WPSEO_Redirect_Validator` issues a live outbound `wp_remote_head()` against
+the target.
+
+**Statistics are provider-asymmetric, and that is the load-bearing finding.**
+Yoast Premium 28.0 and Free 28.4 collect no 404 or hit data at all — no table,
+no option, no counter; the Search Console crawl-error screen is a stub whose
+own copy says Google discontinued the API. Redirection 5.9.0 keeps
+`{prefix}redirection_404` and `{prefix}redirection_logs` (one row per hit) plus
+`last_count`/`last_access` per redirect, and its `GET /404` checks only
+`redirection_cap_404_manage` — independent of redirect management, so 404 read
+can be granted without any redirect write authority.
+
+Consequences for design, all still undecided (no ADR yet, nothing implemented):
+
+- Statistics cannot hang off `RedirectProvider`. A Yoast-backed site would
+  report zero 404s, which is indistinguishable from a healthy site. It needs a
+  separate port whose unavailable state is explicit.
+- Redirection's `groupBy` — the only aggregation primitive, and the thing that
+  makes "top 404s" cheap — is **not declared in any route's `args` schema**; it
+  is read straight off `get_params()` in a plugin that states its REST API is
+  not stable.
+- **There is no date filter of any kind** on either log route. "404s in the
+  last 7 days" is not expressible; the de facto window is the retention
+  setting (`expire_404`, default 7 days, pruned daily by cron).
+- Logging can be off and fails open: `expire_404 = -1` disables 404 logging,
+  `ip_logging = 0` drops IPs, `track_hits = false` freezes counters. A query
+  against a disabled log returns an empty list, not an error.
+- 404 rows carry `ip`, `agent`, `referrer` and, with `log_header` on, request
+  headers in `request_data`. Projecting rows through MCP would hand traffic
+  logs to a model; an aggregate-only surface (`url` + `count` + the retention
+  window) answers "where is a redirect missing" without any of them.
+
 ## MCP projection is owned by the plugin — 0.8.0, 2026-08-11
 
 ADR 0025. Registering abilities was never enough to use them: the official
@@ -858,24 +1552,20 @@ verified.
 - Strict least-privilege re-consent as `wpcb-bridge-reader` (Task 6's live
   ChatGPT consent was done as admin `dev` for exploration; re-run on staging
   with a real certificate).
-- Controlled status transitions (`transition-content-status`) are not
-  implemented. Public and scheduled transitions are part of that future
-  contract; the old `publish-content` plan is superseded by ADR 0015.
-  `list-block-patterns`, `update-seo`, `create-draft`, and `update-content` are
-  implemented. `list-block-patterns` passed its runtime sign-off on
-  2026-08-07 (`tests/Integration/block-patterns-verification.php`, 0.4.5
-  task 3).
+- ~~Controlled status transitions (`transition-content-status`)~~ — **shipped**
+  and verified (`status-workflow-verification.php`), including scheduled
+  transitions, per ADR 0015 and ADR 0024. `publish`/`future` stay behind the
+  separate `wpcb_publish_enabled` flag.
 - Media P1 writes are not implemented: `update-media`, upload, featured-image
   assignment/removal, and remote import remain separately gated future work.
 - Runtime verification of the current official Adapter profile and explicit
   miniOrange grants for the intended principal. The OAuth grant is site
   configuration and must not use a wildcard or enable unrelated `mosmcp/*`
   tools.
-- Restore-from-trash. `trash-content` shipped in 0.1.5 as reversible, but no
-  ability undoes it; recovery requires wp-admin. **Decided 2026-08-07:**
-  `restore-trashed-content` is built in 0.4.5, pulled forward out of roadmap
-  Slice 3 because the destructive half is already live. It must never reach
-  `publish` or `future`; see `docs/plan/RELEASE_0_4_5_PLAN.md` task 1.
+- ~~Restore-from-trash~~ — **shipped** as `restore-trashed-content` in 0.4.5,
+  pulled forward because the destructive half was already live. It never
+  restores to `publish` or `future`
+  (`restore-trashed-content-verification.php`).
 - A second verification environment. Runtime sign-off depends on one machine's
   Local instance and will continue to. **Decided 2026-08-07 (0.4.5 task 4):** a
   containerised environment was tried and rejected. It reproduces only the
@@ -885,6 +1575,29 @@ verified.
   the absence of a defined inventory, now `docs/setup/VERIFICATION.md`.
 - Role-management UI beyond the capability grant.
 - Agents API integration.
+
+**Surface gaps, as of 2026-09-02.** Recorded because the question "can this
+replace a general-purpose WordPress API connector" turns on these, not on
+performance. 32 abilities are registered; none of the following exist:
+
+- **Media writes.** Featured-image assignment/removal, remote-URL import, and
+  attachment metadata edits all **shipped** (`update-featured-image`,
+  `create-media`, `update-media`). Still absent: attachment deletion, replacing
+  an existing file's bytes, and inline base64 upload.
+- **Permanent delete.** `trash-content` is reversible by design and
+  `restore-trashed-content` undoes it; nothing bypasses trash.
+- ~~Permalink / slug writes~~ — **shipped** as `update-permalink`, returning the
+  previous URL so the redirect surface can be chained onto it.
+- **Taxonomy and term writes.** `create-draft` and `update-content` assign
+  existing terms; no ability creates, renames, merges, or deletes one.
+- **Comments, users, roles, options, plugins, themes, menus, widgets.** Out of
+  scope by design, not merely unbuilt — this is a content and SEO bridge.
+
+Also relevant to that decision and easy to mistake for a fault: reads are
+**deny-by-default for every post type except `post` and `page`**, and all writes
+need `wpcb_writes_enabled` plus a per-post-type opt-in. A freshly installed
+bridge answers almost nothing until an administrator configures it. That is the
+security posture working, not a defect.
 
 ## Next action
 

@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace IsuDev\WPContentBridge\Tests\Unit\Infrastructure\WordPress;
 
 use Closure;
+use IsuDev\WPContentBridge\Domain\Seo\RenderedGraph;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressRenderedSchemaReader;
 use PHPUnit\Framework\TestCase;
 
@@ -83,8 +84,12 @@ final class WordPressRenderedSchemaReaderTest extends TestCase {
 			$this->fetcher_returning( $this->page_with_ld_json( $json ) )
 		);
 
-		$nodes = $reader->graph_for_url( 'https://example.com/locations/warsaw/' );
+		$result = $reader->graph_for_url( 'https://example.com/locations/warsaw/' );
+		$nodes  = $result->nodes;
 
+		self::assertSame( RenderedGraph::CAPTURED, $result->outcome );
+		self::assertNull( $result->diagnosis() );
+		self::assertSame( 200, $result->status_code );
 		self::assertCount( 2, $nodes );
 		self::assertSame( 'Warsaw Branch', $nodes[0]['name'] );
 		self::assertSame(
@@ -108,7 +113,10 @@ final class WordPressRenderedSchemaReaderTest extends TestCase {
 		};
 		$reader  = new WordPressRenderedSchemaReader( 'https://example.com', $fetcher );
 
-		self::assertSame( array(), $reader->graph_for_url( 'https://evil.example.net/locations/warsaw/' ) );
+		$result = $reader->graph_for_url( 'https://evil.example.net/locations/warsaw/' );
+
+		self::assertSame( array(), $result->nodes );
+		self::assertSame( RenderedGraph::NOT_SAME_ORIGIN, $result->outcome );
 		self::assertFalse( $called, 'A cross-origin URL must never be fetched.' );
 	}
 
@@ -124,7 +132,36 @@ final class WordPressRenderedSchemaReaderTest extends TestCase {
 			)
 		);
 
-		self::assertSame( array(), $reader->graph_for_url( 'https://example.com/missing/' ) );
+		$result = $reader->graph_for_url( 'https://example.com/missing/' );
+
+		self::assertSame( array(), $result->nodes );
+		self::assertSame( RenderedGraph::HTTP_ERROR, $result->outcome );
+		self::assertSame( 404, $result->status_code );
+		self::assertStringContainsString( 'HTTP 404', (string) $result->diagnosis() );
+	}
+
+	/**
+	 * A refused request is reported as a transport failure, not as a page
+	 * without schema. These need opposite responses from an operator, and a
+	 * blocked loopback request is the common production case.
+	 */
+	public function test_refused_request_is_distinguished_from_a_page_without_schema(): void {
+		$refused = new WordPressRenderedSchemaReader( 'https://example.com', static fn (): ?array => null );
+		$empty   = new WordPressRenderedSchemaReader(
+			'https://example.com',
+			$this->fetcher_returning( '<p>No structured data here.</p>' )
+		);
+
+		$refused_result = $refused->graph_for_url( 'https://example.com/' );
+		$empty_result   = $empty->graph_for_url( 'https://example.com/' );
+
+		self::assertSame( array(), $refused_result->nodes );
+		self::assertSame( array(), $empty_result->nodes );
+		self::assertNotSame( $refused_result->outcome, $empty_result->outcome );
+		self::assertSame( RenderedGraph::REQUEST_FAILED, $refused_result->outcome );
+		self::assertSame( RenderedGraph::EMPTY_GRAPH, $empty_result->outcome );
+		self::assertStringContainsString( 'could not fetch its own page', (string) $refused_result->diagnosis() );
+		self::assertStringContainsString( 'emits no JSON-LD', (string) $empty_result->diagnosis() );
 	}
 
 	/**
@@ -143,7 +180,7 @@ final class WordPressRenderedSchemaReaderTest extends TestCase {
 			. '</script>';
 		$reader = new WordPressRenderedSchemaReader( 'https://example.com', $this->fetcher_returning( $html ) );
 
-		$nodes = $reader->graph_for_url( 'https://example.com/' );
+		$nodes = $reader->graph_for_url( 'https://example.com/' )->nodes;
 
 		self::assertCount( 1, $nodes );
 		self::assertSame( 'Standalone', $nodes[0]['name'] );
@@ -163,6 +200,6 @@ final class WordPressRenderedSchemaReaderTest extends TestCase {
 		$json   = $this->encode( array( '@graph' => $graph ) );
 		$reader = new WordPressRenderedSchemaReader( 'https://example.com', $this->fetcher_returning( $this->page_with_ld_json( $json ) ) );
 
-		self::assertLessThanOrEqual( 200, count( $reader->graph_for_url( 'https://example.com/' ) ) );
+		self::assertLessThanOrEqual( 200, count( $reader->graph_for_url( 'https://example.com/' )->nodes ) );
 	}
 }
