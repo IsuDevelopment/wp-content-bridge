@@ -15,6 +15,7 @@ use IsuDev\WPContentBridge\Application\Media\MediaAccessManager;
 use IsuDev\WPContentBridge\Application\Media\SearchMedia;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\Installer;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressAttachmentMetadataRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressMediaRepository;
 
 // phpcs:disable Squiz.Commenting.FunctionCommentThrowTag.Missing -- verifier fails fast with bounded CLI diagnostics.
@@ -71,7 +72,7 @@ final class WPCB_Media_Read_Verification {
 			$access     = new MediaAccessManager( true );
 			$projection = new MediaAbilities(
 				new SearchMedia( $access, $repository ),
-				new GetMediaById( $access, $repository )
+				new GetMediaById( $access, $repository, new WordPressAttachmentMetadataRepository() )
 			);
 
 			if ( null === wp_get_ability( 'wp-content-bridge/get-media' ) ) {

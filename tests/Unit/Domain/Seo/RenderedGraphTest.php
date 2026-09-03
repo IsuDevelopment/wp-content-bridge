@@ -45,6 +45,22 @@ final class RenderedGraphTest extends TestCase {
 	}
 
 	/**
+	 * The explanation never carries a duration or a transport message.
+	 *
+	 * It reaches ability output through the SEO warnings, and identical input
+	 * must hash identically: a duration differs on every call, and a transport
+	 * message can carry its own timing.
+	 */
+	public function test_the_explanation_is_deterministic(): void {
+		$first  = RenderedGraph::failed( RenderedGraph::REQUEST_FAILED, 41, null, 'cURL error 28: timed out after 5001 milliseconds' );
+		$second = RenderedGraph::failed( RenderedGraph::REQUEST_FAILED, 4718, null, 'cURL error 28: timed out after 5122 milliseconds' );
+
+		self::assertSame( $first->diagnosis(), $second->diagnosis() );
+		self::assertStringNotContainsString( '41', (string) $first->diagnosis() );
+		self::assertStringNotContainsString( 'cURL', (string) $first->diagnosis() );
+	}
+
+	/**
 	 * Success reports no diagnosis; every failure reports one.
 	 */
 	public function test_every_failure_explains_itself(): void {
@@ -55,7 +71,6 @@ final class RenderedGraphTest extends TestCase {
 			$diagnosis = RenderedGraph::failed( $outcome, 41, 500 )->diagnosis();
 			self::assertIsString( $diagnosis, $outcome . ' must explain itself.' );
 			self::assertStringContainsString( $outcome, (string) $diagnosis );
-			self::assertStringContainsString( '41 ms', (string) $diagnosis );
 		}
 	}
 

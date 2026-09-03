@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace IsuDev\WPContentBridge\Tests\Unit\Application\Media;
 
+use IsuDev\WPContentBridge\Application\Media\AttachmentMetadataRepository;
 use IsuDev\WPContentBridge\Application\Media\GetMediaById;
 use IsuDev\WPContentBridge\Application\Media\MediaAccessManager;
 use IsuDev\WPContentBridge\Application\Media\MediaRepository;
@@ -17,12 +18,17 @@ use IsuDev\WPContentBridge\Application\Media\SearchMedia;
 use IsuDev\WPContentBridge\Domain\Media\MediaItem;
 use IsuDev\WPContentBridge\Domain\Media\MediaQuery;
 use IsuDev\WPContentBridge\Domain\Media\MediaSearchResult;
+use IsuDev\WPContentBridge\Domain\Media\MediaMetadataUpdate;
+use IsuDev\WPContentBridge\Domain\Mutation\VersionToken;
+use LogicException;
 use PHPUnit\Framework\TestCase;
 
 /**
  * Verifies policy and native-object ordering.
  */
 final class MediaReadsTest extends TestCase {
+
+	public const TOKEN = 'abcdef0123456789:2026-07-20 12:30:00';
 
 	/**
 	 * Disabled policy prevents repository execution.
@@ -44,7 +50,7 @@ final class MediaReadsTest extends TestCase {
 	 */
 	public function test_get_requires_native_attachment_access(): void {
 		$repository = $this->repository( false );
-		$service    = new GetMediaById( new MediaAccessManager( true ), $repository );
+		$service    = new GetMediaById( new MediaAccessManager( true ), $repository, $this->versions() );
 
 		try {
 			$service->execute( 7 );
@@ -58,9 +64,39 @@ final class MediaReadsTest extends TestCase {
 	 * Authorized media returns the normalized item.
 	 */
 	public function test_get_returns_normalized_authorized_item(): void {
-		$service = new GetMediaById( new MediaAccessManager( true ), $this->repository( true ) );
+		$service = new GetMediaById( new MediaAccessManager( true ), $this->repository( true ), $this->versions() );
+		$result  = $service->execute( 7 );
 
-		self::assertSame( 7, $service->execute( 7 )->id );
+		self::assertSame( 7, $result->media->id );
+		self::assertSame( self::TOKEN, $result->version->to_string(), 'The read must issue a token update-media can submit.' );
+	}
+
+	/**
+	 * Builds a fixed attachment version source.
+	 *
+	 * @return AttachmentMetadataRepository
+	 */
+	private function versions(): AttachmentMetadataRepository {
+		return new class() implements AttachmentMetadataRepository {
+			/**
+			 * Returns one fixed token.
+			 *
+			 * @param int $attachment_id Attachment ID.
+			 */
+			public function current_version( int $attachment_id ): ?VersionToken {
+				return 7 === $attachment_id ? VersionToken::from_string( MediaReadsTest::TOKEN ) : null;
+			}
+
+			/**
+			 * Not used by these tests.
+			 *
+			 * @param MediaMetadataUpdate $update Unused update.
+			 * @throws LogicException Always.
+			 */
+			public function apply( MediaMetadataUpdate $update ): VersionToken {
+				throw new LogicException( 'not used' );
+			}
+		};
 	}
 
 	/**

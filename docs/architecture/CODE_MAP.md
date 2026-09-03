@@ -391,6 +391,35 @@ Files:
   `wp_insert_post`/`wp_update_post`, revisions, and `result_for()` replay
   lookup; the only place `post_status` is written, and it is never
   `publish`/`future`/`pending`. Also implements `ContentSnapshotRepository`.
+- `src/Infrastructure/WordPress/PostVersionTokenFactory.php` — the single place
+  a version token is derived, so `get-content` and every write repository
+  cannot disagree (a divergence would make every write conflict forever). It
+  hashes the post's **meta and its other mutable columns**, not just title,
+  content and status: meta-only writes (`update-seo`, Custom/Service Schema)
+  and column-only writes (slug, excerpt, parent, author, date) both left the
+  token unchanged otherwise, and `post_modified_gmt` cannot cover them because
+  it has one-second resolution. Meta is fingerprinted wholesale minus a
+  filterable volatile-key list; columns are an explicit list, because the row
+  also carries derived values (`guid`, `comment_count`) that would move the
+  token without the post's meaning changing.
+- `src/Infrastructure/WordPress/WordPressPermalinkRepository.php` — the only
+  place `post_name` is written. Asks `wp_unique_post_slug()` **before** writing
+  and refuses a collision, because `wp_update_post()` would store `slug-2` and
+  report success, handing back a URL the caller never requested. Passing the
+  post's own ID excludes itself, so re-submitting the current slug is not a
+  false collision.
+- `src/Infrastructure/WordPress/WordPressSlugNormalizer.php` — defers entirely
+  to `sanitize_title()`, filters included, and reports `null` when nothing
+  usable remains. It is a port rather than a domain helper because slug
+  normalization is WordPress behaviour, and a reimplementation would drift from
+  what the database actually receives — which is exactly what the pre-write
+  comparison depends on.
+- `src/Infrastructure/WordPress/WordPressAttachmentMetadataRepository.php` —
+  writes the four descriptive attachment fields (`alt_text` is postmeta, the
+  other three are columns) and re-reads every one of them. `wp_update_post()`
+  returns the post ID even when a filter rewrote a value, and
+  `update_post_meta()` returns false both for "unchanged" and "short-circuited",
+  so neither return value answers what is actually stored.
 - `src/Infrastructure/WordPress/WordPressMediaUploader.php` — the remote image
   import (ADR 0031). The SSRF defence is `wp_safe_remote_get()`, chosen over a
   hand-rolled IP filter because core's `wp_http_validate_url()` is maintained,

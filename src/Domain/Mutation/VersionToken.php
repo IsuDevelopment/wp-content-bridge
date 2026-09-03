@@ -31,19 +31,24 @@ final readonly class VersionToken {
 	/**
 	 * Derives a token from the fields that must not change under a stale write.
 	 *
-	 * `$meta_fingerprint` is what makes the token cover a meta-only write.
+	 * `$state_fingerprint` is what makes the token cover everything the four
+	 * explicit fields miss: the post's meta, and its other mutable columns.
 	 * Without it the token is blind to `update-seo` and to Custom/Service
-	 * Schema writes, all of which store post meta and touch none of the four
-	 * fields above — so the token came back unchanged after a successful write
-	 * and could not detect a concurrent one. It defaults to empty so the
-	 * domain stays constructible without a meta source, but every adapter in
-	 * this plugin supplies it through `PostVersionTokenFactory`.
+	 * Schema writes, which store post meta, and to slug, excerpt, parent,
+	 * author and date changes — so the token came back unchanged after a
+	 * successful write and could not detect a concurrent one.
+	 * `$modified_gmt` does not save this: it has one-second resolution, so a
+	 * second edit inside the same second leaves it identical.
 	 *
-	 * @param string $modified_gmt     WordPress `post_modified_gmt` value.
-	 * @param string $title            Post title.
-	 * @param string $content          Raw post content.
-	 * @param string $status           Post status.
-	 * @param string $meta_fingerprint Digest of the post's meta.
+	 * It defaults to empty so the domain stays constructible without a
+	 * WordPress source, but every adapter in this plugin supplies it through
+	 * `PostVersionTokenFactory`.
+	 *
+	 * @param string $modified_gmt      WordPress `post_modified_gmt` value.
+	 * @param string $title             Post title.
+	 * @param string $content           Raw post content.
+	 * @param string $status            Post status.
+	 * @param string $state_fingerprint Digest of the post's meta and other mutable columns.
 	 * @return self
 	 */
 	public static function for_content(
@@ -51,10 +56,10 @@ final readonly class VersionToken {
 		string $title,
 		string $content,
 		string $status,
-		string $meta_fingerprint = ''
+		string $state_fingerprint = ''
 	): self {
 		$hash = substr(
-			hash( 'sha256', $content . '|' . $title . '|' . $status . '|' . $meta_fingerprint ),
+			hash( 'sha256', $content . '|' . $title . '|' . $status . '|' . $state_fingerprint ),
 			0,
 			16
 		);

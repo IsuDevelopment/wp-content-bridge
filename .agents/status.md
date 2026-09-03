@@ -182,6 +182,143 @@ one of them was taking its token *before* writing fixture meta.
 Full inventory 22/22 PHP verifiers green after the change; static gate 575
 tests / 1,374 assertions.
 
+## `update-media` and `update-permalink` shipped, plus two defects they exposed — 2026-09-03
+
+The last two items standing between this plugin and dropping the other
+connector entirely.
+
+### `update-permalink`
+
+Changes one post's slug. The decision worth keeping: **a taken slug is refused,
+not uniquified.** `wp_update_post()` would store `slug-2` and report success,
+handing the caller a URL it never asked for; the repository asks
+`wp_unique_post_slug()` first (passing the post's own ID so re-submitting the
+current slug is not a false collision) and answers
+`wpcb_permalink_unavailable` when the answer differs. A punctuation-only slug is
+refused as invalid input rather than stored, because an empty `post_name` makes
+WordPress regenerate one from the title - the same "URL nobody requested, no
+error" failure by another route.
+
+Output returns `previous_url` alongside the new one, because a caller that
+changes a permalink usually needs it next to create a redirect. WordPress's own
+`_wp_old_slug` handles many cases but not every rewrite, so the old URL is
+handed back rather than assumed to be someone else's problem.
+
+**Architecture correction made mid-build:** the first version called
+`sanitize_title()` inside the domain DTO. That is a WordPress function in the
+domain layer, and the unit suite caught it immediately (`Call to undefined
+function`). Normalization now goes through a `SlugNormalizer` port. It is a port
+rather than a domain helper deliberately: slug normalization is
+`sanitize_title()` plus whatever a site has filtered onto it, and a
+reimplementation would drift from what the database actually receives - which is
+exactly what the pre-write comparison depends on.
+
+### `update-media`
+
+Edits `title`, `alt_text`, `caption`, `description` on an existing attachment.
+Cannot touch the file, its MIME type, or its filename.
+
+An update naming **no** field is refused: otherwise it would consume a token,
+pass every check, write nothing, and report success, which a caller reads as
+"applied". An empty string clears a field; `null` is refused, because clearing
+already has one spelling and guessing between two is worse than rejecting.
+
+Every field is confirmed against storage after the write. `wp_update_post()`
+returns the post ID even when a filter rewrote a value, and
+`update_post_meta()` returns `false` both for "unchanged" and for
+"short-circuited by a filter" - neither return value answers what is now
+stored.
+
+**Gap this exposed:** `get-media-by-id` returned no version token, so the write
+contract would have been **unreachable** - no read issued a token for an
+attachment. It now returns one. The token is not on `MediaItem` because that
+type is also every row of a media search, where a per-row token means a
+postmeta digest per result nobody asked for.
+
+## Two defects the runtime inventory caught on 2026-09-03
+
+Both found by `abilities-runtime-verification`'s twin-invocation determinism
+check, which hashes each read ability's output twice and requires equality.
+
+### I made ability output non-deterministic
+
+`RenderedGraph::diagnosis()` - added the day before - embedded the elapsed
+milliseconds of the loopback fetch in its message. That message reaches ability
+output through the SEO document's `warnings`, and `get-editorial-context`
+carries it. So two identical calls produced different bytes whenever the
+loopback was slow enough to matter, and the verifier failed the whole run.
+
+The transport `detail` had the same problem for a subtler reason: a cURL timeout
+message contains its own duration ("timed out after 5001 milliseconds").
+
+Both are now excluded from the sentence and remain as structured properties. A
+unit test pins it: two failures with different durations and different transport
+messages must produce identical text. **The lesson is the general one** - any
+value that varies per call must stay out of ability output, and timing
+information is the easiest one to add without noticing.
+
+### The version token did not cover `post_name`
+
+The worst of the three, and a direct sequel to the meta-only fix of 2026-09-02.
+That fix folded post **meta** into the token and stopped there, leaving the
+other mutable **columns** outside it: slug, excerpt, parent, author, date,
+password, menu order.
+
+`post_modified_gmt` does not compensate, because it has **one-second
+resolution**. A slug change landing in the same second as the previous edit
+produced a byte-identical token, so a stale token was accepted and a concurrent
+write was silently lost - the one thing the token exists to prevent.
+
+`media-metadata-permalink-verification` failed on exactly this
+(`A slug change did not move the version token`) and, crucially, **failed
+intermittently**: it passed standalone and failed inside the loop, because
+whether the write crosses a second boundary depends on machine timing. That
+shape - passes alone, fails under load - is the signature of a
+second-resolution race, not of a flaky test.
+
+`PostVersionTokenFactory` now hashes an explicit column list alongside the meta
+digest. Listed explicitly rather than hashing the whole row: the row also
+carries derived and churning values (`guid`, `comment_count`, `post_modified`
+in local time) that would move the token without the post's meaning changing.
+`VersionToken::for_content()`'s fifth argument is renamed `$state_fingerprint`
+to say what it now covers.
+
+Confirmed with three consecutive verifier runs after the fix.
+
+### `search-content` ordering had no tie-break
+
+Pre-existing, and the more consequential of the two. `WP_Query` was given
+`orderby => 'modified'` (or date/title) with **no secondary key**. MySQL gives
+no guaranteed order for rows sharing the primary sort value, and two posts with
+the same `post_modified` is what every bulk import, migration, or programmatic
+creation produces.
+
+On a single read that is untidy. **On a paginated read it is a correctness bug:
+a row can appear on two pages or on none**, because page 2 is computed from a
+different arbitrary ordering than page 1. `search-content`,
+`get-editorial-context`, and the llms.txt source selection all read through this
+one method.
+
+Fixed by appending `ID` as a final tie-break in the same direction. My own
+fixtures - several posts created inside the same second - are what surfaced it,
+which is an argument for verifiers creating realistic clusters rather than
+carefully spaced fixtures.
+
+### Environment note, recorded so it is not mistaken for a code problem
+
+This session's tooling ran under load average 68-157 caused by VS Code,
+Microsoft Defender's three scanning daemons, and `cfprefsd`. `phpcs` measured
+**51 s of CPU across 30 minutes of wall clock at 2% CPU** - pure I/O wait.
+
+Two things worth knowing from that: `timeout` does not exist on macOS by
+default, so a per-directory `timeout ... phpcs` loop reported every directory as
+failing when the command simply was not found; and **`composer test` and
+`composer check` exit 0 when their 300-second script timeout fires**, printing
+usage text instead of a failure. A timed-out check reporting success is a real
+hole in the release gate - the fix is to run `vendor/bin/phpunit` and
+`vendor/bin/phpcs` directly when the machine is loaded, or to raise
+`process-timeout`.
+
 ## Media import shipped, with its SSRF surface written down — 2026-09-02
 
 `create-media` (ADR 0031). The other half of the media gap: assigning an
@@ -1390,14 +1527,14 @@ verified.
 replace a general-purpose WordPress API connector" turns on these, not on
 performance. 32 abilities are registered; none of the following exist:
 
-- **Media writes.** Featured-image assignment/removal and remote-URL import
-  both **shipped** (`update-featured-image`, `create-media`). Still absent:
-  `update-media` (editing alt text, caption, or title on an existing
-  attachment), attachment deletion, and inline base64 upload.
+- **Media writes.** Featured-image assignment/removal, remote-URL import, and
+  attachment metadata edits all **shipped** (`update-featured-image`,
+  `create-media`, `update-media`). Still absent: attachment deletion, replacing
+  an existing file's bytes, and inline base64 upload.
 - **Permanent delete.** `trash-content` is reversible by design and
   `restore-trashed-content` undoes it; nothing bypasses trash.
-- **Permalink / slug writes.** `update-permalink` is designed but unbuilt, and
-  it is the natural companion to the redirect surface.
+- ~~Permalink / slug writes~~ — **shipped** as `update-permalink`, returning the
+  previous URL so the redirect surface can be chained onto it.
 - **Taxonomy and term writes.** `create-draft` and `update-content` assign
   existing terms; no ability creates, renames, merges, or deletes one.
 - **Comments, users, roles, options, plugins, themes, menus, widgets.** Out of

@@ -73,6 +73,7 @@ final class AbilityError {
 		'wpcb_content_unavailable'             => 404,
 		'wpcb_media_unavailable'               => 404,
 		'wpcb_media_upload_failed'             => 422,
+		'wpcb_permalink_unavailable'           => 409,
 		'wpcb_pattern_unavailable'             => 404,
 
 		// 409 — stored state conflicts with the request.

@@ -33,6 +33,8 @@ use IsuDev\WPContentBridge\Adapter\Abilities\LlmsAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\CreateMediaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\FeaturedImageAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\MediaAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\PermalinkAbilities;
+use IsuDev\WPContentBridge\Adapter\Abilities\UpdateMediaAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\MutationAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\PatternAbilities;
 use IsuDev\WPContentBridge\Adapter\Abilities\RestoreTrashedContentAbilities;
@@ -69,6 +71,7 @@ use IsuDev\WPContentBridge\Application\Mutation\UpdateBlock;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateBlockAttributes;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateContent;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateCustomSchema;
+use IsuDev\WPContentBridge\Application\Mutation\UpdatePermalink;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateSeo;
 use IsuDev\WPContentBridge\Application\Mutation\UpdateServiceSchema;
 use IsuDev\WPContentBridge\Application\Mutation\TrashContent;
@@ -78,6 +81,7 @@ use IsuDev\WPContentBridge\Application\Media\GetMediaById;
 use IsuDev\WPContentBridge\Application\Media\CreateMedia;
 use IsuDev\WPContentBridge\Application\Media\MediaAccessManager;
 use IsuDev\WPContentBridge\Application\Media\UpdateFeaturedImage;
+use IsuDev\WPContentBridge\Application\Media\UpdateMedia;
 use IsuDev\WPContentBridge\Application\Media\SearchMedia;
 use IsuDev\WPContentBridge\Application\Seo\NullSeoProvider;
 use IsuDev\WPContentBridge\Application\Seo\GetSeo;
@@ -91,6 +95,7 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\LlmsRegenerationScheduler;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\LlmsTxtEndpoint;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\PhpBlockMarkupValidator;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\PhpBlockTreeSplicer;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressAttachmentMetadataRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressAuditLog;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressBlockPatternAccess;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressBlockPatternCatalog;
@@ -111,6 +116,8 @@ use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressPostCacheInvalidato
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressContentRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressFeaturedImageRepository;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressMediaUploader;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressPermalinkRepository;
+use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSlugNormalizer;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSchemaTargetReader;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressRenderedSchemaReader;
 use IsuDev\WPContentBridge\Infrastructure\WordPress\WordPressSeoImageRepository;
@@ -284,7 +291,7 @@ final class Plugin {
 			$media_repository = new WordPressMediaRepository();
 			( new MediaAbilities(
 				new SearchMedia( $media_access, $media_repository ),
-				new GetMediaById( $media_access, $media_repository )
+				new GetMediaById( $media_access, $media_repository, new WordPressAttachmentMetadataRepository() )
 			) )->register_hooks();
 		}
 
@@ -358,6 +365,17 @@ final class Plugin {
 				) )->register_hooks();
 			}
 
+			if ( $media_access->reads_enabled && get_option( Installer::MEDIA_WRITES_ENABLED_OPTION ) ) {
+				( new UpdateMediaAbilities(
+					new UpdateMedia(
+						$media_access,
+						new WordPressAttachmentMetadataRepository(),
+						new WordPressMediaRepository(),
+						$audit_log
+					)
+				) )->register_hooks();
+			}
+
 			/*
 			 * Featured-image writes need three switches, not one: media reads
 			 * (the effective result re-reads the attachment), the content-writes
@@ -376,6 +394,23 @@ final class Plugin {
 					)
 				) )->register_hooks();
 			}
+
+			/*
+			 * Gated by the per-type Change permalink policy only, not by a
+			 * separate feature flag: it changes one field of one post like any
+			 * other content write, and the blast radius it does have - old URLs
+			 * breaking - is handled by returning the previous URL so the caller
+			 * can create a redirect.
+			 */
+			( new PermalinkAbilities(
+				new UpdatePermalink(
+					$manager,
+					$mutation_repository,
+					new WordPressPermalinkRepository(),
+					new WordPressSlugNormalizer(),
+					$audit_log
+				)
+			) )->register_hooks();
 
 			if ( get_option( Installer::TRASH_ENABLED_OPTION ) ) {
 				$trash_repository = new WordPressContentTrashRepository();

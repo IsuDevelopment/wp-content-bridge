@@ -172,6 +172,22 @@ final class WordPressContentRepository implements ContentRepository {
 			'relevance' => '' === $query->query ? 'date' : 'relevance',
 			default     => 'date',
 		};
+		$order    = strtoupper( $query->order );
+
+		/*
+		 * `ID` is appended as a tie-break. Without it, rows sharing the primary
+		 * sort value - two posts with the same `post_modified`, which any bulk
+		 * import or programmatic creation produces - come back in whatever
+		 * order MySQL happens to pick, and two identical queries can disagree.
+		 * On a paginated read that is worse than untidy: a row can appear on
+		 * two pages or on none.
+		 */
+		$ordering = 'ID' === $order_by
+			? array( 'ID' => $order )
+			: array(
+				$order_by => $order,
+				'ID'      => $order,
+			);
 
 		$arguments = array(
 			'post_type'           => $query->post_types,
@@ -180,8 +196,7 @@ final class WordPressContentRepository implements ContentRepository {
 			'author__in'          => $query->author_ids,
 			'paged'               => $query->page,
 			'posts_per_page'      => $query->per_page,
-			'orderby'             => $order_by,
-			'order'               => strtoupper( $query->order ),
+			'orderby'             => $ordering,
 			'ignore_sticky_posts' => true,
 			'no_found_rows'       => true,
 		);

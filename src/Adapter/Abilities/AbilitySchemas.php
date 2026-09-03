@@ -432,10 +432,14 @@ final class AbilitySchemas {
 	public static function media_by_id_output(): array {
 		return array(
 			'type'                 => 'object',
-			'required'             => array( 'schema_version', 'item', 'provenance' ),
+			'required'             => array( 'schema_version', 'item', 'version_token', 'provenance' ),
 			'properties'           => array(
 				'schema_version' => array( 'type' => 'string' ),
 				'item'           => self::media_item(),
+				'version_token'  => array(
+					'description' => 'Optimistic-concurrency token to submit with update-media. This is the only read that issues one for an attachment.',
+					'type'        => 'string',
+				),
 				'provenance'     => self::provenance(),
 			),
 			'additionalProperties' => false,
@@ -1737,6 +1741,141 @@ final class AbilitySchemas {
 	 */
 	public static function trash_content_output(): array {
 		return self::mutation_output();
+	}
+
+	/**
+	 * Returns the permalink write input contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_permalink_input(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'post_id', 'version_token', 'slug' ),
+			'properties'           => array(
+				'post_id'       => array(
+					'description' => 'Target post ID.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+				),
+				'version_token' => array(
+					'description' => 'Optimistic-concurrency token from get-content.',
+					'type'        => 'string',
+					'minLength'   => 18,
+					'maxLength'   => 191,
+				),
+				'slug'          => array(
+					'description' => 'Requested slug. It is normalized the way WordPress normalizes slugs, and refused if normalization leaves nothing usable or if the result is already taken for this content type.',
+					'type'        => 'string',
+					'minLength'   => 1,
+					'maxLength'   => 200,
+				),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the permalink write result contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_permalink_output(): array {
+		$output = self::mutation_output();
+
+		$output['required'][]              = 'permalink';
+		$output['properties']['permalink'] = array(
+			'description'          => 'The slug and URL on both sides of the change. The previous URL is what a redirect should be created from.',
+			'type'                 => 'object',
+			'required'             => array( 'previous_slug', 'previous_url', 'slug', 'url' ),
+			'properties'           => array(
+				'previous_slug' => array( 'type' => 'string' ),
+				'previous_url'  => array( 'type' => 'string' ),
+				'slug'          => array( 'type' => 'string' ),
+				'url'           => array( 'type' => 'string' ),
+			),
+			'additionalProperties' => false,
+		);
+
+		return $output;
+	}
+
+	/**
+	 * Returns the attachment-metadata write input contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_media_input(): array {
+		/*
+		 * Not nullable. Clearing a field is an empty string; null would be a
+		 * second way to say the same thing, and the domain rejects it rather
+		 * than guess which the caller meant.
+		 */
+		$text = array(
+			'type'      => 'string',
+			'maxLength' => 5000,
+		);
+
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'attachment_id', 'version_token' ),
+			'properties'           => array(
+				'attachment_id' => array(
+					'description' => 'Target attachment ID.',
+					'type'        => 'integer',
+					'minimum'     => 1,
+				),
+				'version_token' => array(
+					'description' => 'Optimistic-concurrency token from get-media-by-id.',
+					'type'        => 'string',
+					'minLength'   => 18,
+					'maxLength'   => 191,
+				),
+				'title'         => array(
+					'description' => 'Attachment title.',
+					'type'        => 'string',
+					'maxLength'   => 500,
+				),
+				'alt_text'      => array(
+					'description' => 'Alternative text. An empty string clears it, which is correct only for decorative images.',
+					'type'        => 'string',
+					'maxLength'   => 5000,
+				),
+				'caption'       => $text,
+				'description'   => $text,
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Returns the attachment-metadata write result contract.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function update_media_output(): array {
+		return array(
+			'type'                 => 'object',
+			'required'             => array( 'schema_version', 'media', 'version_token', 'changed_fields', 'provenance' ),
+			'properties'           => array(
+				'schema_version' => array( 'type' => 'string' ),
+				'media'          => self::media_item(),
+				'version_token'  => array(
+					'description' => 'Token after the write. A chained edit must use this, not the one it submitted.',
+					'type'        => 'string',
+				),
+				'changed_fields' => array(
+					'type'     => 'array',
+					'maxItems' => 4,
+					'items'    => array(
+						'type' => 'string',
+						'enum' => array( 'title', 'alt_text', 'caption', 'description' ),
+					),
+				),
+				'provenance'     => self::provenance(),
+			),
+			'additionalProperties' => false,
+		);
 	}
 
 	/**

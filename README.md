@@ -452,6 +452,29 @@ permalink, status, dates, and authorized featured-image identity - the fields a
 JSON-LD document is built from - so authoring a document for one page does not
 require a separate content read.
 
+### `wp-content-bridge/update-permalink`
+
+Changes one post's slug and returns both the previous and the new URL, so a
+redirect can be created from the old one.
+
+A slug already in use is **refused**, not silently turned into `slug-2` the way
+`wp_update_post()` would — accepting that would hand back a URL the caller never
+requested. A slug made only of punctuation is refused for the same reason: an
+empty slug makes WordPress regenerate one from the title.
+
+It cannot change the site-wide permalink structure. Gated by the per-type Change
+permalink policy plus `wpcb_edit_content` and native `edit_post`.
+
+### `wp-content-bridge/update-media`
+
+Edits an existing attachment's `title`, `alt_text`, `caption`, and
+`description` — at least one required. It cannot change the file, its type, or
+its filename, and every field is confirmed against storage after the write.
+
+Submit the `version_token` that `get-media-by-id` returns. Gated by media reads,
+the content-writes master switch, `wpcb_media_writes_enabled`,
+`wpcb_edit_content`, and native `edit_post`.
+
 ### `wp-content-bridge/create-media`
 
 Fetches one image from a remote URL into the media library. It does not attach

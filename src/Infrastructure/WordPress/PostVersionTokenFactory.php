@@ -60,8 +60,53 @@ final class PostVersionTokenFactory {
 			$post->post_title,
 			$post->post_content,
 			$post->post_status,
-			self::meta_fingerprint( (int) $post->ID )
+			self::state_fingerprint( $post )
 		);
+	}
+
+	/**
+	 * Hashes everything mutable about the post that the three explicit
+	 * arguments above do not already carry.
+	 *
+	 * @param WP_Post $post Target post.
+	 * @return string
+	 */
+	private static function state_fingerprint( WP_Post $post ): string {
+		return hash(
+			'sha256',
+			self::column_fingerprint( $post ) . '|' . self::meta_fingerprint( (int) $post->ID )
+		);
+	}
+
+	/**
+	 * Hashes the mutable post columns outside title, content, and status.
+	 *
+	 * `post_modified_gmt` is not enough on its own: it has one-second
+	 * resolution, so an edit within the same second as the previous one leaves
+	 * it unchanged and the token would not move. Listed explicitly rather than
+	 * hashing the whole row, because the row also carries derived and
+	 * churning values (`guid`, `comment_count`, `post_modified` in local time)
+	 * that would move the token without the post's meaning changing.
+	 *
+	 * @param WP_Post $post Target post.
+	 * @return string
+	 */
+	private static function column_fingerprint( WP_Post $post ): string {
+		$columns = array(
+			'post_name'      => $post->post_name,
+			'post_excerpt'   => $post->post_excerpt,
+			'post_parent'    => (string) $post->post_parent,
+			'post_author'    => (string) $post->post_author,
+			'post_date_gmt'  => $post->post_date_gmt,
+			// The value, not a "set" flag: the fingerprint is hashed twice more
+			// before it reaches output, so nothing is exposed, and a password
+			// change is a change a concurrent writer needs to see.
+			'post_password'  => $post->post_password,
+			'menu_order'     => (string) $post->menu_order,
+			'post_mime_type' => $post->post_mime_type,
+		);
+
+		return (string) wp_json_encode( $columns );
 	}
 
 	/**

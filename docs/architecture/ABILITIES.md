@@ -666,6 +666,81 @@ existing `get-url-seo` Ability, avoiding a duplicate full-graph endpoint.
 
 Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
 
+### `wp-content-bridge/update-permalink`
+
+Changes one post's slug. Input requires `post_id`, `version_token`, and `slug`.
+
+**A taken slug is refused, not uniquified.** `wp_update_post()` would silently
+store `slug-2` and report success, handing the caller a URL it never asked for.
+The repository asks `wp_unique_post_slug()` first (passing the post's own ID, so
+re-submitting the current slug is not a false collision) and answers
+`wpcb_permalink_unavailable` when the answer differs.
+
+A slug that normalizes to nothing — punctuation only — is refused as invalid
+input rather than stored. An empty `post_name` makes WordPress regenerate one
+from the title, which is again a URL nobody requested with no error to notice.
+Normalization runs through the `SlugNormalizer` port, which defers to
+`sanitize_title()` and its filters: reimplementing it in the domain would drift
+from what the database actually receives, and comparing against exactly that is
+the point.
+
+Output is the standard mutation envelope plus `permalink`, carrying
+`previous_slug`, `previous_url`, `slug`, and `url`. The previous URL is returned
+because a caller that changes a permalink usually needs it next, to create a
+redirect from it. WordPress does store a `_wp_old_slug` and resolves old URLs on
+its own for post types whose permalink structure includes the slug, but that
+does not cover every rewrite, so the old URL is handed back rather than assumed
+to be someone else's problem.
+
+It cannot change the site's permalink *structure*. That is a site-wide rewrite
+setting that would alter every URL at once, which is not a per-object edit.
+
+Gated by the per-type `update_permalink` policy plus `wpcb_edit_content` and
+native `edit_post`. No separate feature flag: it changes one field of one post,
+and its blast radius is addressed by returning the previous URL.
+
+Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
+Destructive because inbound links to the old URL break and nothing in the
+request restores the previous slug.
+
+### `wp-content-bridge/update-media`
+
+Edits the descriptive fields of one existing attachment: `title`, `alt_text`,
+`caption`, `description`. Input requires `attachment_id` and `version_token`,
+plus **at least one** field.
+
+An update naming no field is refused. Otherwise it would consume a token, pass
+every check, write nothing, and report success — which a caller reads as "the
+edit was applied". An empty string is a real value that clears the field; `null`
+is refused, because clearing already has one spelling and guessing between two
+is worse than rejecting.
+
+It cannot change the stored file, its MIME type, or its filename. That would be
+a replace rather than an edit and needs its own decision.
+
+Every requested field is confirmed against storage after the write.
+`wp_update_post()` returns the post ID on success even when a filter rewrote or
+discarded a value, and `update_post_meta()` returns `false` both for "unchanged"
+and for "short-circuited by a filter" — neither return value answers the only
+question that matters, which is what is now stored.
+
+`alt_text` is postmeta (`_wp_attachment_image_alt`), not a column, so it is
+written separately from the three that are.
+
+**`get-media-by-id` now returns a `version_token`** for exactly this: it is the
+only read that issues one for an attachment, and without it this write contract
+would be unreachable. The token is not on `MediaItem` because that type is also
+every row of a media search, where a per-row token would mean a postmeta digest
+per result nobody asked for.
+
+Gated by media reads, `wpcb_writes_enabled`, and `wpcb_media_writes_enabled` —
+the same switch as the featured image, since neither fetches anything — plus
+`wpcb_edit_content` and native `edit_post` on the attachment.
+
+Annotations: `readonly: false`, `destructive: true`, `idempotent: false`.
+Destructive because each present field replaces what was there and attachments
+carry no revisions.
+
 ### `wp-content-bridge/create-media`
 
 Fetches one image from a remote URL and stores it in the media library. See

@@ -104,15 +104,24 @@ final readonly class RenderedGraph {
 	 *
 	 * The wording distinguishes "we could not look" from "we looked and the
 	 * page emits nothing", because only the first is a problem to fix.
+	 *
+	 * Deliberately free of `elapsed_ms` and of the transport `detail`. This
+	 * string reaches ability output through the SEO document's warnings, and
+	 * ability output has to be identical for identical input - a runtime
+	 * verifier asserts exactly that by hashing twin invocations. A duration
+	 * differs on every call, and a transport message can carry its own timing
+	 * ("timed out after 5001 milliseconds"), so either one inside this sentence
+	 * makes a deterministic read look unstable. Both remain available as
+	 * structured properties for logging.
 	 */
 	public function diagnosis(): ?string {
-		$suffix = sprintf( ' (outcome: %s, %d ms)', $this->outcome, $this->elapsed_ms );
+		$suffix = sprintf( ' (outcome: %s)', $this->outcome );
 
 		return match ( $this->outcome ) {
 			self::CAPTURED, self::CACHED => null,
 			self::EMPTY_GRAPH            => 'The page was fetched successfully but emits no JSON-LD graph.' . $suffix,
 			self::NOT_SAME_ORIGIN        => 'The target URL is not same-origin with this site, so it was never requested.' . $suffix,
-			self::REQUEST_FAILED         => 'The site could not fetch its own page. Loopback HTTP requests are commonly blocked by a firewall, HTTP authentication, or an edge proxy; the resolved surface was used instead.' . $suffix . ( null !== $this->detail ? ' Transport: ' . $this->detail : '' ),
+			self::REQUEST_FAILED         => 'The site could not fetch its own page. Loopback HTTP requests are commonly blocked by a firewall, HTTP authentication, or an edge proxy; the resolved surface was used instead.' . $suffix,
 			self::HTTP_ERROR             => sprintf( 'The site fetched its own page and received HTTP %d rather than 200.', (int) $this->status_code ) . $suffix,
 			self::BODY_TOO_LARGE         => 'The page exceeded the response size bound and was discarded unread.' . $suffix,
 			self::NO_HTTP_API            => 'The WordPress HTTP API is unavailable in this runtime, so no request was attempted.' . $suffix,

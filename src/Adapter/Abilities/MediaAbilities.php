@@ -130,13 +130,15 @@ final readonly class MediaAbilities {
 				return AbilityError::create( 'wpcb_invalid_input', 'id must be a positive integer.' );
 			}
 
-			return array(
-				'schema_version' => '1.0',
-				'item'           => $this->get_by_id->execute( $id )->to_array(),
-				'provenance'     => array(
-					'source'    => 'wordpress',
-					'untrusted' => true,
-				),
+			return array_merge(
+				array( 'schema_version' => '1.0' ),
+				$this->get_by_id->execute( $id )->to_array(),
+				array(
+					'provenance' => array(
+						'source'    => 'wordpress',
+						'untrusted' => true,
+					),
+				)
 			);
 		} catch ( MediaUnavailable ) {
 			return self::unavailable();
