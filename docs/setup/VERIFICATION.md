@@ -19,7 +19,15 @@ skipping it left no trace. This file is that definition.
 | WordPress root | `/Users/lukaszbiedron/Local Sites/kormas-isu/app/public` |
 | Site URL | `https://kormas-isu.local` |
 | WordPress / PHP | 7.1 / 8.4.6 |
-| Providers | Yoast SEO Free 28.2, Yoast Local 15.8, IsuDev Schema Extended 0.3.0 |
+| Providers | Yoast SEO Free 28.4, Yoast SEO Premium 28.0, Yoast Local 15.8, IsuDev Schema Extended 0.3.2, Redirection 5.9.0 |
+
+Redirection and Yoast Premium are both **permanent** here as of 2026-09-04.
+Redirection was previously activated temporarily and slated for removal; it
+stays because `error-statistics-verification.php` can only reach its `measured`
+branch against a real 404 log, and without it that verifier would pass forever
+on its refusal path alone. Two active redirect engines are also what lets
+`redirects-verification` run its cross-engine assertions instead of skipping
+them.
 
 The plugin directory is a symlink to this repository, so the working tree is
 what runs — no copy step, and an uncommitted change is verified as written:
@@ -215,18 +223,36 @@ driven by the shell verifiers, not verifiers themselves.
 
 ## Last full run
 
-**0.10.0 shipped unverified, on the operator's explicit call.** The inventory
-is 26 PHP verifiers and 25 of them have been run — none of them at 0.10.0.
-This line is the record required below; it is not a passing row, and the
-missing row is the point. `error-statistics-verification.php` landed with the ADR 0030
-statistics port and has never been executed, because the three things it
-exists to check — the schema probe, the direct table read, and the timezone
-convention of Redirection's `created` column — need the reference site, which
-still has Redirection installed for exactly this purpose. Nothing about the
-statistics port may be described as verified until a dated row below says so.
-The same run also still owes coverage of `get-diagnostics`' new redirect
-reporting and `update-permalink`'s old-URL invalidation, both of which touch
-paths the whole inventory exercises.
+**2026-09-04 — 26 of 26 PHP verifiers and all three shell verifiers green on
+WordPress 7.1**, at 0.10.0. This is the run 0.10.0 shipped without, and it is
+the first execution of `error-statistics-verification.php` at any version.
+
+The statistics port landed **verified in its `measured` branch**, not merely in
+one of its refusal branches — which is what actually needed the reference site.
+Against Redirection 5.9.0 it read a live 404 log: one path reported, 10 retained
+hits, a 7-day retention window, and the native capability resolved as
+`manage_options`. The timezone convention of Redirection's `created` column is
+confirmed by the one-second-window assertion returning **0** rows: comparing
+that boundary in the wrong timezone is the failure that returns the whole log
+instead, so a zero here is the positive result, not an empty one.
+
+Two other results are worth naming because both are cases where a verifier can
+pass while proving less than it claims:
+
+- `redirects-verification` reported `two_engine_case: verified` with both
+  `yoast-premium` and `redirection` available, so the cross-engine assertions
+  ran rather than being honestly skipped, and the shadow guard was exercised
+  against `/` and `/realizacje/`.
+- `preview-verification` reported an **empty `skipped` array**, so the Yoast
+  half of it ran too. A `PASS` with a non-empty `skipped` would not have been a
+  full sign-off.
+
+Static gate at the same commit: PHPCS clean, maximum-level PHPStan `[OK] No
+errors`, 646 tests / 1,553 assertions. The PHPCS run **was not clean when this
+began** — one alignment warning in `WordPressContentRepository.php`, introduced
+by the `search-content` tie-break fix in 0.9.0 and carried through two releases
+that both recorded PHPCS as clean. Cosmetic, and fixed; recorded because the
+release record was wrong, which is the part that matters.
 
 **2026-09-02 — 25 of 25 green on WordPress 7.1**, re-run after the redirect
 lifecycle (update and delete) landed, with **Redirection 5.9.0 temporarily
@@ -248,6 +274,7 @@ shipped unverified, and that should be visible rather than reconstructable.
 
 | Date | Result | Notes |
 |---|---|---|
+| 2026-09-04 | 26/26 | **0.10.0, verified after release.** The inventory reaches 26 PHP verifiers plus 3 shell, all green. First execution of `error-statistics-verification.php` at any version, and it landed in the **`measured`** branch rather than a refusal branch: Redirection 5.9.0, one path reported, 10 retained hits, 7-day retention, native capability `manage_options`. Its one-second-window assertion returned **0** rows, which is what confirms the timezone convention of Redirection's `created` column - comparing that boundary in the wrong zone returns the entire log instead, so zero is the positive result. `redirects-verification` reported `two_engine_case: verified` against Yoast Premium 28.0 and Redirection 5.9.0 together, so the cross-engine assertions ran rather than skipping honestly, and the shadow guard was exercised on `/` and `/realizacje/`. `preview-verification` returned an empty `skipped` array, so its Yoast half ran too. Static gate: maximum-level PHPStan `[OK]`, 646 tests / 1,553 assertions, and PHPCS clean **only after a fix** - one alignment warning in `WordPressContentRepository.php`, introduced by the 0.9.0 `search-content` tie-break and carried through two releases whose records both claimed PHPCS clean. Cosmetic; recorded because the release record was wrong. |
 | 2026-09-03 | 25/25 | **0.9.0.** Adds `featured-image-verification`, `media-upload-verification`, and `media-metadata-permalink-verification`; the inventory reaches 25 PHP verifiers plus 3 shell. The run **found three defects before release**, all three caught by `abilities-runtime-verification`'s twin-invocation determinism check or by the new verifiers rather than by review. (1) The version token did not cover `post_name`, and `post_modified_gmt`'s one-second resolution meant a slug change inside the same second produced a byte-identical token, so a stale token was accepted — it failed **intermittently**, passing standalone and failing under load, which is how a second-resolution race presents; the token now covers the mutable post columns as well as meta, confirmed over three consecutive runs. (2) `search-content` ordering had no tie-break, so rows sharing a timestamp came back in arbitrary order — a correctness bug under pagination, where a row can appear on two pages or none; `ID` is now appended. (3) The loopback-diagnosis message added a day earlier embedded elapsed milliseconds, which reach output through the SEO warnings `get-editorial-context` carries, making a deterministic read look unstable; timing and the transport message are excluded from the sentence and kept as structured properties. Static gate: PHPCS + maximum-level PHPStan + 612 tests / 1,491 assertions. Environment note: the machine ran at load average 50–157 (VS Code, three Microsoft Defender daemons, `cfprefsd`), so `phpcs` measured 51 s of CPU across up to 39 minutes of wall clock, and `composer test` / `composer check` **exit 0 when their 300 s script timeout fires** — the gate was therefore run through `vendor/bin/*` directly. |
 | 2026-09-02 | 25/25 | Re-run with **two redirect engines active**, which the design targets and nothing had verified until now: cross-engine collision, cross-engine trailing-slash equivalence, and a loop hopping between engines all hold against real Redirection 5.9.0 and Yoast Premium 28.0. Adds the update/delete lifecycle to the verifier. **The verifier itself had a defect**: it confirmed cleanup by re-reading the provider object it had just mutated, so a passing run left two rules on the site; it now purges by name prefix and re-reads through a fresh object, proven clean from a separate request. The four redirect abilities were added to `abilities-runtime-verification`'s closed profile, which caught them exactly as designed. Static gate: 573 tests / 1,371 assertions. |
 | 2026-09-02 | 25/25 | Adds `redirects-verification` for the redirect abilities. **Found a real defect before release**: creating a redirect for `/` succeeded, because the live-content shadow guard relied on `url_to_postid()`, which answers `0` for the site root whether the front page is static or the blog index — so the guard read the busiest URL on the site as dead. Fixed by handling the root and public post-type archives explicitly, and the verifier now asserts both. The same pass proved the schema bump to 12 actually grants `wpcb_manage_redirects` on an already-active install. Static gate: 557 tests / 1,344 assertions. |

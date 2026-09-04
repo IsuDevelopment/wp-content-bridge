@@ -1,14 +1,27 @@
 # Project status
 
-**Released version: 0.10.0.** Static quality is green at 646 tests / 1,553
-assertions, PHPCS and maximum-level PHPStan clean.
+**Released version: 0.10.0, now verified at runtime.** 26 of 26 PHP verifiers
+and all three shell verifiers green on 2026-09-04, plus 646 tests / 1,553
+assertions, maximum-level PHPStan clean, PHPCS clean.
 
-**0.10.0 shipped without a runtime inventory run, deliberately and on the
-operator's call.** The inventory is 26 verifiers, of which 25 were last run
-green at 0.9.0; `error-statistics-verification.php` has never been executed, so
-the ADR 0030 statistics port is *unverified at runtime* until
-`docs/setup/VERIFICATION.md` records a row. The feature is off by default,
-which bounds the exposure but does not substitute for the run.
+**0.10.0 shipped without a runtime inventory run and that gap is now closed**,
+after the fact rather than before release. `error-statistics-verification.php`
+ran for the first time at any version and reached its **`measured`** branch, not
+one of its refusal branches — the distinction that mattered, since a verifier
+that only ever sees `unavailable` proves the refusal path and nothing about the
+read. Against Redirection 5.9.0's live log: one path, 10 retained hits, 7-day
+retention, native capability `manage_options`. The timezone convention of
+Redirection's `created` column is confirmed by the one-second-window assertion
+returning **0** rows — the wrong zone returns the whole log, so zero is the
+positive result.
+
+**PHPCS was not clean when the check began**, though the 0.9.0 and 0.10.0
+records both said it was: one alignment warning in
+`WordPressContentRepository.php`, introduced by the 0.9.0 `search-content`
+tie-break. Cosmetic and fixed. It is recorded because the wrong part was the
+release record, not the whitespace — a gate reported green while a machine
+under load was silently timing out is the same failure mode that produced the
+`composer check` note below.
 
 **0.8.4 and 0.9.0 had never actually been released** — both were committed,
 neither was tagged, and fifteen commits sat unpushed. Tagged and published on
@@ -243,13 +256,21 @@ be done from here.
 5. ~~Old-URL page cache after a slug change.~~ **Decided and implemented
    2026-09-03** as ADR 0032: URL-scoped, delegated, and reported.
 
-### Reference environment still not restored
+### Reference environment: Redirection now stays, deliberately
 
 Redirection remains **active with its database installed** on the reference
-site; it was inactive with no tables before this work. It stays until the
-statistics port is done, because that work needs its 404 log. Then:
-`wp redirection database remove` and deactivate. Both media flags and the
-redirect flag are `0` as found; `wpcb_upload_media` is granted.
+site; it was inactive with no tables before this work. The earlier plan was to
+run `wp redirection database remove` and deactivate once the statistics port
+was done. **That plan is withdrawn.** The port is done, and removing Redirection
+would mean `error-statistics-verification.php` can only ever reach its
+`unavailable` branch — a permanently green verifier that proves the refusal path
+and nothing about the read, which is worse than an honest skip because it looks
+like coverage. Its 404 log is now part of the inventory's environment, and
+`docs/setup/VERIFICATION.md` records what that log contained on the run.
+
+`wpcb_redirects_enabled` **was found at `1`**, not `0` as this section claimed
+for a day; set back to `0` on 2026-09-04. Both media flags are `0`,
+`wpcb_error_statistics_enabled` is unset, and `wpcb_upload_media` is granted.
 
 ## Four of the five open items closed — 2026-09-03
 

@@ -172,7 +172,7 @@ final class WordPressContentRepository implements ContentRepository {
 			'relevance' => '' === $query->query ? 'date' : 'relevance',
 			default     => 'date',
 		};
-		$order    = strtoupper( $query->order );
+		$order = strtoupper( $query->order );
 
 		/*
 		 * `ID` is appended as a tie-break. Without it, rows sharing the primary
