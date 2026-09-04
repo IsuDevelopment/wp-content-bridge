@@ -123,9 +123,40 @@ jobs:
           test -f build/wp-content-bridge/vendor/autoload.php
           echo "Artifact contents OK"
 
+      # v0.8.4, v0.9.0 and v0.10.0 published with a body containing nothing but
+      # the compare link, because `generate_release_notes` alone produces the
+      # commit list and no notes. The changelog a human wrote already exists in
+      # readme.txt; this lifts that section into the release body so the two
+      # cannot drift, and fails when the section is missing - a release with no
+      # changelog entry is a defect, not something to publish quietly.
+      - name: Extract this version's changelog from readme.txt
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          awk -v v="= $VERSION =" '
+            $0 == v { found = 1; next }
+            found && /^= [0-9]+\.[0-9]+/ { exit }
+            found { print }
+          ' readme.txt > changelog-section.md
+          if [ ! -s changelog-section.md ]; then
+            echo "readme.txt has no changelog section for $VERSION."
+            exit 1
+          fi
+          {
+            echo "## Changelog"
+            echo
+            sed 's/^\* /- /' changelog-section.md
+            echo
+            echo "---"
+            echo
+            echo "**Install:** download \`wp-content-bridge.zip\` below and install it as a plugin, or let the built-in updater offer it."
+          } > release-body.md
+          echo "Release body:"
+          cat release-body.md
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
           files: wp-content-bridge.zip
+          body_path: release-body.md
           generate_release_notes: true
